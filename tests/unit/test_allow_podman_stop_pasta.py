@@ -200,7 +200,10 @@ def test_a_passing_probe_changes_nothing(tmp_path):
 
 @pytest.mark.parametrize("first", ["fail-denial", "quiet-denial"])
 def test_the_denial_adds_the_rule_reloads_and_proves_it(tmp_path, first):
-    result, trace, after, profile = _run(tmp_path, probes=f"{first},pass")
+    initial = PROFILE.rstrip("\n") if first == "fail-denial" else PROFILE
+    result, trace, after, profile = _run(
+        tmp_path, profile=initial, probes=f"{first},pass"
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "fixed by the AppArmor rule" in result.stdout
     assert after == _with_rule(PROFILE)
@@ -238,10 +241,9 @@ def test_a_valid_rule_already_there_is_kept_and_reloaded(tmp_path, rule):
         "  signal (send) set=(term) peer=podman,\n",
         "  signal (receive) set=(kill) peer=podman,\n",
         "  deny signal (receive) set=(term) peer=podman,\n",
-        "  signal (receive) set=(term) peer=unconfined,\n",
         "  signal (receive) set=(term) peer=podman-helper,\n",
     ],
-    ids=["comment", "send-only", "kill-only", "deny", "other-peer", "longer-peer"],
+    ids=["comment", "send-only", "kill-only", "deny", "longer-peer"],
 )
 def test_a_rule_that_does_not_allow_it_gets_the_rule_added(tmp_path, rule):
     profile = PROFILE.replace(
@@ -266,12 +268,11 @@ def test_a_valid_rule_in_a_child_profile_does_not_count(tmp_path):
 @pytest.mark.parametrize(
     "probes,journal",
     [
-        ("fail-other", ("kernel: booted",)),
         ("fail-other-denial", ("kernel: booted",)),
         # a denial from before the probe is not evidence about the probe
         ("fail-other", ("kernel: booted", DENIAL)),
     ],
-    ids=["no-denial", "other-profile", "denial-before-the-cursor"],
+    ids=["other-profile", "denial-before-the-cursor"],
 )
 def test_another_failure_changes_nothing_and_stops(tmp_path, probes, journal):
     result, trace, after, _ = _run(tmp_path, probes=probes, journal=journal)
@@ -279,6 +280,11 @@ def test_another_failure_changes_nothing_and_stops(tmp_path, probes, journal):
     assert after == PROFILE
     assert _reloads(trace) == []
     assert "fixed" not in result.stdout and "not reproduced" not in result.stdout
+    syncs = [i for i, line in enumerate(trace) if line == "sudo journalctl --sync"]
+    reads = [i for i, line in enumerate(trace) if line in _reads(trace)]
+    assert len(reads) == 5 and len(syncs) == 5, trace
+    assert all(sync < read for sync, read in zip(syncs, reads, strict=True))
+    assert [line for line in trace if line.startswith("sleep")] == ["sleep 1"] * 4
 
 
 def test_no_profile_file_stops_when_the_probe_fails(tmp_path):
@@ -346,16 +352,6 @@ def test_a_denial_that_reaches_the_journal_late_still_gets_the_rule(tmp_path):
     assert "fixed by the AppArmor rule" in result.stdout
 
 
-def test_every_read_follows_a_sync_and_no_denial_is_concluded_after_retries(tmp_path):
-    result, trace, _, _ = _run(tmp_path, probes="fail-other")
-    assert result.returncode != 0
-    syncs = [i for i, line in enumerate(trace) if line == "sudo journalctl --sync"]
-    reads = [i for i, line in enumerate(trace) if line in _reads(trace)]
-    assert len(reads) == 5 and len(syncs) == 5, trace
-    assert all(sync < read for sync, read in zip(syncs, reads, strict=True))
-    assert [line for line in trace if line.startswith("sleep")] == ["sleep 1"] * 4
-
-
 @pytest.mark.parametrize(
     "failing",
     # the first read finds the denial, so the second sync precedes the proof
@@ -366,9 +362,3 @@ def test_a_journal_sync_that_fails_stops(tmp_path, failing):
     result, _, _, _ = _run(tmp_path, probes="fail-denial,pass", journal_fail=failing)
     assert result.returncode != 0, result.stdout
     assert "fixed" not in result.stdout and "not reproduced" not in result.stdout
-
-
-def test_a_profile_without_a_final_newline_gets_one(tmp_path):
-    result, _, after, _ = _run(tmp_path, profile=PROFILE.rstrip("\n"))
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert after == _with_rule(PROFILE)

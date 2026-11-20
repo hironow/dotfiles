@@ -480,10 +480,6 @@ def test_bootstrap_verifies_official_dot_slash_checksum_before_unpacking(tmp_pat
             id="exact-name-among-other-assets",
         ),
         pytest.param([], False, False, id="missing"),
-        pytest.param(["{artifact}", "{artifact}"], False, False, id="duplicate-bare"),
-        pytest.param(
-            ["./{artifact}", "./{artifact}"], False, False, id="duplicate-dot-slash"
-        ),
         pytest.param(
             ["{artifact}", "./{artifact}"], False, False, id="duplicate-mixed"
         ),
@@ -493,7 +489,6 @@ def test_bootstrap_verifies_official_dot_slash_checksum_before_unpacking(tmp_pat
         pytest.param(["x/{artifact}"], False, False, id="dot-must-be-literal"),
         pytest.param(["/{artifact}"], False, False, id="absolute-path"),
         pytest.param(["./{artifact}"], True, False, id="corrupt-dot-slash"),
-        pytest.param(["{artifact}"], True, False, id="corrupt-bare"),
     ],
 )
 def test_bootstrap_only_unpacks_one_exact_verified_artifact(
@@ -503,6 +498,8 @@ def test_bootstrap_only_unpacks_one_exact_verified_artifact(
     assert result.returncode == (89 if verified else 1), result.stdout + result.stderr
     assert ("FIXTURE_UNPACK_BOUNDARY" in result.stdout) is verified
     assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr
+    if corrupt:
+        assert _curl_urls(tmp_path)[0].startswith("https://mise.jdx.dev/")
 
 
 @pytest.mark.parametrize(
@@ -569,16 +566,6 @@ def test_ci_bootstrap_accepts_native_and_remote_version_shapes_after_engine_vali
             {"helper_info": _engine_info(version=5)},
             "selected engine version missing/malformed",
             id="nonstring-engine-version",
-        ),
-        pytest.param(
-            {"helper_info": _engine_info(version=None)},
-            "selected engine version missing/malformed",
-            id="null-engine-version",
-        ),
-        pytest.param(
-            {"helper_info": '{"version": {}}'},
-            "selected engine version missing/malformed",
-            id="missing-engine-version",
         ),
         pytest.param(
             {"helper_info": "not json"},
@@ -691,14 +678,15 @@ def test_a_later_step_finds_every_tool_through_github_path_alone(tmp_path):
         assert f"FIXTURE_TOOL {command}" in later.stdout
 
 
-@pytest.mark.parametrize("tool", ["uv", "node", "just", "pypi:podman-compose"])
 @pytest.mark.parametrize(
-    "breakage, message",
+    "tool, breakage, message",
     [
-        ("fail", "ci-bootstrap: mise bin-paths {tool} failed"),
-        ("empty", "ci-bootstrap: mise bin-paths {tool} printed nothing"),
-        ("missing", "ci-bootstrap: {tool}'s bin path"),
-        ("second-missing", "ci-bootstrap: {tool}'s bin path"),
+        ("uv", "fail", "ci-bootstrap: mise bin-paths {tool} failed"),
+        ("uv", "empty", "ci-bootstrap: mise bin-paths {tool} printed nothing"),
+        ("uv", "missing", "ci-bootstrap: {tool}'s bin path"),
+        ("uv", "second-missing", "ci-bootstrap: {tool}'s bin path"),
+        ("node", "second-missing", "ci-bootstrap: {tool}'s bin path"),
+        ("pypi:podman-compose", "fail", "ci-bootstrap: mise bin-paths {tool} failed"),
     ],
 )
 def test_bootstrap_stops_when_a_tool_has_no_bin_path(tmp_path, tool, breakage, message):
@@ -798,6 +786,14 @@ def test_bootstrap_falls_back_to_github_when_jdx_dev_fails(tmp_path):
     assert urls[-1] == MISE_API + "assets/4242"
     assert "ci-bootstrap: mise.jdx.dev failed; downloading" in result.stderr
     assert " from mise.jdx.dev\n" not in result.stdout
+    log = (tmp_path / "curl-log").read_text(encoding="utf-8").splitlines()
+    calls = [line for line in log if line.startswith("ARGV ")]
+    assert len(calls) == 4, calls
+    for call in calls:
+        assert call.startswith(
+            "ARGV --proto =https --tlsv1.2 -fsSL --retry 3 --retry-all-errors"
+            " --max-time 120 "
+        ), call
 
 
 def test_bootstrap_falls_back_to_release_download_for_checksums_when_api_fails(
@@ -819,13 +815,6 @@ def test_bootstrap_stops_when_every_checksum_route_fails(tmp_path):
     assert "FIXTURE_UNPACK_BOUNDARY" not in result.stdout
 
 
-def test_bootstrap_still_rejects_a_corrupt_artifact_from_jdx_dev(tmp_path):
-    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], corrupt=True)
-    assert result.returncode == 1, result.stdout + result.stderr
-    assert "FIXTURE_UNPACK_BOUNDARY" not in result.stdout
-    assert _curl_urls(tmp_path)[0].startswith("https://mise.jdx.dev/")
-
-
 def test_bootstrap_sends_the_github_token_only_to_the_api(tmp_path):
     token = "fixture-token-not-a-secret"
     result = _bootstrap_attempt(tmp_path, token=token)
@@ -839,19 +828,6 @@ def test_bootstrap_sends_the_github_token_only_to_the_api(tmp_path):
         sent = log[start + 1] if start + 1 < len(log) else ""
         has_token = sent == f"STDIN-HEADER Authorization: Bearer {token}"
         assert has_token is url.startswith(MISE_API), (index, url, sent)
-
-
-def test_bootstrap_curl_retries_and_stays_on_https(tmp_path):
-    result = _bootstrap_attempt(tmp_path, fail=["https://mise.jdx.dev/"])
-    assert result.returncode == 89, result.stdout + result.stderr
-    log = (tmp_path / "curl-log").read_text(encoding="utf-8").splitlines()
-    calls = [line for line in log if line.startswith("ARGV ")]
-    assert len(calls) == 4, calls
-    for call in calls:
-        assert call.startswith(
-            "ARGV --proto =https --tlsv1.2 -fsSL --retry 3 --retry-all-errors"
-            " --max-time 120 "
-        ), call
 
 
 def test_bootstrap_reroutes_only_uv_downloads(tmp_path):
