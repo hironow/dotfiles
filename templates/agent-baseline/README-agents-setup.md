@@ -40,7 +40,7 @@ rule does not apply. These gates do not depend on that decision:
    files. They only report; fix with `just fmt` or by hand. prek stashes
    unstaged changes while they run, so they see what will be committed
    (untracked files are not stashed). No hook runs the whole gate or at
-   pre-push (dotfiles ADR 0083).
+   pre-push (dotfiles ADR 0083, ADR 0084).
 3. **CI** (`quality-gate.yaml`) runs `just check` (ty per OS, Semgrep, all
    tests) on every pull request that is ready for review, and is the merge
    gate once it is a required check. Run `just check` before you commit.

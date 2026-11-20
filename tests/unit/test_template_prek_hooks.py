@@ -1,4 +1,4 @@
-"""The repo template's git hooks are prek hooks that only check (ADR 0083).
+"""The repo template's git hooks are prek hooks that only check (ADR 0084).
 
 A hook never writes a file and never runs the whole gate: the template's
 `.pre-commit-config.yaml` holds prek's builtin checks (two of them in their

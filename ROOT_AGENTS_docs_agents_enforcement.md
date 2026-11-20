@@ -20,7 +20,7 @@ every time are enforced at three points:
    hook that runs on its own (any stage but `manual`) never runs the whole
    gate, a test suite, or a whole-repository type check or heavy analysis,
    and no checking hook runs at pre-push; a hook that moves data, such as Git
-   LFS's pre-push upload, is not a check (ADR 0083 in the dotfiles repo).
+   LFS's pre-push upload, is not a check (ADR 0083 and 0084 in the dotfiles repo).
 3. **CI** (`.github/workflows/quality-gate.yaml`) runs `just check` plus a
    `tofu plan` drift check on every pull request that is ready for review; it
    blocks the merge where it is a required check.

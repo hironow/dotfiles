@@ -43,7 +43,7 @@ jobs:
           "$HOME/.local/bin/uv" tool install rust-just
 
       # prek runs the repo template's hooks in tests/unit/test_template_prek_hooks.py
-      # (ADR 0083). The version is config/mise/image-tools.toml's pin; the
+      # (ADR 0084). The version is config/mise/image-tools.toml's pin; the
       # archive is checked against the sha256 its release publishes.
       - name: Install prek
         env:

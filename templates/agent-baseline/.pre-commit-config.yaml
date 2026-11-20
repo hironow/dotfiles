@@ -2,7 +2,7 @@
 # `just install-hooks`.
 #
 # Every hook only checks: it reports and never writes a file, and none runs
-# the whole gate (dotfiles ADR 0083). `just check` is the whole gate: run it
+# the whole gate (dotfiles ADR 0083, ADR 0084). `just check` is the whole gate: run it
 # before you commit; CI runs it on every pull request that is ready for
 # review. prek stashes unstaged changes while the hooks run, so they see what
 # will be committed (untracked files are not stashed). Fix what a hook reports
