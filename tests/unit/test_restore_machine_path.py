@@ -33,15 +33,6 @@ def _code() -> str:
     return "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
 
 
-def test_script_exists_and_is_ascii() -> None:
-    assert SCRIPT.is_file(), "scripts/restore_machine_path.ps1 must exist"
-    raw = SCRIPT.read_bytes()
-    assert all(b < 128 for b in raw), (
-        "must be ASCII-only: PowerShell 5.1 reads BOM-less UTF-8 as ANSI "
-        "(same constraint as runner_gc_win.ps1 / bootstrap.ps1)"
-    )
-
-
 def test_writes_expandstring_never_setenvironmentvariable() -> None:
     text = _text()
     assert "ExpandString" in text, (

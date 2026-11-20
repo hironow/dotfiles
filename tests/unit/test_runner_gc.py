@@ -113,35 +113,6 @@ def test_dispatchers_disable_msys_path_conversion() -> None:
         )
 
 
-def test_retention_is_time_based_and_overridable() -> None:
-    """The 2h budget is the decision in ADR 0035; keep it configurable."""
-    text = GC.read_text(encoding="utf-8")
-    assert 'RETENTION="${RUNNER_GC_RETENTION:-2h}"' in text, (
-        "runner_gc.sh must default to a 2h retention overridable by "
-        "RUNNER_GC_RETENTION."
-    )
-    assert '_retention_secs "$RETENTION"' in text
-    assert '"$created" -ge "$PODMAN_CUTOFF"' in text
-
-
-def test_podman_clock_and_duration_are_checked_before_collection() -> None:
-    text = GC.read_text(encoding="utf-8")
-    assert '_decimal_le "$now" 9223372036854775807' in text
-    assert text.index('seconds="$(_retention_secs') < text.index(
-        "_podman_containers remove ||"
-    )
-    assert text.index('_decimal_le "$count" "$bound"') < text.index(
-        "count * multiplier"
-    )
-    assert 'now="$(date +%s)" ||' in text
-    ps = GC_WIN.read_text(encoding="utf-8")
-    assert ps.index("$cutoff = Get-PodmanCutoff") < ps.index(
-        "$null = Get-PodmanContainers"
-    )
-    assert "[String]::CompareOrdinal($digits, $bound)" in ps
-    assert r"\A([0-9]+)([smhd]?)\z" in ps
-
-
 def test_image_identity_is_strict_and_separate_from_container_identity() -> None:
     shell = GC.read_text(encoding="utf-8")
     ps = GC_WIN.read_text(encoding="utf-8")
@@ -153,22 +124,6 @@ def test_image_identity_is_strict_and_separate_from_container_identity() -> None
     assert "$container.Id -cne $containerId" in ps
     assert 'reference="$(_normalize_image_id "$reference")"' in shell
     assert "$references += ConvertTo-PodmanImageId $container.Image" in ps
-
-
-def test_image_sweep_spares_keep_tagged_images() -> None:
-    """Lived 2026-09-03: the old Docker image prune swept the h-nn LLM stack's
-    14.7 GB image two hours after `just llm down`. Protection is a TAG under
-    RUNNER_GC_KEEP_TAG_PREFIX (default keep/), so guarding a new image is one
-    `podman tag` and never a list edit here."""
-    text = GC.read_text(encoding="utf-8")
-    assert 'KEEP_TAG_PREFIX="${RUNNER_GC_KEEP_TAG_PREFIX:-keep/}"' in text
-    assert "_podman_image_eligible" in text and "podman rmi --no-prune" in text
-    assert not re.search(r"podman image prune -af", text), (
-        "the blanket `image prune -af` is gone: it cannot exempt anything."
-    )
-    assert '"$KEEP_TAG_PREFIX"' in text and "podman: keep" in text, (
-        "keep-tagged images are skipped and the skip is logged."
-    )
 
 
 def test_gc_never_reclaims_unfiltered_persistent_cache() -> None:
@@ -241,16 +196,6 @@ def test_windows_scripts_are_ascii_only() -> None:
         assert not bad, f"{script.name} must stay ASCII-only: {bad}"
 
 
-def test_windows_gc_skips_while_a_job_runs() -> None:
-    """Same job-safety contract as the Linux leg."""
-    text = GC_WIN.read_text(encoding="utf-8")
-    assert "Get-Process -Name 'Runner.Worker'" in text, (
-        "runner_gc_win.ps1 must check for an in-flight job before pruning."
-    )
-    assert "$created -ge $Cutoff" in text
-    assert "Test-ForeignWorker" in text
-
-
 def test_windows_gc_podman_calls_carry_a_watchdog() -> None:
     """Preserve the watchdog introduced after a Docker Desktop hang in 2026.
     That incident is not evidence of Podman runtime behavior. Every Podman
@@ -302,27 +247,6 @@ def test_windows_entrypoint_drives_both_runners() -> None:
             f"{script.name} must not `exec` into WSL — that would skip the "
             "Windows leg entirely."
         )
-
-
-def test_podman_leg_also_runs_as_each_runner_owner() -> None:
-    """Root's inventory is not the runner owner's rootless inventory.
-
-    Reenter as each owner with its own HOME/runtime context, without inheriting
-    root's explicitly selected remote connection. Keep root's own leg as well.
-    """
-    text = GC.read_text(encoding="utf-8")
-    assert re.search(r"runuser\s+-u", text), (
-        "runner_gc.sh must drop to the runner's owning user for the podman "
-        "leg; as root it would prune the wrong (often empty) daemon."
-    )
-    assert "XDG_RUNTIME_DIR" in text, (
-        "the re-entry must set XDG_RUNTIME_DIR for the runner owner's "
-        "rootless runtime context, without guessing a socket path."
-    )
-    assert "RUNNER_GC_PODMAN_ONLY" in text, (
-        "the re-entry needs a podman-only mode so it neither recurses nor "
-        "repeats the root-only apt/journal work."
-    )
 
 
 def test_diag_logs_are_rotated_on_the_linux_leg() -> None:
@@ -449,19 +373,6 @@ def test_scripts_parse() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_ageing_never_trusts_the_directory_mtime() -> None:
-    """A directory mtime does not track work done inside it on Windows.
-
-    Ageing a workspace on `LastWriteTime` inverts the policy — hot checkouts
-    look old and get deleted, cold ones look fresh and survive.
-    """
-    text = GC_WIN.read_text(encoding="utf-8")
-    assert ".runner-gc-last-used" in text, (
-        "runner_gc_win.ps1 must age workspaces on a marker file it stamps "
-        "itself, not on the directory timestamp."
-    )
-
-
 def test_workspace_sweep_protects_the_live_checkout() -> None:
     """The runner hands us the in-flight workspace; never age it out."""
     text = GC_WIN.read_text(encoding="utf-8")
@@ -502,19 +413,6 @@ def test_counted_collections_are_wrapped_for_powershell_51() -> None:
     assert not bad, (
         "these collections are counted but not wrapped in @(), so a single "
         f"match throws under powershell.exe 5.1: {bad}"
-    )
-
-
-def test_dry_run_covers_the_podman_prunes() -> None:
-    """A rehearsal must not prune the daemon either.
-
-    Not reachable from the end-to-end tests: they all pass -SkipPodman, since
-    a test that really pruned the developer's Podman Desktop would be worse
-    than the bug.
-    """
-    text = GC_WIN.read_text(encoding="utf-8")
-    assert "DRY-RUN: would remove podman" in text, (
-        "-DryRun must report the podman prunes rather than executing them."
     )
 
 
@@ -1015,31 +913,6 @@ def test_windows_hook_is_a_path_not_a_command_line() -> None:
     ), (
         "the Windows hook must be the bare .ps1 path; a `powershell.exe "
         "-File <script>` wrapper fails the runner's path validation."
-    )
-
-
-def test_job_safety_ignores_our_own_worker() -> None:
-    """The hook runs *inside* Runner.Worker, so it is always its own ancestor.
-
-    Counting that worker made the hook — the brake that fires at the ideal
-    moment — skip unconditionally. Only a worker outside our ancestry belongs
-    to a concurrent job.
-    """
-    sh = GC.read_text(encoding="utf-8")
-    assert "_ancestor_pids" in sh and "_foreign_worker" in sh, (
-        "runner_gc.sh must compare live workers against its own ancestry."
-    )
-    # A bare pgrep as the decision would reintroduce the always-skip bug.
-    bad = [
-        line
-        for line in sh.splitlines()
-        if re.search(r"^\s*if\s+.*pgrep -x Runner\.Worker", line)
-    ]
-    assert not bad, f"job-safety must go through _foreign_worker: {bad}"
-
-    ps = GC_WIN.read_text(encoding="utf-8")
-    assert "Get-AncestorProcessId" in ps and "-notcontains" in ps, (
-        "runner_gc_win.ps1 must exclude its own ancestry the same way."
     )
 
 

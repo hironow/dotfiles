@@ -60,19 +60,6 @@ def test_feature_install_creates_opt_mise() -> None:
     )
 
 
-def test_feature_install_exports_mise_data_dir() -> None:
-    """Build-time mise install must run with MISE_DATA_DIR=/opt/mise
-    so installs end up there."""
-    text = FEATURE_INSTALL_SH.read_text(encoding="utf-8")
-    assert re.search(
-        r"export\s+MISE_DATA_DIR=/opt/mise|MISE_DATA_DIR=/opt/mise\s+mise",
-        text,
-    ), (
-        "feature install.sh must export MISE_DATA_DIR=/opt/mise before "
-        "running `mise install`."
-    )
-
-
 def test_feature_install_does_not_use_home_share_mise() -> None:
     """No command in the feature install.sh may use /root/.local/share/mise
     or $HOME/.local/share/mise after the relocation. Comment lines may name

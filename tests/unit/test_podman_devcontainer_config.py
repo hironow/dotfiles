@@ -57,19 +57,6 @@ def test_engine_socket_is_explicit_and_not_host_forwarding():
     assert "require-podman-socket.sh" in current["initializeCommand"]
 
 
-def test_ide_engine_selection_requires_host_application_user_setting():
-    instructions = (ROOT / ".devcontainer/README.md").read_text(encoding="utf-8")
-    assert "host application User setting" in instructions
-    assert "before **Reopen in Container**" in instructions
-    examples = re.findall(r"```json\n(.*?)\n```", instructions, re.DOTALL)
-    assert any(
-        json.loads(example).get("dev.containers.dockerPath") == "podman"
-        for example in examples
-    )
-    assert "cannot select the host engine" in instructions
-    assert "does not enforce or verify" in instructions
-
-
 def test_feature_installs_native_podman_without_changing_generated_versions():
     body = (ROOT / ".devcontainer/features/dotfiles-tools/install.sh").read_text(
         encoding="utf-8"

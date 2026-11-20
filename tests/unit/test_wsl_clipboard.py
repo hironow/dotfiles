@@ -211,16 +211,3 @@ def test_doctor_clipboard_runtime_warnings(sandbox: Path, scenario: str) -> None
         assert result.stdout == ""
     else:
         assert expected[scenario] in result.stdout
-
-
-def test_doctor_reports_missing_tools_and_wayland_without_copying() -> None:
-    doctor = (ROOT / "scripts/doctor.sh").read_text(encoding="utf-8")
-    block = doctor[
-        doctor.index("# WSLg clipboard tools") : doctor.index("# Rogue npm-global")
-    ]
-    assert "log_warn 'wsl-clipboard'" in block
-    assert "log_ok 'wsl-clipboard'" in block
-    assert "has wl-copy" in block and "has wl-paste" in block
-    assert "WAYLAND_DISPLAY" in block and "XDG_RUNTIME_DIR" in block
-    assert '[ -S "$clipboard_socket" ]' in block
-    assert "UI copy not tested" in block

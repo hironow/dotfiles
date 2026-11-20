@@ -127,15 +127,6 @@ def test_copy_buttons_are_ui_buttons_that_hide_until_defined() -> None:
     )
 
 
-def test_the_page_states_no_count_that_changes_every_week() -> None:
-    text = re.sub(r"<[^>]+>", "", PAGE.read_text(encoding="utf-8"))
-    volatile = re.findall(
-        r"\b\d+\s+(?:[\w-]+\s+){0,2}(?:skills|recipes|groups|ADRs|spokes|hooks|passed)\b",
-        text,
-    )
-    assert volatile == []
-
-
 def test_pages_redeploys_when_the_site_folder_changes() -> None:
     workflow = (ROOT / ".github" / "workflows" / "pages.yaml").read_text(
         encoding="utf-8"

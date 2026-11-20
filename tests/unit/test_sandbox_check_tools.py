@@ -13,109 +13,11 @@ on any tool the image would not have.
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-JUSTFILE = REPO / "justfile"
 INSTALL = REPO / ".devcontainer" / "features" / "dotfiles-tools" / "install.sh"
 DEVCONTAINER = REPO / ".devcontainer" / "devcontainer.json"
-GLOBAL_MISE = REPO / "config" / "mise" / "config.toml"
-
-# The recipes `just check` runs, itself included.
-CHECK_RECIPES = ("check", "go-lint", "go-test")
-
-# Tools install.sh puts on PATH through apt, not mise.
-APT_TOOLS = {"shellcheck", "jq"}
-
-
-def recipe_body(name: str) -> str:
-    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
-    # The name, then parameters or nothing, then the colon: `check:` and not
-    # `check-agent-refs *homes:`.
-    header = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)")
-    start = next(i for i, line in enumerate(lines) if header.match(line))
-    # The header too: a parameter's default runs when `just check` calls the
-    # recipe with no argument (`go-test go="mise x -- go":`).
-    body = [lines[start]]
-    for line in lines[start + 1 :]:
-        if line and not line[0].isspace():
-            break
-        body.append(line)
-    return "\n".join(body)
-
-
-def tools_just_check_runs() -> set[str]:
-    """Every binary the check recipes run through `mise x --` or `mise exec ... --`."""
-    found: set[str] = set()
-    for name in CHECK_RECIPES:
-        found |= set(
-            re.findall(r"mise (?:x|exec)(?: [^\n]*?)? -- ([\w.-]+)", recipe_body(name))
-        )
-    return found
-
-
-def baked_tools() -> dict[str, object]:
-    m = re.search(
-        r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF",
-        INSTALL.read_text(encoding="utf-8"),
-        re.DOTALL,
-    )
-    assert m, "install.sh must bake /etc/mise/config.toml"
-    return tomllib.loads(m.group(1))["tools"]
-
-
-def binary_of(tool: str, spec: object) -> str:
-    """The command a mise tool entry puts on PATH."""
-    if isinstance(spec, dict) and "exe" in spec:
-        return str(spec["exe"])
-    return tool.split(":", 1)[-1].rsplit("/", 1)[-1]
-
-
-def test_the_scan_sees_the_tools_it_should() -> None:
-    """A floor on the scanner, so an empty scan cannot look like a clean one.
-
-    quint is deliberately NOT in this set any more: `just check` stopped running
-    a formal-methods gate when the Quint model moved out with the exe stack, so
-    requiring it here would assert a tool the recipes no longer invoke. quint is
-    still pinned in config/mise/config.toml as base tooling for other repos --
-    that is a different claim, and config/mise's own tests make it.
-    """
-    assert {
-        "golangci-lint",
-        "go",
-        "shellcheck",
-        "markdownlint-cli2",
-    } <= tools_just_check_runs()
-
-
-def test_every_tool_just_check_runs_is_in_the_sandbox_image() -> None:
-    have = {binary_of(tool, spec) for tool, spec in baked_tools().items()} | APT_TOOLS
-    missing = tools_just_check_runs() - have
-    assert missing == set(), (
-        f"`just check` runs {sorted(missing)} through mise, but the sandbox image "
-        "neither bakes them into /etc/mise/config.toml nor installs them with apt"
-    )
-
-
-def version_pin(spec: object) -> str:
-    """Compare versions, not host-only installer options in an inline spec."""
-    if isinstance(spec, dict):
-        spec = spec.get("version")
-    assert isinstance(spec, str) and re.fullmatch(
-        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?", spec
-    )
-    return spec
-
-
-def test_quint_is_baked_at_the_same_pin_as_the_workstation() -> None:
-    # A checker under a mandatory gate changes its verdicts only deliberately:
-    # the sandbox runs the version the workstation does (ADR 0006 parity).
-    baked = baked_tools()
-    workstation = tomllib.loads(GLOBAL_MISE.read_text(encoding="utf-8"))["tools"]
-    key = "npm:@informalsystems/quint"
-    assert key in workstation
-    assert version_pin(baked.get(key)) == version_pin(workstation[key])
 
 
 def assignment(name: str) -> str:

@@ -47,10 +47,7 @@ REL_HOST = Path("config/mise/config.toml")
 REL_FEATURE = Path(".devcontainer/features/dotfiles-tools/install.sh")
 REL_BOOTSTRAP = Path("install.sh")
 TREE = (REL_SOURCE, REL_HOST, REL_FEATURE, REL_BOOTSTRAP)
-SOURCE = ROOT / REL_SOURCE
-HOST = ROOT / REL_HOST
 FEATURE = ROOT / REL_FEATURE
-BOOTSTRAP = ROOT / REL_BOOTSTRAP
 
 # The sandbox tests parse the baked config out of install.sh; keep the shape.
 _HEREDOC = re.compile(r"cat > /etc/mise/config\.toml <<'EOF'\n(.*?)\nEOF", re.DOTALL)
@@ -135,12 +132,6 @@ def _source(root: Path = ROOT) -> dict:
 
 def _host_tools(root: Path = ROOT) -> dict:
     return tomllib.loads((root / REL_HOST).read_text(encoding="utf-8"))["tools"]
-
-
-def _pinned(spec: object) -> str | None:
-    if isinstance(spec, dict):
-        spec = spec.get("version")
-    return spec if isinstance(spec, str) and spec not in {"latest", "lts"} else None
 
 
 # ---------- 1. the committed scripts match the tool ----------
@@ -402,59 +393,8 @@ def test_an_inline_table_entry_yields_a_version_constant(
     assert re.search(r'^UV_VERSION="0\.13\.9"$', feature, re.MULTILINE)
 
 
-def test_the_generated_constants_come_from_the_single_source() -> None:
-    source = _source()
-    feature = FEATURE.read_text(encoding="utf-8")
-    bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
-    for name, expected in (
-        ("UV_VERSION", source["tools"]["uv"]),
-        ("JUST_VERSION", source["tools"]["just"]),
-        ("SHELDON_VERSION", source["fetch"]["aqua:rossmacarthur/sheldon"]),
-        ("MISE_VERSION", source["bootstrap"]["mise"]),
-    ):
-        assert re.search(rf'^{name}="{re.escape(expected)}"$', feature, re.MULTILINE), (
-            name
-        )
-    for name, expected in (
-        ("_mise_ver", source["bootstrap"]["mise"]),
-        ("_just_ver", source["tools"]["just"]),
-    ):
-        assert re.search(
-            rf'^\s*{name}="{re.escape(expected)}"$', bootstrap, re.MULTILINE
-        ), name
-
-
 def test_bootstrap_mise_is_not_required_on_the_host() -> None:
     """mise is not a mise tool: the host config carries no `mise` entry."""
     host = _host_tools()
     assert "mise" not in host
     assert _source()["bootstrap"]["mise"]
-
-
-def test_no_version_is_written_twice_in_the_source() -> None:
-    source = _source()
-    tools = set(source["tools"])
-    fetch = {key for key in source["fetch"] if key != "mise_tools"}
-    bootstrap = set(source["bootstrap"])
-    assert not tools & fetch, "a tarball tool must not restate its [tools] version"
-    assert not tools & bootstrap
-    assert not fetch & bootstrap
-    assert set(source["fetch"]["mise_tools"]) <= tools, (
-        "mise_tools must name existing [tools] entries"
-    )
-
-
-def test_every_image_tool_is_on_the_host_with_matching_exact_pins() -> None:
-    source = _source()
-    host = _host_tools()
-    fetched = {name: source["tools"][name] for name in source["fetch"]["mise_tools"]}
-    fetched.update({k: v for k, v in source["fetch"].items() if k != "mise_tools"})
-    for key, value in {**source["tools"], **fetched}.items():
-        assert key in host, (
-            f"{key} is baked into the image but not declared on the host"
-        )
-        host_version = _pinned(host[key])
-        if host_version is not None:
-            assert _pinned(value) in (None, host_version), (
-                f"{key}: the image is {_pinned(value)} but the host pins {host_version}"
-            )

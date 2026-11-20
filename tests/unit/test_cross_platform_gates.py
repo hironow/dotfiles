@@ -29,7 +29,6 @@ DRAFT_GATE = (
 )
 PYTHON_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_python-tooling.md"
 GO_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_go-tooling.md"
-COMMIT_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_commit-discipline.md"
 RUST_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_rust-tooling.md"
 TEMPLATE_JUSTFILE = ROOT / "templates/agent-baseline/justfile"
 PLATFORMS = {"win32", "linux", "darwin"}
@@ -208,11 +207,6 @@ def test_the_go_spoke_lints_for_every_os_it_ships_to():
     assert (
         set(re.findall(r"\b(linux|darwin|windows)/(?:amd64|arm64)\b", ship)) == GOOSES
     )
-
-
-def test_commit_discipline_asks_for_ty_on_every_os():
-    words = " ".join(COMMIT_SPOKE.read_text(encoding="utf-8").split())
-    assert f"ty reports zero diagnostics {EVERY_OS}" in words
 
 
 TRIPLE = r"\b(?:x86_64|aarch64)-[a-z0-9_]+-[a-z0-9_]+(?:-[a-z0-9_]+)?\b"

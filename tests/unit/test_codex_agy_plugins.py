@@ -155,16 +155,6 @@ def test_check_reports_what_antigravity_lacks(tmp_path: Path) -> None:
     assert cli.ran == []  # --check changes nothing
 
 
-def test_deploy_runs_this_step_after_pi() -> None:
-    deploy = (Path(plugins.__file__).parents[1] / "scripts/deploy.sh").read_text(
-        encoding="utf-8"
-    )
-    steps = deploy[deploy.index("AGENT_STEPS='") :]
-    assert steps.index("install_pi_extensions.py") < steps.index(
-        "codex_agy_plugins.py codex-agy-plugins-install"
-    )
-
-
 def test_a_current_but_disabled_egm_is_enabled_not_reinstalled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

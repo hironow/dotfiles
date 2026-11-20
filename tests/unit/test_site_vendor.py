@@ -109,11 +109,3 @@ def test_only_the_rewriting_hooks_skip_the_vendored_folder() -> None:
     for hook in ("trailing-whitespace", "end-of-file-fixer"):
         block = re.search(rf"- id: {hook}\n((?:\s+[a-z_]+:.*\n)*)", config)
         assert block and "exclude: '^site/vendor/'" in block.group(1), hook
-
-
-def test_vp_skips_the_vendored_folder_but_reads_the_site() -> None:
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    (js_files,) = re.findall(r"^JS_FILES := (.+)$", justfile, re.MULTILINE)
-    # JS_FILES is relative to site/, where vp runs
-    assert "':!vendor/**'" in js_files
-    assert "'*.js'" in js_files

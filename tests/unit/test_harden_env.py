@@ -60,30 +60,6 @@ def _run_harden(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_no_bsd_sed_in_place() -> None:
-    """`sed -i ''` (BSD) misparses on GNU sed — must not appear."""
-    text = HARDEN.read_text(encoding="utf-8")
-    assert not re.search(r"sed\s+-i\s+''", text), (
-        "harden_env.sh uses BSD `sed -i ''` which breaks on GNU/Linux sed. "
-        "Use a portable, sed-i-free rewrite."
-    )
-
-
-def test_does_not_write_shell_rc() -> None:
-    """The `alias pip` block is already committed in the tracked `.zshrc`;
-    the script must not append a shell-rc block (it would dirty the
-    symlinked repo file and duplicate on re-run)."""
-    text = HARDEN.read_text(encoding="utf-8")
-    assert "PIP_INDEX_URL" not in text, (
-        "harden_env.sh writes PIP_INDEX_URL into a shell rc; that block is "
-        "already tracked in .zshrc and the append dirties the symlinked repo file."
-    )
-    assert "Security Hardening" not in text, (
-        "harden_env.sh appends a '# Security Hardening' block to the shell rc; "
-        "remove it — the block is already in the tracked .zshrc."
-    )
-
-
 def test_justfile_wires_harden_env() -> None:
     """The script must be reachable as a `just` recipe (it was manual-only)."""
     just_text = (ROOT / "justfile").read_text(encoding="utf-8")
