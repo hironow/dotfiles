@@ -12,7 +12,7 @@
 - **supersedes**: proposed partial exception to [0052](0052-renew-global-agent-instructions.md) Decision 1's platform-binary distribution requirement, for `tools/text-hygiene/` only
 - **superseded-by**: none
 - **related**: [0019](0019-windows-scoop-dump-record-only.md), [0020](0020-normalize-shell-script-line-endings.md), [0025](0025-justfile-mise-tool-wrap.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0060](0060-frozen-image-generation-has-one-source.md), [0061](0061-version-generator-in-go.md), [0069](0069-type-check-and-lint-for-every-os.md), [0076](0076-browser-ui-platform-first-then-ui-sdk.md), [0083](0083-git-hooks-run-no-whole-repository-check.md)
-- **consultation-trace**: owner choices on 2026-11-20, to be recorded in this change's public PR body before filing is complete; see Consultation
+- **consultation-trace**: owner choices on 2026-11-20, recorded in the [PR #662 consultation](https://github.com/hironow/dotfiles/pull/662); see Consultation
 
 ## Plain summary
 
@@ -116,7 +116,7 @@ This is not a claim that every ADR body was read in full.
 - Shown the conflict with 0060/0083, the owner chose nine hooks and approved recording that choice in the new PR body, mentioning @hironow.
 - Shown 0052's Go/platform-binary requirement, the owner chose Go, then repository-local `go run` as a proposed distribution-only exception, and approved recording that choice in the same PR body.
   The original author and decision-maker contacts for 0052, 0060 and 0083 are all @hironow.
-- These choices authorize the implementation and proposal, not acceptance of this ADR. No consent attributed to another agent session is imported from the patch.
+- The owner choices and the consistency findings are recorded in the [public PR #662 body](https://github.com/hironow/dotfiles/pull/662), mentioning @hironow. These choices authorize the implementation and proposal, not acceptance of this ADR. No consent attributed to another agent session is imported from the patch.
 
 ## Decision (pending)
 
