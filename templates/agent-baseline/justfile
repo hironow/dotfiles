@@ -7,9 +7,15 @@ default: help
 help:
     @just --list
 
-# The full local gate. This is what the pre-commit hook and CI both run.
+# The full local gate. CI runs it; run it before you commit.
 # Keep this as the single source of truth for "is the tree green?".
 check: fmt lint semgrep test
+
+# Fast checks for the commit hook: ruff only. ty, the tests and Semgrep run in
+# `just check`; a hook never runs the whole gate (dotfiles ADR 0083).
+pre-commit:
+    uv run --locked --only-group lint ruff format --check .
+    uv run --locked --only-group lint ruff check .
 
 # Run all tests
 test:
