@@ -1,7 +1,7 @@
 # 0024. PowerShell `$PROFILE` mise activate from `just deploy` (Windows native)
 
 **Date:** 2026-06-02
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0086](0086-pwsh-mise-block-skips-github-actions.md) (the block text, the append-only rule for this block, and the order)
 
 ## Context
 

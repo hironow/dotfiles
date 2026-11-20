@@ -2,9 +2,9 @@
 
 - **id**: ADR-0086
 - **title**: The PowerShell mise block does not activate mise inside a GitHub Actions job
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-20
-- **decided-date**: —
+- **decided-date**: 2026-11-20
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session, Mac)
@@ -12,7 +12,7 @@
 - **supersedes**: part of [ADR-0024](0024-powershell-mise-activate-profile.md) (its block text; for this block only, the append-only rule; and its order, "mise block placed after starship")
 - **superseded-by**: none
 - **related**: [0022](0022-powershell-starship-profile-init.md), [0023](0023-mise-activate-only-no-shims-path.md), [0025](0025-justfile-mise-tool-wrap.md), [0031](0031-disable-mise-corepack-on-windows.md), [0051](0051-adopt-decision-queue-for-new-records.md)
-- **consultation-trace**: the owner's choice in a Claude Code session on 2026-11-20 (see "Consultation"); the same record goes in the public PR
+- **consultation-trace**: the owner's choice in a Claude Code session on 2026-11-20 (see "Consultation"); transcribed on the public PR ([PR #664 decision](https://github.com/hironow/dotfiles/pull/664#issuecomment-7033807148))
 
 ## Plain summary
 
@@ -44,9 +44,7 @@ From now on the block turns mise on everywhere except inside a GitHub Actions jo
 
 ## Decision
 
-(Proposed. The decision section below is filled in when the owner rules.)
-
-The proposed requirements:
+The owner's choice is adopted as these requirements (MUST):
 
 - D1: The mise block MUST activate mise only when `$env:GITHUB_ACTIONS` is not `'true'` (and `mise` is found). Its text lives in one place, `ps_profile_mise_block` in `scripts/ps_profile_lib.sh`.
 - D2: `just deploy` MUST rewrite an existing mise block in place when it differs from that text, keeping every other line of the profile and its line endings. A block whose end marker is missing (before the end of the file or before another managed block) MUST be left untouched and reported, so no user line is lost.
@@ -57,7 +55,7 @@ The proposed requirements:
 
 | Option | What it does | Benefit | Cost | Result |
 | --- | --- | --- | --- | --- |
-| A: skip activation inside Actions, rewrite old blocks in place | D1 to D4 | Fixes every job on these machines; the interactive shell is unchanged | `deploy.sh` gains an in-place rewrite of one block | Proposed |
+| A: skip activation inside Actions, rewrite old blocks in place | D1 to D4 | Fixes every job on these machines; the interactive shell is unchanged | `deploy.sh` gains an in-place rewrite of one block | Chosen |
 | B: start the runners under another account without the profile | No dotfiles change | Isolates CI from the owner's shell setup | Infrastructure work per machine; tools the runner needs must be provisioned again | Not chosen |
 | C: ask every workflow to use `pwsh -NoProfile` | No dotfiles change | Per-job control | Every workflow in every repository changes, and one that forgets still breaks | Rejected |
 | D: drop and re-append the block | Simple | — | Moves the mise and starship blocks below the user's own lines, so a user line that needs mise breaks | Rejected (review) |
@@ -88,12 +86,10 @@ All ADRs 0001 to 0085 were searched for `PROFILE`, `mise activate`, `managed blo
 
 - 2026-11-20 (AskUserQuestion): asked whether to fix the PowerShell profile so that mise does not activate inside a GitHub Actions job, after the check above found it on both machines; the owner chose "implement it and open a PR" (translated).
 - The plan passed independent reviews (Codex and Gemini Neon) over several rounds each, ending in APPROVE from both.
+- 2026-11-20 16:56 JST: shown PR #664, the owner accepted this ADR ([PR #664 decision](https://github.com/hironow/dotfiles/pull/664#issuecomment-7033807148)).
 
-## Decision (to be filled in)
+## Decision (2026-11-20)
 
-- [ ] Accept as proposed / [ ] Accept with changes (changes: ____) / [ ] Reject (reason: ____) / [ ] Defer
-- Decision-maker and date:
-- If accepted: set 0024's status line to "Accepted; partly superseded by 0086", merge this PR, then run `just deploy` on each Windows machine that runs CI jobs (the owner's step) and rerun the runner check there.
-- If accepted with changes: apply them, then as above.
-- If rejected: close this PR; ADR 0024 stands.
-- If deferred: write the revisit condition and date here, and keep the PR open.
+- [x] Accept as proposed / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-20 16:56 JST. Shown PR #664, the owner answered "OK, acceptします" (translated: OK, I accept it). Filled in on the owner's behalf from that ruling ([PR #664 decision](https://github.com/hironow/dotfiles/pull/664#issuecomment-7033807148)).
+- Action: ADR 0024's status line says "Accepted; partly superseded by 0086". Merge PR #664. Then the owner runs `just deploy` on each Windows machine that runs CI jobs, and the runner check is rerun there.
