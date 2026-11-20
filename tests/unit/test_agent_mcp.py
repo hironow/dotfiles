@@ -338,3 +338,95 @@ def test_adding_a_sign_in_server_says_how_to_sign_in(
         assert note is None
     else:
         assert note is not None and expected in note
+
+
+# ---- Where a run goes, and what it prints ----
+
+
+def _which(found: set[str]):
+    return lambda name: f"/bin/{name}" if name in found else None
+
+
+def test_plain_claude_is_visited_only_once_its_registry_exists(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".claude").mkdir()
+    skipped: list = []
+    targets = mcp._targets(tmp_path, {}, _which({"claude"}), None, skipped)
+    assert [t.label for t in targets] == ["claude ~/.claude"]
+    assert [detail for _level, _name, detail in skipped] == [
+        "codex not on PATH; skipped",
+        "pi not on PATH; skipped",
+        "antigravity / agy not on PATH; skipped",
+    ]
+    (tmp_path / ".claude.json").write_text("{}", encoding="utf-8")
+    targets = mcp._targets(tmp_path, {}, _which({"claude"}), None, [])
+    assert [t.label for t in targets] == ["claude ~", "claude ~/.claude"]
+
+
+def test_plain_claude_runs_without_a_config_dir() -> None:
+    env = {"CLAUDE_CONFIG_DIR": "/home/u/.claude-work-a", "PATH": "/bin"}
+    assert mcp.without_config_dir(env) == {"PATH": "/bin"}
+
+
+@pytest.mark.parametrize(
+    ("kind", "variable", "file", "text"),
+    [
+        (
+            "codex",
+            "CODEX_HOME",
+            ".codex/config.toml",
+            '[mcp_servers.bun]\nurl = "https://bun.com/docs/mcp"\n',
+        ),
+        (
+            "pi",
+            "PI_CODING_AGENT_DIR",
+            ".pi/agent/mcp.json",
+            '{"mcpServers": {"bun": {"url": "https://bun.com/docs/mcp"}}}',
+        ),
+    ],
+)
+def test_an_empty_agent_dir_variable_means_the_default(
+    tmp_path: Path, kind: str, variable: str, file: str, text: str
+) -> None:
+    (tmp_path / file).parent.mkdir(parents=True)
+    (tmp_path / file).write_text(text, encoding="utf-8")
+    targets = mcp._targets(tmp_path, {variable: ""}, _which({kind}), None, [])
+    (target,) = targets
+    assert target.read() == {"bun": "https://bun.com/docs/mcp"}
+
+
+def _only(*fakes: FakeAgent):
+    def targets(_home, _env, _which, _deadline, skipped):
+        skipped.append(("INFO", mcp.NAME, "codex not on PATH; skipped"))
+        for fake in fakes:
+            yield mcp.Target(fake.agent, fake.agent, fake.read, fake.cli)
+
+    return targets
+
+
+def test_a_run_adds_the_servers_and_says_how_to_sign_in(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pi = FakeAgent("pi", {})
+    monkeypatch.setattr(mcp, "_targets", _only(pi))
+    assert mcp.main([]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "OK   agent-mcp - pi: fixed: added vercel" in out
+    assert "INFO agent-mcp - pi: vercel: sign in once: pi mcp login vercel" in out
+    assert not [line for line in out if "pi: deepwiki: sign in" in line]
+    assert "INFO agent-mcp - codex not on PATH; skipped" in out
+    assert out[-1] == "OK   agent-mcp - declared MCP servers registered in 1 place(s)"
+
+
+def test_a_check_warns_exits_1_and_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pi = FakeAgent("pi", {})
+    monkeypatch.setattr(mcp, "_targets", _only(pi))
+    assert mcp.main(["--check"]) == 1
+    out = capsys.readouterr().out
+    assert "WARN agent-mcp - pi: missing " in out
+    assert ": just agent-mcp-install" in out
+    assert pi.calls == []
+    assert "registered in" not in out

@@ -375,10 +375,11 @@ def _targets(
                 lambda h=claude_home: read_claude(h),
                 _succeeds(run),
             )
+    # an empty variable means unset, as ai_tools_check reads it
     dirs = {
-        "codex": (Path(env.get("CODEX_HOME", home / ".codex")), read_codex),
+        "codex": (Path(env.get("CODEX_HOME") or home / ".codex"), read_codex),
         "pi": (
-            Path(env.get("PI_CODING_AGENT_DIR", home / ".pi/agent")),
+            Path(env.get("PI_CODING_AGENT_DIR") or home / ".pi/agent"),
             read_pi,
         ),
         "antigravity": (home / ".gemini/config", read_antigravity),
@@ -434,8 +435,7 @@ def main(argv: Sequence[str]) -> int:
         print(fmt(line))
     if failed(lines):
         return 1
-    count = len(declared.servers)
-    print(fmt(("OK", NAME, f"{count} MCP server(s) registered in {visited} place(s)")))
+    print(fmt(("OK", NAME, f"declared MCP servers registered in {visited} place(s)")))
     return 0
 
 
