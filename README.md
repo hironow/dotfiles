@@ -156,7 +156,7 @@ mx mise set WORLD=hello         # Write to mise environment without encryption
 | `just ci` | `just check` (Python, Go, shell, Markdown, and JS/TS lint; Pi extension and Go tests; Quint models), Claude config check, unit tests, semgrep rule tests, IaC tests, instruction budget, skill declarations, emulator lint, and forbidden tokens | No |
 | `just ci-all` | `ci` + Dev Container sandbox tests + `install.sh` check (`just test-install` standalone) | Yes |
 | `just ci-emu` | Emulator lint, startup, fast tests, and e2e | Yes |
-| `just check-all` | prek hooks + `ci-all` (final gate before push) | Yes |
+| `just check-all` | prek hooks + `ci-all` (manual final gate before push; not a git hook, ADR 0085) | Yes |
 | `just test` | Sandbox tests inside Dev Container (filter with `install`, `validate`, `versions`, `deploy`, or `check`, e.g., `just test-mark validate`) | Yes |
 
 `tests/unit/` passes on native Windows too (POSIX-only checks are skipped).

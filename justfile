@@ -918,6 +918,8 @@ check:
     @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
+    @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
+    @mise exec -- go run tools/text-hygiene/main.go
     @echo '🔎 Go (golangci-lint per GOOS)...'
     just go-lint
     @echo '🔎 Go tests (tools/ modules)...'
@@ -1182,7 +1184,7 @@ check-mcp-node-runner:
 # verified-tarball versions, the bare-Linux bootstrap pins), and refuses a
 # source whose tools are not declared on the host or whose exact pins disagree.
 # ADR 0006 §3 promised this check; ADR 0060/0061 record the layout. Wired into
-# `lint` (the pre-commit stage) and `check` — pre-commit never ran `check`.
+# `lint` and `check`, plus the dedicated read-only commit hook (ADR 0085).
 [group('Lint')]
 mise-versions-check:
     @mise exec -- go run tools/mise-versions/main.go check
