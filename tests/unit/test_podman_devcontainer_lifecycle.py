@@ -1577,6 +1577,11 @@ def test_hermetic_mount_callers_preserve_ambient_journal(
             "-q",
             "-o",
             "addopts=",
+            # The child runs in the checkout beside the parallel unit run:
+            # no .pytest_cache, whose temporary directory another process's
+            # collection could see appear and vanish.
+            "-p",
+            "no:cacheprovider",
             f"--junitxml={report}",
             *[f"tests/test_just_sandbox.py::{name}" for name in sorted(names)],
         ],

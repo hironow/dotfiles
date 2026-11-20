@@ -730,10 +730,15 @@ test:
 
 # Test (unit): fast host-side unit tests — no containers. Covers sync_agents
 # helpers and the agent hook scripts (tests/unit/). Runs as part of `ci`.
+# pytest-xdist runs them on every CPU (7 min serial -> under 2 min on a
+# 32-thread Windows host); --dist loadgroup keeps each xdist_group on one
+# worker so a module-scoped batch runs once. `-n 0` serializes when debugging.
+# No .pytest_cache: workers writing it create a temporary directory in the
+# checkout that a test's own pytest run could see appear and vanish.
 [group('Test')]
 test-unit:
     @echo '🧪 Running unit tests (host, no containers)...'
-    uvx pytest -q -ra tests/unit/
+    uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
     @echo '✅ Unit tests finished.'
 
 # Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)

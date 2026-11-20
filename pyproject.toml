@@ -53,6 +53,9 @@ markers = [
     "versions: software version check tests",
     "deploy: deploy and idempotency tests",
     "check: basic just check commands",
+    # pytest-xdist's own marker; registered so a serial run without the plugin
+    # does not warn. `just test-unit` runs --dist loadgroup.
+    "xdist_group(name): run these tests on one pytest-xdist worker",
 ]
 
 [dependency-groups]
