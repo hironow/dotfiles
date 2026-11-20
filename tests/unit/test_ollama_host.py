@@ -585,7 +585,11 @@ def _forward_case(change: str, port: int) -> str:
 @pytest.fixture(scope="module")
 def tailnet_results() -> dict[str, Any]:
     """Every case of the four tailnet classifier tests, in one PowerShell."""
-    bodies = [_serve_case(c, v6) for c, v6, _ in (p.values for p in SERVE_CASES)]
+    bodies = []
+    for case in SERVE_CASES:
+        config, v6_taken, _ = case.values
+        assert isinstance(config, dict) and isinstance(v6_taken, bool)
+        bodies.append(_serve_case(config, v6_taken))
     bodies += [_address_case(a, n) for a, n, _ in ADDRESS_CASES]
     bodies += [_lineage_case(c, o) for c, o, _ in LINEAGE_CASES]
     bodies += [_forward_case(c, p) for c, p, _ in FORWARD_CASES]
