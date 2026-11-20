@@ -8,6 +8,7 @@ the tail alone never reached Windows (headroom's MCP server, on a second host).
 """
 
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,7 +26,10 @@ STEPS_BLOCK = DEPLOY[
 
 
 def _steps() -> list[tuple[str, str]]:
-    body = STEPS_BLOCK.split("'", 2)[1].replace("'\"'\"'", "'")
+    # read the assignment as the shell does: a step's text may hold '"'"'
+    assignment = STEPS_BLOCK[: STEPS_BLOCK.index("\nrun_agent_steps()")]
+    (token,) = shlex.split(assignment)
+    body = token.removeprefix("AGENT_STEPS=")
     return [
         (script, recipe)
         for script, recipe, *_what in (line.split() for line in body.splitlines())
