@@ -1,191 +1,157 @@
 # Kernel doctor
 
-`just kernel-doctor` は、Linux カーネルの版を「レビュー済みの出典つき修正床」と
-突き合わせ、**証拠と不確かさ**を出す。判定ではない。
+`just kernel-doctor` compares the Linux kernel version against a "reviewed, sourced fix floor" and outputs **evidence and uncertainty**, not a verdict.
 
-**このリポジトリは Linux カーネルを同梱・ビルド・固定しない。** だからこの道具は
-カーネルを直さないし、直せない。パッチを当てず、更新せず、インストールしない。
-「脆弱」とは言わない。「修正済み」に近いことを言うのは、記録したベンダーのビルド
-（`vendorBuilds`）と文字列の全体が一致したときの `reviewed-vendor-build` だけで、
-それも修正 commit がそのビルドの tag にあることまでで、実行中のパッチ状態は確かめない。
+**This repository does not bundle, build, or pin a Linux kernel.** So this tool does not and cannot fix kernels. It applies no patches, updates, or installs.
+It never says "vulnerable". The closest it gets to "fixed" is `reviewed-vendor-build` on a full-string match against a recorded vendor build (`vendorBuilds`), which only establishes that the fix commit is in that build's tag, not the running patch state.
 
-証明書は [ca-doctor](ca-doctor.md)、バイナリ内包物は [brotli-doctor](brotli-doctor.md) を使う。
-WSL のホスト側の設定は [windows-host](windows-host.md) と [ollama-windows-wsl](ollama-windows-wsl.md)。
+For certificates use [ca-doctor](ca-doctor.md), and for embedded binary contents use [brotli-doctor](brotli-doctor.md).
+For WSL host settings see [windows-host](windows-host.md) and [ollama-windows-wsl](ollama-windows-wsl.md).
 
-## 実行方法
+## How to run
 
 ```bash
-just kernel-doctor-build   # 明示ビルドのみ。doctor は自動ビルドしない
+just kernel-doctor-build   # Explicit build only; doctor does not auto-build
 just kernel-doctor
 just kernel-doctor --json
 just kernel-doctor-build-all   # linux/darwin/windows × amd64/arm64
 ```
 
-別のホストの版を、その OS のコマンドを実行せずに調べる。
-`--osrelease` を渡すとローカルの `/proc` と `/etc/os-release` は**読まない**。
+Inspect another host's version without running commands on that OS.
+Passing `--osrelease` **skips reading** local `/proc` and `/etc/os-release`.
 
 ```bash
-# Windows ホストの WSL カーネルを macOS から調べる
+# Check a Windows host's WSL kernel from macOS
 just kernel-doctor --osrelease="$(wsl.exe -d Ubuntu -- uname -r)"
 ```
 
-終了コードは 0 が警告なし、1 が警告または未判定、2 が引数エラー。
-`INFO` の行（調べていない範囲の注意書き）は終了コードを上げない。
-**0 を「安全」の条件にしない。** 未判定の行が無いことを意味するだけである。
+Exit codes are 0 for no warnings, 1 for warnings or unverified results, and 2 for argument errors.
+`INFO` lines (caveats on uninspected scope) do not raise the exit code.
+**Do not treat 0 as "safe".** It only means no unverified lines were emitted.
 
-Linux カーネルが動いていない機体（macOS、native Windows）では、比較をせず
-`OK kernel-not-applicable` の 1 行だけを出す。この行は、その機体から使う WSL や
-Linux VM を調べていないことも述べている。
-カーネルの版を調べた機体（Linux、WSL、`--osrelease`）では、調べていない範囲を
-`INFO kernel-coverage` で出す。
+On machines not running a Linux kernel (macOS, native Windows), it skips comparison and outputs a single `OK kernel-not-applicable` line. That line also notes that WSL or Linux VMs used from that machine were not inspected.
+On machines where a kernel version was inspected (Linux, WSL, `--osrelease`), uninspected scope is output as `INFO kernel-coverage`.
 
-第三者の数値（`kernel-observed-*`）と記録にある助言（`kernel-advice-*`）は、
-毎回同じ文で、この機体の状態を表さないので `INFO` で出す。
-CVE ごとの警告は `kernel-version-*` の行（修正床に届かない、または未判定）と、
-sysctl の行である。
+Third-party numbers (`kernel-observed-*`) and recorded advice (`kernel-advice-*`) never depend on this machine's state, so `kernel-doctor` emits them as `INFO`.
+Per-CVE warnings are `kernel-version-*` lines (below the fix floor or unverified) and sysctl lines.
 
-## 出力の読み方
+## Reading the output
 
-版の比較結果は 6 つ。`patch_status` は**常に `unverified`**。`backport_state` も `unverified` で、
-`reviewed-vendor-build` のときだけ `fix-commit-in-vendor-tag`（修正 commit がベンダーの release の tag にある）になる。
+There are 6 version comparison outcomes. `patch_status` is **always `unverified`**. `backport_state` is also `unverified`, becoming `fix-commit-in-vendor-tag` (fix commit is in the vendor release tag) only for `reviewed-vendor-build`.
 
-| 結果 | 意味 |
+| Outcome | Meaning |
 | --- | --- |
-| `below-reviewed-fix-floor` | クリーンな上流リリース形で、レビュー済み branch の修正床より下 |
-| `at-or-above-reviewed-fix-floor` | 同じく、修正床以上。**ベンダーの backport や実行中のパッチ状態は依然として未確認** |
-| `reviewed-vendor-build` | 記録（`vendorBuilds`）に載せたベンダーのビルドと、文字列の全体が一致した。修正 commit がその tag にある。**同じ文字列の独自ビルドは区別できず、実行中のパッチ状態は未確認** |
-| `unverified-vendor` | ベンダー／ディストロのカーネル。数値が上流の patch level ではないので比較しない |
-| `unverified-branch` | クリーンな形だが、その branch はレビューしていない |
-| `unverified-version` | クリーンな上流の `x.y.z` ではない。比較しない |
+| `below-reviewed-fix-floor` | Clean upstream release form, below the fix floor for a reviewed branch |
+| `at-or-above-reviewed-fix-floor` | Same form, at or above the fix floor. **Vendor backports and running patch state remain unverified** |
+| `reviewed-vendor-build` | Full string matches a recorded vendor build (`vendorBuilds`). Fix commit is in that tag. **Cannot distinguish custom builds sharing the same string, and running patch state is unverified** |
+| `unverified-vendor` | Vendor/distro kernel. Not compared because the third component is not an upstream patch level |
+| `unverified-branch` | Clean form, but that branch has not been reviewed |
+| `unverified-version` | Not a clean upstream `x.y.z` string. Not compared |
 
-行の接頭辞は doctor と同じ `LEVEL name - detail`（`scripts/doctor_lines.py`）。
+Line prefixes match doctor's `LEVEL name - detail` format (`scripts/doctor_lines.py`).
 
-## なぜベンダーのカーネルを判定しないか
+## Why vendor kernels are not judged
 
-Ubuntu の `6.8.0-45-generic` や Debian の `6.1.0-28-amd64` の第 3 成分は、
-**上流の patch level ではない**。ベンダー自身の ABI リビジョンである。
-上流の修正床と数値で比べると**両方向に間違える**。数値が古くても修正は
-backport されていることがあり、逆もある。
+The third component of Ubuntu's `6.8.0-45-generic` or Debian's `6.1.0-28-amd64` is **not an upstream patch level**. It is the vendor's own ABI revision.
+Comparing it numerically against an upstream fix floor **fails in both directions**: a fix may be backported to an older number, or vice versa.
 
-だから比較するのは次の両方を満たすときだけにした。
+So we compare only when both of the following hold:
 
-- 文字列**全体**がクリーンな上流リリース形 `x.y.z` である。
-  先頭 3 成分を抜き出して残りを捨てると、`6.6.159+`（Linux が実際に付ける）・
-  `6.6.159.2`・`6.6.159garbage` がすべて「6.6.159 以上」に化ける。
-- `major.minor` がレビュー済み branch に一致する（または mainline の修正版以上）。
+- The **entire** string is a clean upstream release form `x.y.z`.
+  Extracting only the first 3 components and discarding the rest would turn `6.6.159+` (which Linux actually appends), `6.6.159.2`, and `6.6.159garbage` into "6.6.159 or higher".
+- `major.minor` matches a reviewed branch (or is at or above the mainline fixed version).
 
-それ以外は `unverified` とし、レビュー済み修正床の一覧を出す。
-**未判定を「修正済み」として数えない。** 保守側に倒れるのは意図した設計である。
+Everything else becomes `unverified` and lists the reviewed fix floors.
+**Never count `unverified` as "fixed".** Failing conservative is intentional.
 
-レビュー済み branch の**あいだ**にある branch（例: 6.13〜6.17）は
-`unverified-branch` になる。これは意図した挙動で、修正床の一覧と
-その branch 自身の stable tree かベンダーの勧告を読む。
+Branches **between** reviewed branches (e.g., 6.13-6.17) become `unverified-branch`. This is intentional; consult the fix floor list and that branch's own stable tree or vendor advisories.
 
-### ベンダーのビルドを記録する
+### Recording a vendor build
 
-数値で比べない代わりに、確かめたビルドだけを incident の `vendorBuilds` に 1 件ずつ載せられる
-（ADR 0065 Decision 3）。載せる前に、次をすべて確かめる。
+Instead of numeric comparisons, verified builds can be added one by one to an incident's `vendorBuilds` (ADR 0065 Decision 3). Before adding one, verify all of the following:
 
-1. incident の `source`（CVE の一次情報）が、そのビルドの branch の修正として挙げる commit の SHA。
-   記録の `branches` の、その branch の `fixCommit` と同じでなければならない（ParseIncident が確かめる）。
-2. ベンダーの release の tag が指す commit の SHA（tag は動かせるので、SHA で固定する）。
-   例: `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`。
-3. 1 の commit が 2 の祖先であること: `gh api repos/<owner>/<repo>/compare/<1>...<2>` が
-   `behind_by=0`。
-4. 2 の commit で、修正の行が残っていること（revert されていない）。修正が触ったファイルを
-   2 の commit で**必ず読み**、修正の行があることを確かめる。`commits?sha=<2>&path=<file>` で
-   revert が無いことを見るのは補助にとどめる（revert でない変更でも行は消えうる）。
-5. `uname -r` の文字列の全体（例: `6.18.58.1-microsoft-standard-WSL2`）。
+1. The SHA of the commit that the incident's `source` (primary CVE source) names as the fix for that build's branch.
+   It must match `fixCommit` for that branch in the record's `branches` (checked by ParseIncident).
+2. The SHA of the commit pointed to by the vendor release tag (tags can move, so pin by SHA).
+   Example: `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`.
+3. Commit 1 is an ancestor of commit 2: `gh api repos/<owner>/<repo>/compare/<1>...<2>` returns `behind_by=0`.
+4. The fix lines remain present (not reverted) in commit 2. **Always read** the files touched by the fix at commit 2 to verify the fix lines are there. Checking `commits?sha=<2>&path=<file>` for no revert is only supplementary (non-revert changes can also remove lines).
+5. The full `uname -r` string (e.g., `6.18.58.1-microsoft-standard-WSL2`).
 
-`release` は 5、`fixCommit` は 1、`tagCommit` は 2、`reviewedAt` は確かめた日。`source` はベンダーの
-release の頁で、形は `https://<host>/<owner>/<repo>/releases/tag/<tag>`。`evidence` は 3 の compare の URL で、
-`https://<host>/<owner>/<repo>/compare/<1>...<2>` と全体が一致しなければならない（host と owner/repo は
-`source` と同じ。tag の名前、別の repo、余分な path、符号化した文字、`?` や `#` は通らない。
-ParseIncident が確かめる）。この 2 つは GitHub の release と compare の URL の形で、tag の名前に `/` を
-含むものや別の forge のビルドは、コードを変えないと記録できない。ビルドの branch は、incident の
-`branches` にあるものに限る。記録を変えたら `just kernel-doctor-build` で作り直す。
+`release` is 5, `fixCommit` is 1, `tagCommit` is 2, and `reviewedAt` is the verification date. `source` is the vendor release page in the form `https://<host>/<owner>/<repo>/releases/tag/<tag>`. `evidence` is the compare URL from step 3 and must match `https://<host>/<owner>/<repo>/compare/<1>...<2>` in full (same host and owner/repo as `source`; tag names, other repos, extra path segments, encoded characters, `?`, and `#` are rejected by ParseIncident). Because these two use GitHub release and compare URL formats, tags containing `/` or builds on other forges cannot be recorded without code changes. A build's branch must appear in the incident's `branches`. After updating records, rebuild with `just kernel-doctor-build`.
 
-## CVE-2026-98432 について
+## About CVE-2026-98432
 
-`ipv4: free inet_opt and ireq_opt after an RCU grace period`。CNA は kernel.org、公開
-2026-10-15。導入は 2015 年の commit `079096f103fa`（v4.4 期）。レビュー済みの
-上流修正版は 5.10.272 / 5.15.223 / 6.1.190 / 6.6.159 / 6.12.113 / 6.18.56 / 7.2.10、
-mainline は 7.3。修正は `inet_sock_destruct()` と `tcp_v4_reqsk_destructor()` の
-`kfree()` を `kfree_rcu()` にするもの。
+`ipv4: free inet_opt and ireq_opt after an RCU grace period`. CNA is kernel.org, published 2026-10-15. Introduced in 2015 by commit `079096f103fa` (v4.4 era). Reviewed upstream fixed versions are 5.10.272 / 5.15.223 / 6.1.190 / 6.6.159 / 6.12.113 / 6.18.56 / 7.2.10, and mainline is 7.3. The fix changes `kfree()` to `kfree_rcu()` in `inet_sock_destruct()` and `tcp_v4_reqsk_destructor()`.
 
-**深刻度には争いがある。** 次の 2 つは同じ脆弱性の別の見積もりである。
+**Severity is disputed.** The two estimates below assess the same vulnerability differently:
 
-| 情報源 | スコア | 攻撃複雑度 |
+| Source | Score | Attack complexity |
 | --- | --- | --- |
-| NVD / Tenable / Rapid7 | 9.8 | `AC:L`（容易） |
-| Oracle の自社記録（暫定と明記） | 8.1 | `AC:H`（競合を勝ち抜く必要） |
+| NVD / Tenable / Rapid7 | 9.8 | `AC:L` (low) |
+| Oracle internal record (marked provisional) | 8.1 | `AC:H` (requires winning a race) |
 
-Red Hat の優先度は critical ではなく **high**（Bugzilla は `NEW`、修正版は未確定）。
-EPSS は 0.00388（約 0.4%）、CISA KEV 未収載。
-**観測時点で KEV 未収載。これは実悪用の有無・公開 exploit の有無・CISA の評価状況のいずれについても証拠にならない。**
+Red Hat rates priority as **high** rather than critical (Bugzilla is `NEW`, fixed version unconfirmed).
+EPSS is 0.00388 (about 0.4%), not listed in CISA KEV.
+**Not listed in KEV at time of observation. This is not evidence of absence of active exploitation, public exploits, or CISA evaluation status.**
 
-引き金は 2 つ。どちらも到達には条件が要る。
+There are two triggers, both requiring specific conditions:
 
-1. 再送 SYN を別 CPU が処理する競合（子ソケットが解放される間に SYNACK を組み立てる）。
-   この経路は **IP options を持つソケット**（`ip_options_build()` が `optlen` を読む）を要する。
-2. request socket の migration。`net.ipv4.tcp_migrate_req=1`、**または**
-   `BPF_SK_REUSEPORT_SELECT_OR_MIGRATE` プログラム。
+1. A race where another CPU processes a retransmitted SYN (building SYNACK while the child socket is freed).
+   This path requires **sockets with IP options** (`ip_options_build()` reads `optlen`).
+2. Request socket migration: `net.ipv4.tcp_migrate_req=1` **or** a `BPF_SK_REUSEPORT_SELECT_OR_MIGRATE` program.
 
-この道具は 2 の sysctl を 1 つ読むが、**0 でも免責にならない**（BPF の経路がある）。
-sysctl は network namespace ごとに保持されるので、読んだ値は**現在の namespace のもの**である。
-経路 1 と BPF は外部から内省できないので、**調べていない**。
+This tool reads the one sysctl in trigger 2, but **0 does not clear the host** (the BPF path remains).
+Because sysctls are per network namespace, the value read is for **the current namespace**.
+Path 1 and BPF cannot be introspected externally, so they are **not inspected**.
 
-IPv6 側にも同型の問題がある（`tcp_v6_reqsk_destructor()` の `ipv6_opt`。CALIPSO のときだけ設定される）。
-これは**別の patch** で扱われ、本 CVE のレビュー済み修正範囲の外である。
+IPv6 has an analogous issue (`ipv6_opt` in `tcp_v6_reqsk_destructor()`, set only with CALIPSO), handled by a **separate patch** outside this CVE's reviewed fix scope.
 
-## 面ごとの是正
+## Remediation by surface
 
-| 面 | カーネルの供給元 | 是正 |
+| Surface | Kernel provider | Remediation |
 | --- | --- | --- |
-| WSL2 と self-hosted runner | Microsoft | **Windows 側で** `wsl --update` |
-| ベンダーのカーネル（Debian / Ubuntu / RHEL / SUSE / Amazon） | ベンダー | ベンダーの勧告とパッケージ更新（`apt` / `dnf`）+ **ホストの再起動** |
-| devcontainer / emulator / telemetry のコンテナ | 実行ホストの Linux | Podman machine / WSL2 / ネイティブ Linux のカーネルを利用者が更新。**イメージ更新では変わらない** |
-| macOS ホスト | Apple | 対象外 |
+| WSL2 and self-hosted runner | Microsoft | Run `wsl --update` **on the Windows side** |
+| Vendor kernels (Debian / Ubuntu / RHEL / SUSE / Amazon) | Vendor | Vendor advisories and package updates (`apt` / `dnf`) + **host reboot** |
+| devcontainer / emulator / telemetry containers | Host Linux | Update the Podman machine / WSL2 / native Linux kernel yourself. **Updating the image does not change it** |
+| macOS host | Apple | Not applicable |
 
-WSL の手順は次に固定する。**再起動の単位はカーネルであり、プロセスやコンテナの再起動では効かない。**
+WSL follows this fixed procedure. **The unit of restart is the kernel; restarting processes or containers has no effect.**
 
 ```bash
-# Windows 側（管理者 PowerShell）
+# Windows side (elevated PowerShell)
 wsl --update
 wsl --shutdown
-# 新しいカーネルで起動したことを確かめる
+# Verify it booted with the new kernel
 wsl.exe -d <distro> -- uname -r
 ```
 
-`wsl --shutdown` は**すべての distro と WSL2 VM を停止する**。self-hosted runner は
-その WSL の中で動いているので、**実行中のジョブが無い時**に行う（[ADR 0035](../adr/0035-runner-disk-gc.md)）。
+`wsl --shutdown` **stops all distros and the WSL2 VM**. Because the self-hosted runner runs inside WSL, run it **when no job is running** ([ADR 0035](../adr/0035-runner-disk-gc.md)).
 
-`kernel=` で独自カーネルを指定している WSL は別管理である。`wsl --update` では変わらない。
-**「更新コマンドが成功した＝修正済み」ではない。** 新しいカーネルで起動したことを
-`uname -r` で確かめる。
+WSL instances specifying a custom kernel via `kernel=` are managed separately and are not updated by `wsl --update`.
+**"Update command succeeded = fixed" is false.** Verify the new kernel is running with `uname -r`.
 
-## 限界
+## Limitations
 
-- 版の比較は「報告された文字列」と「レビュー済みの上流修正床」の比較である。
-  ベンダーの backport は、記録したビルドの完全一致を除いて見えない。実行中のカーネルの
-  パッチ状態は見えない。
-- コンテナの中で実行すると `/proc/sys/kernel/osrelease` は**ホストの**カーネルを返す。
-  これは露出の正しい答えだが、ホストとコンテナを区別しない。
-- 経路 1（IP options 付きソケット）と BPF による migration は調べていない。
-  現在の network namespace 以外は調べていない。
-- 知っているのは記録済みの CVE だけである。汎用の脆弱性スキャナではない。
-- クロスビルドが通ることは、Windows や WSL の実機で観測できたことの証明ではない。
-- レビュー記録には期限がある。過ぎると `policy_freshness=overdue` を出す。
-  一次情報を読み直して記録を更新する。
+- Version comparison checks only the "reported string" against the "reviewed upstream fix floor".
+  Vendor backports are invisible except on an exact match to a recorded build. Running kernel patch state is invisible.
+- Inside a container, `/proc/sys/kernel/osrelease` returns the **host** kernel.
+  That is the right answer for exposure, but does not distinguish host from container.
+- Path 1 (sockets with IP options) and BPF-based migration are not inspected.
+  Network namespaces other than the current one are not inspected.
+- It knows only recorded CVEs and is not a general vulnerability scanner.
+- A passing cross-build does not prove observation on actual Windows or WSL hosts.
+- Review records expire and emit `policy_freshness=overdue` past their deadline.
+  Re-read primary sources and update the record.
 
-## 一次情報
+## Primary sources
 
-- upstream 勧告: <https://git.kernel.org/pub/scm/linux/security/vulns.git/plain/cve/published/2026/CVE-2026-98432.mbox>
-- CVE レコード: <https://osv.dev/vulnerability/CVE-2026-98432>
-- Oracle の評価（8.1 / `AC:H`）: <https://linux.oracle.com/cve/CVE-2026-98432.html>
+- upstream advisory: <https://git.kernel.org/pub/scm/linux/security/vulns.git/plain/cve/published/2026/CVE-2026-98432.mbox>
+- CVE record: <https://osv.dev/vulnerability/CVE-2026-98432>
+- Oracle assessment (8.1 / `AC:H`): <https://linux.oracle.com/cve/CVE-2026-98432.html>
 - Red Hat Bugzilla 2553390: <https://bugzilla.redhat.com/show_bug.cgi?id=2553390>
-- Tenable（9.8 / EPSS / KEV）: <https://www.tenable.com/cve/CVE-2026-98432>
-- Red Hat の CVE ページ: <https://access.redhat.com/security/cve/CVE-2026-98432>
+- Tenable (9.8 / EPSS / KEV): <https://www.tenable.com/cve/CVE-2026-98432>
+- Red Hat CVE page: <https://access.redhat.com/security/cve/CVE-2026-98432>
 
-レビュー日は 2026-10-29、レビュー期限は 2026-11-26。
-記録の正本は `tools/kernel-doctor/incidents/` にある。
+Reviewed on 2026-10-29; review deadline 2026-11-26.
+The source of truth for records is `tools/kernel-doctor/incidents/`.

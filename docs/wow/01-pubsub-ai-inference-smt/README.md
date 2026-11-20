@@ -1,35 +1,38 @@
-# Pub/Sub AI Inference SMT（GA）
+# Pub/Sub AI Inference SMT (GA)
 
-Pub/Sub が、流れるメッセージごとに **外部サービスを挟まず直接モデル推論を呼び、結果を
-メッセージに付ける** 機能。SMT = Single Message Transform（単一メッセージ変換）。
+Pub/Sub calls model inference **directly on each flowing message without an external intermediate
+service** and attaches the result to the message. SMT stands for Single Message Transform.
 
-- Launch stage: **GA（一般提供）**
-- 公式: <https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt>
-- SMT 全体像: <https://docs.cloud.google.com/pubsub/docs/smts/smts-overview>
+- Launch stage: **GA (General Availability)**
+- Official docs: <https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt>
+- SMT overview: <https://docs.cloud.google.com/pubsub/docs/smts/smts-overview>
 
-## ファクトチェック
+## Fact-check
 
-- 記事の「Pub/Sub ストリーミング内での直接モデル呼び出し」「Gemini Enterprise Agent
-  Platform 対応」「NLP / 不正検知 / セマンティック検索」は **公式の use case と一致**（公式は
-  real-time enrichment / simplified AI pipelines / reduced latency / enhanced flow control を挙げる）。
-- **GA 表記は正しい**（公式ブログ "Streaming AI news from Next '26" が GA と明記）。
-- 「Gemini Enterprise Agent Platform」は **Vertex AI のリブランド**（Next '26 前後で改称）。公式 docs も
-  "Agent Platform (previously Vertex AI)" と併記する。IAM ロール・API は旧称
-  （`Vertex AI ...` / `aiplatform.*`）のまま。
+- The article's claims of "direct model invocation inside Pub/Sub streaming" (translated), "Gemini
+  Enterprise Agent Platform support" (translated), and "NLP / fraud detection / semantic search" (translated)
+  **match official use cases** (official docs list real-time enrichment, simplified AI pipelines,
+  reduced latency, and enhanced flow control).
+- **The GA label is accurate** (the official blog post "Streaming AI news from Next '26" explicitly
+  states GA).
+- "Gemini Enterprise Agent Platform" is a **rebrand of Vertex AI** (renamed around Next '26).
+  Official docs write "Agent Platform (previously Vertex AI)". IAM roles and APIs keep the old names
+  (`Vertex AI ...` / `aiplatform.*`).
 
-## SMT は 2 種類ある
+## Two types of SMT
 
-| 種類 | 用途 | 公式 |
+| Type | Purpose | Official docs |
 |---|---|---|
-| **AI Inference** | Agent Platform のモデルに推論させ、結果をメッセージへ付与 | [ai-inference-smt](https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt) |
-| **JavaScript UDF** | 任意の JS 関数で変換 / フィルタ（`null` を返すと drop） | [udfs-overview](https://docs.cloud.google.com/pubsub/docs/smts/udfs-overview) |
+| **AI Inference** | Runs inference on an Agent Platform model and attaches the result to the message | [ai-inference-smt](https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt) |
+| **JavaScript UDF** | Transforms or filters using any JS function (returning `null` drops the message) | [udfs-overview](https://docs.cloud.google.com/pubsub/docs/smts/udfs-overview) |
 
-両者は **チェーン可能**。典型は「UDF でモデル入力形式に整形 → AI Inference → UDF で後処理」。
+Both **can be chained**. A typical pattern is: format for model input with a UDF -> AI Inference
+-> post-process with a UDF.
 
-## Topic SMT と Subscription SMT
+## Topic SMT vs. Subscription SMT
 
-- **Topic SMT**: Pub/Sub が保存する **前** に実行。結果は **全 subscriber で共有**。
-- **Subscription SMT**: 配信 **直前** に実行。結果は **その subscription のみ**。
+- **Topic SMT**: Runs **before** Pub/Sub stores the message. The result is **shared across all subscribers**.
+- **Subscription SMT**: Runs **just before** delivery. The result applies **only to that subscription**.
 
 ```text
 Topic SMT  (runs once before storage; result shared by ALL subscribers)
@@ -45,20 +48,20 @@ Subscription SMT  (runs per subscription, just before delivery)
                     +--------> sub B (no SMT) --> subscriber B
 ```
 
-Legend / 凡例:
+Legend:
 
-- Topic SMT: トピック側変換（保存前に 1 回、全 subscriber が共有）
-- Subscription SMT: サブスクリプション側変換（配信直前、その sub だけに適用）
-- stored: Pub/Sub 内部ストレージへ保存
-- sub: subscription（購読）
-- subscriber: 購読アプリ
+- Topic SMT: Topic-side transform (runs once before storage; shared by all subscribers)
+- Subscription SMT: Subscription-side transform (runs just before delivery; applies only to that sub)
+- stored: Saved to Pub/Sub internal storage
+- sub: Subscription
+- subscriber: Subscriber application
 
-## 実装：最小手順（gcloud）
+## Implementation: minimal steps (gcloud)
 
-> この手順は挙動を学ぶための例である。使い捨ての検証用プロジェクトで試す。
-> 本番の GCP は OpenTofu と PR でだけ変える（IaC 方針）。
+> These steps are an example to learn the behavior. Test them in a disposable verification project.
+> Change production GCP only via OpenTofu and PRs (IaC policy).
 
-### 1. 変換定義ファイル（YAML）
+### 1. Transform definition file (YAML)
 
 ```yaml
 # ai-smt.yaml
@@ -71,26 +74,26 @@ Legend / 凡例:
     }
 ```
 
-- `endpoint` の形式:
-    - Model Garden（MaaS）モデル:
+- `endpoint` format:
+    - Model Garden (MaaS) models:
       `projects/PROJECT/locations/LOCATION/publishers/PUBLISHER/models/MODEL_NAME`
-    - 自前デプロイモデル: `projects/PROJECT/locations/LOCATION/endpoints/ENDPOINT`
-- `unstructuredInference.parameters` は各メッセージにマージされるモデルパラメータ（任意）。
-- `service_account_email` も指定可（任意。未指定なら Pub/Sub service agent を使用）。
+    - Self-deployed models: `projects/PROJECT/locations/LOCATION/endpoints/ENDPOINT`
+- `unstructuredInference.parameters` specifies model parameters merged into each message (optional).
+- `service_account_email` can also be set (optional; defaults to the Pub/Sub service agent).
 
-### 2. topic / subscription を作成して試す
+### 2. Create a topic and subscription to test
 
 ```bash
-# topic を作成
+# Create a topic
 gcloud pubsub topics create TOPIC_ID
 
-# AI Inference SMT 付き subscription を作成（推論は最長 60s なので ack-deadline を伸ばす）
+# Create a subscription with AI Inference SMT (extend ack-deadline since inference takes up to 60s)
 gcloud pubsub subscriptions create TOPIC_ID-sub \
   --ack-deadline=600 \
   --topic TOPIC_ID \
   --message-transforms-file ai-smt.yaml
 
-# Chat Completions API 形式のプロンプトを publish
+# Publish a prompt in Chat Completions API format
 gcloud pubsub topics publish TOPIC_ID --message=$'{
   "model":"google/gemini-2.5-flash","messages":[{
     "role": "user",
@@ -98,17 +101,17 @@ gcloud pubsub topics publish TOPIC_ID --message=$'{
     }]
   }'
 
-# 推論結果が付与されたメッセージを pull
+# Pull the message with the inference result attached
 gcloud pubsub subscriptions pull TOPIC_ID-sub
 ```
 
-Topic に付ける場合は `gcloud pubsub topics create TOPIC_ID --message-transforms-file ai-smt.yaml`。
+To attach to a topic, run `gcloud pubsub topics create TOPIC_ID --message-transforms-file ai-smt.yaml`.
 
-## 入出力フォーマット
+## Input and output formats
 
-- **入力**: メッセージ data は **モデルへ送る JSON 文字列**。SMT が `parameters` をマージして
-  送信。Pub/Sub は入力を検証しないので、形式の正しさは利用者責任。
-- **出力**: 成功すると元メッセージを次の形にラップする。
+- **Input**: Message data is a **JSON string sent to the model**. The SMT merges `parameters` and
+  sends it. Pub/Sub does not validate the input, so valid formatting is the caller's responsibility.
+- **Output**: On success, wraps the original message in this structure:
 
 ```json
 {
@@ -117,78 +120,80 @@ Topic に付ける場合は `gcloud pubsub topics create TOPIC_ID --message-tran
 }
 ```
 
-## 呼び出される API（モデル種別ごと）
+## APIs invoked (by model type)
 
-| モデル | 呼ばれる API |
+| Model | API invoked |
 |---|---|
-| 自前デプロイ（全種） | `rawPredict` |
-| Gemini foundational（例 `gemini-3.0-pro`） | Chat Completions API |
-| その他 Gemini（例 embeddings） | `rawPredict` |
+| Self-deployed (all types) | `rawPredict` |
+| Gemini foundational (e.g., `gemini-3.0-pro`) | Chat Completions API |
+| Other Gemini (e.g., embeddings) | `rawPredict` |
 | Anthropic / Mistral / AI21 | `rawPredict` |
-| その他 MaaS | Chat Completions API |
+| Other MaaS | Chat Completions API |
 
-互換 MaaS モデルは Gemini 2.0/2.5/3 系、Claude（Sonnet/Opus/Haiku 4 系）、Llama 3.3/4、
-Mistral、DeepSeek、Qwen3、GPT-OSS、各種 embedding 等。一部（一部 embedding-2 / Veo / Lyria /
-最新 thinking 系など）は **非対応**。最新の対応・非対応表は公式ページを参照。
+Compatible MaaS models include Gemini 2.0/2.5/3 series, Claude (Sonnet/Opus/Haiku 4 series), Llama
+3.3/4, Mistral, DeepSeek, Qwen3, GPT-OSS, and various embeddings. Some models (such as certain
+embedding-2, Veo, Lyria, and latest thinking models) are **unsupported**. Check the official page
+for the current compatibility table.
 
 ## IAM
 
-- 操作者: `roles/pubsub.editor`（topic/subscription 作成権限）。
-- 推論呼び出し用 service account に Agent Platform エンドポイントへの権限:
-    - 権限: `aiplatform.endpoints.get` / `aiplatform.endpoints.predict`
-    - 付与ロール: Pub/Sub service agent を使うなら **Vertex AI Service Agent**、独自 SA なら
-      **Vertex AI User**。
+- Operator: `roles/pubsub.editor` (permission to create topics and subscriptions).
+- Permissions on the Agent Platform endpoint for the service account invoking inference:
+    - Permissions: `aiplatform.endpoints.get` / `aiplatform.endpoints.predict`
+    - Role to grant: **Vertex AI Service Agent** if using the Pub/Sub service agent, or **Vertex AI
+      User** if using a custom SA.
 
-## フロー制御（記事の「不正検知」等で効く）
+## Flow control (useful for "fraud detection" (translated) etc. in the article)
 
-エンドポイント過負荷を避けるため、Pub/Sub がレイテンシ・quota に応じて **リクエストレートを
-自動調整** する（unary pull API 利用時は非対応）。バックプレッシャーを自前で組まなくてよい。
+To avoid overloading endpoints, Pub/Sub **automatically adjusts the request rate** based on latency
+and quota (unsupported when using the unary pull API). You do not need to build your own
+backpressure logic.
 
-> **用語注意**: 元記事の「Elastic Inference Queue」は公式ドキュメントにない用語。この
-> **フロー制御（レート自動調整）** をスライドで言い換えたものとみられる。その名前の設定や API は
-> ないので、固有名として探さない。
+> **Terminology note**: "Elastic Inference Queue" in the original article does not appear in official
+> docs. It appears to be a slide paraphrase of this **flow control (automatic rate adjustment)**
+> feature. Do not search for an API or setting under that name.
 
-## 制約・落とし穴
+## Constraints and pitfalls
 
-- 1 つの topic / subscription につき **AI Inference SMT は 1 個** まで。
-- **private endpoint 非対応**（自前モデルは public な Agent Platform endpoint に置く）。
-- **global endpoint** は Gemini foundation model のみ。他は regional endpoint 必須。
-- **クライアント側バッチングなし**（1 メッセージ = 1 推論リクエスト）。非同期バッチ推論も不可。
-- 推論は **60 秒以内**。超えると配信タイムアウト → リトライ、最終的に dead-letter topic 行き。
-  **subscription SMT を使うときは dead-letter topic の設定を推奨**。
-- 最終メッセージサイズ（元 + 推論出力）は Pub/Sub のメッセージサイズ上限内に収める必要あり。
-- **リージョン制約**: topic SMT はエンドポイントのリージョンが topic の message storage policy
-  内であること。export subscription（BigQuery / Cloud Storage）に付ける場合は宛先リソースの
-  リージョンと一致が必要。pull は locational endpoint 推奨。
+- At most **one AI Inference SMT** per topic or subscription.
+- **Private endpoints are unsupported** (place self-deployed models on a public Agent Platform endpoint).
+- **Global endpoints** work only for Gemini foundation models. All others require a regional endpoint.
+- **No client-side batching** (1 message = 1 inference request). Asynchronous batch inference is also unsupported.
+- Inference must finish **within 60 seconds**. Exceeding this triggers a delivery timeout, retries,
+  and eventually routes to the dead-letter topic. **Configure a dead-letter topic when using a
+  subscription SMT.**
+- The final message size (original + inference output) must stay within Pub/Sub's message size limit.
+- **Region constraints**: For a topic SMT, the endpoint's region must fall within the topic's message
+  storage policy. When attached to an export subscription (BigQuery or Cloud Storage), it must match
+  the destination resource's region. Locational endpoints are recommended for pull.
 
-## エラーハンドリング
+## Error handling
 
-- **Topic SMT のエラー**: publish 全体が失敗し、publisher にエラーが返る（バッチ内 1 件でも
-  失敗すると **バッチ全体が失敗**）。
-- **Subscription SMT のエラー**: dead-letter topic に転送可能。
-- 監視: `topic/message_transform_latencies`（status / filtered ラベル）、`topic/byte_cost`
-  （`operation_type` / `response_code`）。
+- **Topic SMT errors**: The entire publish fails and returns an error to the publisher (if even one
+  message in a batch fails, **the entire batch fails**).
+- **Subscription SMT errors**: Can be forwarded to a dead-letter topic.
+- Monitoring: `topic/message_transform_latencies` (status / filtered labels) and `topic/byte_cost`
+  (`operation_type` / `response_code`).
 
-## 公式サンプル実装
+## Official sample implementations
 
-- Python サンプル群（`pubsub_v1` クライアント。SMT は `MessageTransform` /
-  `JavaScriptUDF` 型を使う）:
-  [`GoogleCloudPlatform/python-docs-samples` → `pubsub/cloud-client`](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/pubsub/cloud-client)
-- SMT 検証・テスト手順（topic / subscription 作成前に validate）:
+- Python samples (`pubsub_v1` client; SMTs use `MessageTransform` and `JavaScriptUDF` types):
+  [`GoogleCloudPlatform/python-docs-samples` -> `pubsub/cloud-client`](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/pubsub/cloud-client)
+- SMT validation and testing steps (validate before creating a topic or subscription):
   [create-topic-smt](https://docs.cloud.google.com/pubsub/docs/smts/create-topic-smt) /
   [create-subscription-smt](https://docs.cloud.google.com/pubsub/docs/smts/create-subscription-smt)
-- E2E デモで AI Inference SMT ではなく **UDF SMT** を payload 整形に使う実例:
-  [`devrel-demos` → `data-analytics/event_driven_agents_demo` の `setup/`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo)
-  （詳細は [03-bigquery-continuous-queries-stateful/](../03-bigquery-continuous-queries-stateful/README.md)）
+- End-to-end demo example using a **UDF SMT** (not AI Inference SMT) to format payloads:
+  [`devrel-demos` -> `data-analytics/event_driven_agents_demo` `setup/`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo)
+  (details in [03-bigquery-continuous-queries-stateful/](../03-bigquery-continuous-queries-stateful/README.md))
 
-## 関連リンク
+## Related links
 
-本ノートは 2026-06 時点の公式版に基づく。
+Based on the official docs as of 2026-06.
 
-- SMT 発表ブログ:
+- SMT announcement blog:
   <https://cloud.google.com/blog/products/data-analytics/pub-sub-single-message-transforms>
-- topic / subscription どちらに付けるか:
+- Choosing between topic and subscription SMTs:
   <https://docs.cloud.google.com/pubsub/docs/smts/choose-smts>
-- Pub/Sub リリースノート: <https://docs.cloud.google.com/pubsub/docs/release-notes>
-- 解説記事（Medium / Google Cloud Community）:
+- Pub/Sub release notes: <https://docs.cloud.google.com/pubsub/docs/release-notes>
+- Deep-dive article (Medium / Google Cloud Community):
   <https://medium.com/google-cloud/deep-dive-into-google-cloud-pub-sub-single-message-transforms-and-ai-inference-baa920d8103a>

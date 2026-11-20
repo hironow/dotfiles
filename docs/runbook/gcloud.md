@@ -1,12 +1,12 @@
-# gcloud の Python 仮想環境の権限を復旧する
+# Recovering gcloud Python virtualenv permissions
 
-Google のインストーラーでユーザーのホーム配下に導入した Cloud SDK が対象。
-システムやパッケージマネージャーが管理する SDK、共有設定、native Windows にはこの手順を使わない。
+Applies to Cloud SDK installed under the user's home directory via Google's installer.
+Do not use this procedure for system- or package-manager-managed SDKs, shared configs, or native Windows.
 
-## 対象と所有者を確認する
+## Verify target and ownership
 
-通常ユーザーのシェルで実行する。
-`CLOUDSDK_CONFIG` を指定している場合は、その設定ディレクトリを調べる。
+Run in a regular user shell.
+If `CLOUDSDK_CONFIG` is set, inspect that config directory.
 
 ```sh
 config_dir="${CLOUDSDK_CONFIG:-"$HOME/.config/gcloud"}"
@@ -16,29 +16,28 @@ printf 'config: %s\nvenv: %s\n' "$config_dir" "$venv"
 ls -ld "$config_dir" "$venv" "$venv/update_module.log"
 ```
 
-表示された SDK が自分で管理するインストールであり、設定ディレクトリが `config_dir` と一致することを確認する。
-`config_dir` と `venv` の親ディレクトリも確認し、共有先やシンボリックリンクなど想定外の場所を指していたら中断する。
-`venv` 自体がシンボリックリンクの場合も中断する。
+Verify that the displayed SDK is your own managed install and that the config directory matches `config_dir`.
+Also check the parent directories of `config_dir` and `venv`, and abort if they point to unexpected locations such as a shared directory or symlink.
+Also abort if `venv` itself is a symlink.
 
-`virtenv` やその中の `update_module.log` が root 所有で書き込めないと、gcloud の Python 依存更新で `PermissionError` が出る。
-Python が起動することや `pip check` が通ることだけでは、更新先の書き込み権限は確認できない。
+If `virtenv` or `update_module.log` inside it is owned by root and unwritable, updating gcloud Python dependencies fails with `PermissionError`.
+Python starting or `pip check` passing does not prove write permission on the update target.
 
-## 確認した仮想環境だけを修復する
+## Repair only the verified virtualenv
 
-その仮想環境を使う gcloud や pip が動いていないことを確認してから、operator が次を実行する。
-`sudo` を付けるのは所有権の修復だけで、gcloud 自体は通常ユーザーで実行する。
+Confirm no gcloud or pip process is using that virtualenv, then use `sudo` only to repair ownership (run `gcloud` itself as a regular user):
 
 ```sh
-# 上で確認した venv だけが対象。リンク先の Python 本体には適用しない。
+# Targets only the venv verified above; does not touch the linked Python installation.
 test -d "$venv" && test ! -L "$venv" &&
   sudo chown -h -R -P "$(id -u):$(id -g)" "$venv"
 ```
 
-`-P` はディレクトリのシンボリックリンクをたどらず、`-h` はリンク先ではなくリンク自身の所有権を変更する。
-対象をホーム全体、gcloud 設定全体、SDK 本体へ広げない。
-設定ディレクトリ内の過去の root 所有ログなど、この仮想環境の外にあるファイルは変更されない。
+`-P` does not follow directory symlinks, and `-h` changes ownership of the link itself rather than its target.
+Do not widen the scope to all of home, all gcloud config, or the SDK itself.
+Files outside this virtualenv, such as past root-owned logs in the config directory, are left unchanged.
 
-## 通常ユーザーで更新を確認する
+## Verify updates as a regular user
 
 ```sh
 ls -ld "$venv" "$venv/update_module.log"
@@ -46,9 +45,9 @@ ls -ld "$venv" "$venv/update_module.log"
 just update-gcloud
 ```
 
-エラーが残る場合は、その時点のエラー本文を確認する。
-この手順は仮想環境の権限不整合を修復するもので、通信障害や別の依存問題まで解決するものではない。
+If errors remain, inspect the error message reported at that point.
+This procedure fixes virtualenv permission mismatches, not network failures or other dependency issues.
 
-`just add-gcloud` と `just update-gcloud` は sudo なしで使う。
-`just update-all` は gcloud、Homebrew の順に実行し、gcloud が失敗すると Homebrew 以降には進まない。
-Homebrew 単体の切り分けには `brew update --verbose` を使う（tap 情報は更新されるが、パッケージの upgrade や cleanup は行わない）。
+Run `just add-gcloud` and `just update-gcloud` without `sudo`.
+`just update-all` runs `gcloud` then Homebrew, and stops before Homebrew if `gcloud` fails.
+To isolate Homebrew on its own, run `brew update --verbose` (updates tap info without upgrading or cleaning up packages).

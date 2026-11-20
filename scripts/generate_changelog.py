@@ -1,7 +1,7 @@
 """Generate docs/changelogs.md from submodule git logs.
 
 This script reads each submodule's recent git history and produces
-a structured changelog in Japanese, matching the format of the
+a structured changelog in English, matching the format of the
 gold-standard docs/changelogs_gold.md.
 
 Optimized by autoresearch experiment loop.
@@ -156,7 +156,7 @@ def generate_section(submodule_path: str) -> str:
     lines.append("")
 
     if tag:
-        lines.append(f"**現行バージョン**: {tag}")
+        lines.append(f"**Current version**: {tag}")
         lines.append("")
 
     features: list[str] = []
@@ -188,19 +188,19 @@ def generate_section(submodule_path: str) -> str:
 
     all_notable = features + fixes + refactors
     if all_notable:
-        lines.append("#### 主要な変更点")
+        lines.append("#### Key Changes")
         lines.append("")
         lines.extend(all_notable[:20])
         lines.append("")
 
     if breaking:
-        lines.append("#### 破壊的変更")
+        lines.append("#### Breaking Changes")
         lines.append("")
-        lines.append("| 変更 | 影響 |")
+        lines.append("| Change | Impact |")
         lines.append("|------|------|")
         for entry in breaking:
             cleaned = entry.lstrip("- ").strip("*")
-            lines.append(f"| {cleaned} | 要確認 |")
+            lines.append(f"| {cleaned} | To check |")
         lines.append("")
 
     cwd = ROOT / submodule_path
@@ -209,7 +209,7 @@ def generate_section(submodule_path: str) -> str:
         if remote_url.startswith("git@github.com:"):
             remote_url = remote_url.replace("git@github.com:", "https://github.com/")
         remote_url = remote_url.removesuffix(".git")
-        lines.append("#### 参考リンク")
+        lines.append("#### Reference Links")
         lines.append("")
         lines.append(f"- [{display_name}]({remote_url})")
 
@@ -305,28 +305,28 @@ def collect_integration_updates(submodule_path: str) -> list[str]:
 
 
 def generate_notable_section(submodules: list[str]) -> str:
-    """Generate the 注目ポイント (highlights) section."""
+    """Generate the highlights section."""
     lines: list[str] = []
-    lines.append("## 注目ポイント")
+    lines.append("## Key Highlights")
     lines.append("")
 
     # Breaking changes summary table
-    lines.append("### 破壊的変更一覧")
+    lines.append("### Breaking changes")
     lines.append("")
-    lines.append("| 対象 | 変更内容 | 対応優先度 |")
+    lines.append("| Project | Change | Priority |")
     lines.append("|------|---------|-----------|")
     all_breaking: list[tuple[str, str]] = []
     for path in submodules:
         all_breaking.extend(collect_breaking_changes(path))
     if all_breaking:
         for display_name, change in all_breaking[:10]:
-            lines.append(f"| **{display_name}** | {change} | 要確認 |")
+            lines.append(f"| **{display_name}** | {change} | To check |")
     else:
-        lines.append("| - | 破壊的変更なし | - |")
+        lines.append("| - | No breaking changes | - |")
     lines.append("")
 
     # Major updates list
-    lines.append("### メジャーアップデート")
+    lines.append("### Major updates")
     lines.append("")
     counter = 1
     for path in submodules:
@@ -335,11 +335,11 @@ def generate_notable_section(submodules: list[str]) -> str:
             lines.append(f"{counter}. {update}")
             counter += 1
     if counter == 1:
-        lines.append("- メジャーアップデートなし")
+        lines.append("- No major updates")
     lines.append("")
 
     # New protocol integrations
-    lines.append("### 新規プロトコル統合")
+    lines.append("### New protocol integrations")
     lines.append("")
     all_integrations: list[str] = []
     for path in submodules:
@@ -348,11 +348,11 @@ def generate_notable_section(submodules: list[str]) -> str:
         for i, integration in enumerate(all_integrations[:10], 1):
             lines.append(f"{i}. {integration.lstrip('- ')}")
     else:
-        lines.append("1. 新規統合なし")
+        lines.append("1. No new integrations")
     lines.append("")
 
     # Security updates
-    lines.append("### セキュリティ更新")
+    lines.append("### Security updates")
     lines.append("")
     all_security: list[str] = []
     for path in submodules:
@@ -360,7 +360,7 @@ def generate_notable_section(submodules: list[str]) -> str:
     if all_security:
         lines.extend(all_security[:10])
     else:
-        lines.append("- セキュリティ関連の更新なし")
+        lines.append("- No security updates")
     lines.append("")
 
     return "\n".join(lines)
@@ -374,18 +374,16 @@ def generate_changelog() -> str:
     gclouds = [s for s in submodules if s.startswith(GCLOUD_PREFIX)]
 
     lines: list[str] = []
-    lines.append("# プロトコル変更ログ")
+    lines.append("# Protocol Changelog")
     lines.append("")
-    lines.append(f"最終更新: {today}")
+    lines.append(f"Last updated: {today}")
     lines.append("")
-    lines.append(
-        "各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。"
-    )
+    lines.append("Summary of key changes across protocol and Google Cloud submodules.")
     lines.append("")
     lines.append("---")
     lines.append("")
 
-    lines.append("## プロトコル (Protocols)")
+    lines.append("## Protocols")
     lines.append("")
     for path in protocols:
         lines.append(generate_section(path))

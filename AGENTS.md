@@ -2,175 +2,117 @@
 
 This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
 
-このファイルは **dotfiles リポジトリ自体を開発するとき** の運用ルールを記録する。
-全エージェント共通の global 規約 (TDD / tooling / commit discipline / observability
-等) は本リポの **hub-and-spoke な agent 指示 source 群** が正本で、`just sync-agents`
-で各エージェント設定ディレクトリへ配布される (= デプロイ後に `~/.claude/CLAUDE.md`
-等として読まれるもの)。
+This file records the working rules for **developing the dotfiles repository itself**.
+The **hub-and-spoke agent instruction sources** in this repo are the canonical source for global rules shared across all agents (TDD, tooling, commit discipline, observability, and so on), and `just sync-agents` distributes them to each agent's config directory (where they are read as `~/.claude/CLAUDE.md` and similar after deploy).
 
-## このリポの役割と「agent 指示の二層構造」(最重要)
+## Repo role and the two-layer agent instruction structure (most important)
 
-本リポは **global なエージェント指示を配布する** のが主目的の一つ。指示は
-**hub-and-spoke** (短い常時 load + on-demand spoke + 機械 enforcement)。
+One main purpose of this repo is to **distribute global agent instructions**. The instructions use a **hub-and-spoke** structure (short always-loaded hub + on-demand spokes + mechanical enforcement).
 
-- **正本は repo root の `ROOT_*`** (sentinel 名なので agent は直接読まない):
-  `ROOT_AGENTS.md` = cross-tool **base**、`ROOT_CLAUDE.md` = Claude **overlay**
-  (`@AGENTS.md` で base を import)、`ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke**、
-  `ROOT_AGENTS_hooks_*` + `.claude/settings.hooks.json` = hooks、
-  `.claude/settings.shared*.json` / `.claude/settings.profiles/` = 層状 settings fragment (ADR 0037)。
-- **`just sync-agents` が各 agent home へ配る** (base → `~/.codex/AGENTS.md` /
-  `~/.gemini/GEMINI.md` / `~/.claude*/AGENTS.md`、overlay → `~/.claude*/CLAUDE.md`、
-  spoke → `<agent>/docs/agents/`、hooks は Claude 系と Codex（Codex 向けは同じ正本から生成）、settings は Claude 系のみ。どちらも update-in-place マージ)。
-  skills と Antigravity の自己管理領域は sync しない。
-  `scripts/sync_agents.py`、`ROOT_*`、`.claude/settings.*.json` を触る前に
-  `docs/agent-sync.md` を読む (spoke 参照の絶対パス rewrite、hook block の所有範囲と
-  第三者 hook の保持、settings 4 層の合成と env の丸ごと所有、skills、Antigravity)。
-- **global ルールを変えるときは source を編集して `just sync-agents`。**
-  配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
-- **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
-  自身には未適用。`just scaffold-agent-baseline <dir>` で新規 repo へ展開)。
-- **本ファイル (`CLAUDE.md`, repo root) は別物** = dotfiles repo の開発時ルール。
-  sync の対象外 (sync は home の agent dir のみ書き、repo root は触らない)。repo で
-  作業するアシスタントは「global (`~/.claude/CLAUDE.md` = overlay+base) + 本ファイル」
-  の両方を読む。
+- **Canonical sources are `ROOT_*` at the repo root** (sentinel names so agents do not read them directly):
+  `ROOT_AGENTS.md` = cross-tool **base**, `ROOT_CLAUDE.md` = Claude **overlay**
+  (imports base via `@AGENTS.md`), `ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke**,
+  `ROOT_AGENTS_hooks_*` + `.claude/settings.hooks.json` = hooks,
+  `.claude/settings.shared*.json` / `.claude/settings.profiles/` = layered settings fragments (ADR 0037).
+- **`just sync-agents` distributes them to each agent home** (base → `~/.codex/AGENTS.md` /
+  `~/.gemini/GEMINI.md` / `~/.claude*/AGENTS.md`, overlay → `~/.claude*/CLAUDE.md`,
+  spoke → `<agent>/docs/agents/`, hooks go to Claude profiles and Codex (generated from the same canonical source for Codex), settings go to Claude profiles only; both merge update-in-place).
+  It does not sync skills or Antigravity's self-managed areas.
+  Read `docs/agent-sync.md` before touching `scripts/sync_agents.py`, `ROOT_*`, or `.claude/settings.*.json` (covers absolute-path rewriting for spoke references, hook block ownership and preserving third-party hooks, 4-layer settings composition and full ownership of env, skills, and Antigravity).
+- **To change global rules, edit the source and run `just sync-agents`.**
+  Direct edits to deployed files (such as `~/.claude/CLAUDE.md`) are overwritten on the next sync.
+- **Per-repo enforcement lives as a scaffold in `templates/agent-baseline/`** (not applied to dotfiles itself; expand into a new repo with `just scaffold-agent-baseline <dir>`).
+- **This file (`CLAUDE.md`, repo root) is separate** = development rules for the dotfiles repo.
+  It is excluded from sync (sync writes only to agent dirs in home and does not touch the repo root). Assistants working in this repo read both the global instructions (`~/.claude/CLAUDE.md` = overlay+base) and this file.
 
 ```bash
-just sync-agents            # ~/.claude のみ (default)
-just sync-agents p a b      # 名指しした home だけ (p = ~/.claude。`a b` だけだと ~/.claude は外れる)
-just sync-agents all        # 全 agent
+just sync-agents            # ~/.claude only (default)
+just sync-agents p a b      # Named homes only (p = ~/.claude; passing only `a b` omits ~/.claude)
+just sync-agents all        # All agents
 just sync-agents-preview …  # dry-run
 ```
 
-## タスクランナー (justfile は root に 1 つだけ)
+## Task runner (only one justfile at root)
 
-| recipe | 内容 |
+| recipe | Description |
 |---|---|
-| `just` / `just help` | recipe 一覧 |
-| `just ci` | fast コンテナ不要 gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS (`js-lint` = oxlint、`js-typecheck` = `bun check --no-script`、`vp fmt --check`) / Pi 拡張 / Quint の leg も入る。JS・TS の leg は root の `package.json` の dev 依存を `bun install --frozen-lockfile --ignore-scripts` で入れてから走る (ADR-0079) |
-| `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
-| `just ci-all` | `ci` + `test` + `test-install` (Podman サンドボックス込み) |
-| `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
-| `just test` | devcontainer サンドボックステスト (下記) |
-| `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
-| `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | skill の宣言 (`dump/harness/skill-lock.json`) と配置 (ADR 0043、`docs/agent-sync.md`)。監査・README 表・fork 比較の tooling は hironow/skills 側の `justfile`。手順は `docs/agents/skills-maintenance.md` (spoke) |
+| `just` / `just help` | List recipes |
+| `just ci` | Fast container-free gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator `ruff format --check` + ruff canonical + ty + markdownlint; the semgrep leg currently has 0 targets due to `.semgrepignore`) + `check-forbidden-tokens-branch`. `check` itself also includes legs for Go, JS/TS (`js-lint` = oxlint, `js-typecheck` = `bun check --no-script`, `vp fmt --check`), Pi extensions, and Quint. The JS/TS legs run after installing root `package.json` dev dependencies with `bun install --frozen-lockfile --ignore-scripts` (ADR-0079) |
+| `just lint-claude` | Official `claude plugin validate --strict` (skipped when the claude CLI is absent) + stdlib effective-settings validation (ADR 0037/0041). Third-party claudelint is **retired** (ADR 0041, trust decision). In CI, the `Claude Config Lint` workflow runs official validate via pinned `bunx @anthropic-ai/claude-code` (CI does not run `just ci`) |
+| `just ci-all` | `ci` + `test` + `test-install` (including Podman sandbox) |
+| `just check-all` | prek hooks + `ci-all` (final gate before push) |
+| `just test` | devcontainer sandbox tests (see below) |
+| `just semgrep-test` | Run `semgrep --test` on `.semgrep/rules/**` with co-located fixtures |
+| `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | Skill declaration (`dump/harness/skill-lock.json`) and placement (ADR 0043, `docs/agent-sync.md`). Tooling for audits, README tables, and fork comparisons lives in the `justfile` on the hironow/skills side. Steps are in `docs/agents/skills-maintenance.md` (spoke) |
 
-## Python lint の範囲 (repo-side の例外)
+## Python lint scope (repo-side exception)
 
-- Python toolchain は global 規約どおり **uv + ruff + ty** (ADR 0044)。ただし **repo root
-  (`scripts/` `tests/` `tools/` など) の ruff は default rule (ruff 0.16 以降は 413 rule) + W605 + PTH (pathlib 強制)**で、
-  spoke の canonical select は当てない
-  (2026-09-08 計測: canonical は tests の ANN を除外しても 851 件。tests 中心の tooling に対して
-  作業量が価値に見合わない)。
-- テキストの読み書きは必ず `encoding="utf-8"`、subprocess の `text=True` には
-  `encoding="utf-8", errors="replace"` を渡す (日本語版 Windows の既定は cp932)。
-  `tests/unit/test_text_io_encoding.py` が自前の Python 全体を AST で検査する。
-  `tests/unit/` は native Windows でも全部通る状態を保つ。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
-  PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は root /
-  emulator の `[dependency-groups].lint` と uv.lock が正で、mise の pin は手元で使う版にすぎない
-  (`just bump-tool` で RTTM を含む 4 か所をまとめて動かせる)。justfile は
-  `uv run --frozen --only-group lint ruff` で呼ぶ。
-- ty を OS ごとに回すのは global 規約どおり (ADR 0069) だが、回す場所は分けている。repo root の
-  ty は `just check` の `check-ty` が win32 / linux / darwin で回し、pre-commit (prek) の `just lint` は
-  commit を遅くしないよう 1 回だけ回す。`emulator/` と RTTM の ty も 1 回 (emulator は Linux の
-  コンテナで動く)。Windows だけで落ちる書き方と、それを止める検査は `docs/runbook/windows-host.md`。
+- The Python toolchain is **uv + ruff + ty** per the global rules (ADR 0044). However, **ruff at the repo root (`scripts/` `tests/` `tools/`, etc.) uses the default rules (413 rules since ruff 0.16) + W605 + PTH (enforcing pathlib)**, and does not apply the canonical select from the spoke (measured 2026-09-08: canonical produces 851 findings even excluding ANN in tests; the effort is not worth it for test-heavy tooling).
+- Always pass `encoding="utf-8"` when reading or writing text, and pass `encoding="utf-8", errors="replace"` when using `text=True` in subprocess (Japanese Windows defaults to cp932).
+  `tests/unit/test_text_io_encoding.py` checks all first-party Python via AST.
+  Keep `tests/unit/` passing completely on native Windows as well. `emulator/` applies the canonical rules (excluding ANN / PLR2004 / PLR0911 / PLR0915 in tests/**; see `emulator/pyproject.toml` for reasons). The canonical ruff version for gates comes from `[dependency-groups].lint` and uv.lock in root and emulator, while the mise pin is only for interactive local use (`just bump-tool` updates all 4 places including RTTM together). The justfile invokes ruff via `uv run --frozen --only-group lint ruff`.
+- Running ty per OS follows the global rules (ADR 0069), split by stage. At the repo root, `check-ty` in `just check` runs ty for win32 / linux / darwin, while `just lint` in pre-commit (prek) runs it once to keep commits fast. `emulator/` and RTTM also run ty once (emulator runs in Linux containers). Patterns that fail only on Windows and the checks that catch them are documented in `docs/runbook/windows-host.md`.
 
-## テストモデル (重要)
+## Test model (important)
 
-- `just test` は **Podman 5+ と @devcontainers/cli で毎回専用 image をビルドし、disposable snapshot で実際の up → exec を検査**する。
-  snapshot は git-tracked の作業ファイルだけで、実 host repo / `.git` はマウントしない。
-  起動前に選択中 engine の socket を明示し、podman-compose を固定して使う。
-  socket は engine 操作権限を与えるため、host から完全隔離された security sandbox とは扱わない。
-  必須 tool・接続・build・runtime の失敗は検査失敗にする。
-- `tests/*.py` は sandbox / image 検査 (`test_just_sandbox.py` / `test_devcontainer.py` 等、
-  `just test` が列挙して回す)。コンテナ不要の静的検査は `tests/unit/` に置く (`just ci` の
-  `test-unit` が拾う。root に置くとどの gate にも乗らない)。recipe 追加・改名後は `just ci` でなく
-  **full `just test`** を回す。sandbox assert は
-  環境非依存 (mount source 側) に保つ (memory `feedback_just_test_ci_vs_local`)。
-- **semgrep**: `.semgrep/rules/**` を `semgrep --test` で検証 (`just semgrep-test`, `ci` 組込み)。
-  `.semgrep` は intentional-violation fixture を含むため `pyproject.toml` で ruff 除外。
+- `just test` **builds a dedicated image on every run with Podman 5+ and @devcontainers/cli, and tests the actual up → exec flow in a disposable snapshot**.
+  The snapshot contains only git-tracked working files and does not mount the live host repo or `.git`.
+  Before startup, it explicitly sets the active engine socket and pins podman-compose.
+  Because the socket grants engine control privileges, do not treat it as a security sandbox completely isolated from the host.
+  Failures in required tools, connections, builds, or runtime fail the test.
+- `tests/*.py` are sandbox and image tests (`test_just_sandbox.py` / `test_devcontainer.py`, etc., enumerated and run by `just test`). Put container-free static checks in `tests/unit/` (picked up by `test-unit` in `just ci`; files placed at root are not picked up by any gate). After adding or renaming a recipe, run **full `just test`**, not `just ci`. Keep sandbox assertions environment-independent (on the mount source side) (memory `feedback_just_test_ci_vs_local`).
+- **semgrep**: Validate `.semgrep/rules/**` with `semgrep --test` (`just semgrep-test`, included in `ci`).
+  `.semgrep` contains intentional-violation fixtures and is excluded from ruff in `pyproject.toml`.
 
-## ローカル開発スタック (emulator / telemetry / portless)
+## Local development stack (emulator / telemetry / portless)
 
-ADR 0014 (emulator の vendoring) / 0015 (portless) / 0016 (emulate) / 0072 (telemetry は otel-lgtm)。
+ADR 0014 (emulator vendoring) / 0015 (portless) / 0016 (emulate) / 0072 (telemetry uses otel-lgtm).
 
-- **emulator** (`emulator/compose.yaml`): `just emu-up` = **lite 既定** (firebase +
-  spanner + pgadapter + postgres = GCP コア)。重量級/amd64 サービスは opt-in:
-    - `just emu-up-only <service...>` — 名指し起動 (profile gate を bypass。外部 repo が
-      `firebase-emulator` だけ間借りする時に使う)
+- **emulator** (`emulator/compose.yaml`): `just emu-up` = **lite by default** (firebase +
+  spanner + pgadapter + postgres = GCP core). Heavyweight/amd64 services are opt-in:
+    - `just emu-up-only <service...>` — Start named services (bypasses the profile gate; used when an external repo borrows only `firebase-emulator`)
     - `just emu-up-group <cap>` — lite + capability (bigtable/search/graph/vector/ml/
       inspect/full)
-    - `just emu-up-full` — 全データサービス。`emu-start`/`emu-start-full` は clean+prebuild+up+wait
-    - **teardown は profile を全有効化**: `emu-stop`/`emu-clean` は内部で
-      `COMPOSE_PROFILES=full,cli PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false down --remove-orphans`。
-      compose profiles は
-      `down` も profile-gate するため、無指定だと lite しか落とせず profiled heavy が残る。
-- **telemetry** (`telemetry/compose.yaml`): 上流の `grafana/otel-lgtm` 1 つ (ADR 0072。独自の
-  設定・dashboard は持たない)。`just tel-up` (OTLP :4317/:4318、Grafana :3000) / `tel-down`。
-  `shared-otel-net` を emulator と共有し、network 内の宛先は `lgtm:4317`。
-- **portless**: just の recipe は無い。`portless` を直接使い、別名は `docs/portless-urls.md` の
-  `portless alias <name> <port> --force` 一覧で登録して HTTP UI を `https://<name>.localhost` に。
-  **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は
-  不可で `localhost:PORT` のまま。port や `just emu-api` の service 順を変えたら、その一覧も直す。
-- **emu-api** (`just emu-api`): vercel-labs/emulate を host bunx で (4100-4108)。`emu-api-stop`。
-- Podman machine / service の起動は operator が管理する。
-  `restart: unless-stopped` だけを根拠に host / VM 起動後の自動復旧を前提にしない。
-  隔離検証は `tests.utils.isolation` の同一 manifest を通し、共有 stack 用 recipe で回収しない。
+    - `just emu-up-full` — All data services. `emu-start`/`emu-start-full` run clean+prebuild+up+wait
+    - **Teardown enables all profiles**: `emu-stop`/`emu-clean` internally run
+      `COMPOSE_PROFILES=full,cli PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false down --remove-orphans`.
+      Compose profiles also gate `down`, so running without profiles stops only lite and leaves profiled heavy services running.
+- **telemetry** (`telemetry/compose.yaml`): A single upstream `grafana/otel-lgtm` container (ADR 0072; holds no custom config or dashboards). `just tel-up` (OTLP :4317/:4318, Grafana :3000) / `tel-down`.
+  Shares `shared-otel-net` with emulator; the in-network destination is `lgtm:4317`.
+- **portless**: There is no just recipe. Use `portless` directly, and register aliases from the `portless alias <name> <port> --force` list in `docs/portless-urls.md` to expose HTTP UIs at `https://<name>.localhost`.
+  **HTTP(S) UIs only** — wire protocols such as Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) are unsupported and stay on `localhost:PORT`. Update that list if you change ports or the service order in `just emu-api`.
+- **emu-api** (`just emu-api`): Runs vercel-labs/emulate via host bunx (4100-4108). `emu-api-stop`.
+- The operator manages starting the Podman machine and service.
+  Do not assume automatic recovery after host or VM boot based solely on `restart: unless-stopped`.
+  Run isolated verification through the same manifest in `tests.utils.isolation`, and do not clean it up with shared-stack recipes.
 
-## このリポ特有の罠 (memory 参照)
+## Repo-specific pitfalls (see memory)
 
-- **`~/.config/mise/config.toml` が main tree への symlink** になっている機体がある
-  (この operator の Mac はそう)。つまり **main tree を別 commit へ
-  checkout すると、そのマシンの live な tool set と `[env]` が丸ごと入れ替わる**。
-  古い commit へ detach すると、その commit に無い rtk と headroom が machine-wide で
-  無効化され (`mise ls --current` から消え、`mise x -- rtk` が `~/.local/bin` の古い版へ
-  落ち、`shims/headroom` が "No version is set for shim" でエラー、telemetry の env も消える)、
-  誰も警告しない。
-  **`/Users/nino/dotfiles` は常に main に置き、ブランチ作業は worktree だけで行う。**
-  `scripts/deploy.sh` の `cp -f` は symlink を貫通して**同じファイルを自分自身へ上書き**
-  するので `just deploy` では直らない — 直し方は checkout を main へ戻すこと。
-  `just doctor` の `mise-config` が live と `origin/main` の差分を検出する。
-- **`.git/info/exclude` の `skills/` glob** が `plugins/*/skills/**` の新規 SKILL.md を
-  silent drop する → `git add -f` 必須 (memory `project_dotfiles_skills_exclude`)。
-- **prek の stash/rollback** は staged を取りこぼすことがあり、**untracked は stash しない**
-  (新規テストが未 commit の helper を import すると、hook の ty が staged 版と食い違って落ちる)
-  → commit 後に `git show --name-only` で収録を検証し、別 commit に入れる新規ファイルは
-  hook の間だけ退避する (memory `feedback_prek_stash_partial_commit`)。
-- **statusline-command.sh が `.git/index.lock` レース** を起こす → `Unable to create
-  .git/index.lock` が出たら active な git 書込みプロセス不在を確認して stale lock を
-  除去 (memory `feedback_statusline`)。
-- **commit.gpgsign=true** — 全 commit が GPG 署名される。履歴書き換え時は
-  `git commit-tree -S` で再署名、force push は ruleset 一時トグル
-  (memory `feedback_git_history_rewrite_gpg`)。
-- **Node は bun 一本。agent は npm/yarn/pnpm を一切叩けない** (guard が常時 block、
-  `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
-  per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
-  のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
-  abort、global CLI は mise npm: のみ)。ただし native Windows は pnpm を使わず、corepack も
-  用意しない (**ADR 0070**)。`corepack enable`/`prepare`/`use` は素通り。
-- **mise の npm backend は `bun` 必須 (ADR 0036)、bun backend は `npm_args` を読まない
-  (ADR 0040)**。`auto` (aube) だと claude-code が 500 バイトの stub のまま「成功」する。
-- **native Windows** では bare `bash` が System32 の WSL に落ち、shebang レシピは Git Bash から
-  叩く必要がある。justfile の shell 設定、`scripts/*.sh`、mise 設定、Windows で動く Python を
-  触る前に `docs/runbook/windows-host.md` を読む (shell 選択、cygpath、`%APPDATA%\uv`、
-  npm backend の stub、runner の Machine PATH、cp932)。
-- **self-hosted runner のディスク GC (ADR 0035 / 0067)**: WSL の vhdx がコンテナと開発キャッシュで
-  膨らみ、C: が尽きると WSL 自体が起動しなくなる。`just runner-gc-install` が GC を仕掛け、
-  `just status` が状態と hook の受理を出す。`scripts/runner_gc*` や `just runner-gc*` /
-  `disk-gc` / `wsl-compact` を触る前に `docs/runbook/runner-disk-gc.md` を読む。
-- devcontainer features は Microsoft 公式のみ (community 不可、memory
-  `feedback_no_community_devcontainer_features`)。
+- **`~/.config/mise/config.toml` is a symlink to the main tree** on some machines (including this operator's Mac). **Checking out another commit in the main tree replaces the live tool set and `[env]` across the entire machine.**
+  Detaching to an older commit disables rtk and headroom machine-wide if they were not in that commit (they disappear from `mise ls --current`, `mise x -- rtk` falls back to an old binary in `~/.local/bin`, `shims/headroom` fails with "No version is set for shim", and telemetry env vars disappear) without warning.
+  **Keep `/Users/nino/dotfiles` on main at all times, and do branch work only in worktrees.**
+  `cp -f` in `scripts/deploy.sh` follows the symlink and **overwrites the file onto itself**, so `just deploy` does not fix it — fix it by checking main back out.
+  `mise-config` in `just doctor` detects drift between the live config and `origin/main`.
+- **The `skills/` glob in `.git/info/exclude`** silently drops new SKILL.md files under `plugins/*/skills/**` → `git add -f` is required (memory `project_dotfiles_skills_exclude`).
+- **prek stash/rollback** can drop staged changes and **does not stash untracked files** (if a new test imports an uncommitted helper, ty in the hook fails against the mismatched staged state) → verify included files after commit with `git show --name-only`, and move new files meant for a separate commit out of the way while the hook runs (memory `feedback_prek_stash_partial_commit`).
+- **statusline-command.sh causes `.git/index.lock` races** → when `Unable to create .git/index.lock` appears, confirm no active git write process is running and remove the stale lock (memory `feedback_statusline`).
+- **commit.gpgsign=true** — All commits are GPG-signed. Re-sign with `git commit-tree -S` when rewriting history, and temporarily toggle the ruleset for force pushes (memory `feedback_git_history_rewrite_gpg`).
+- **Node uses only bun. Agents cannot run npm/yarn/pnpm at all** (the guard blocks them at all times, including `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm`; **ADR 0027** partially supersedes the per-repo pnpm carve-out in ADR 0017). Machine provisioning of corepack itself remains as in **ADR 0017** (node-bundled shim + `PNPM_HOME` as store anchor only; `pnpm add -g` still aborts; global CLIs use mise npm: only). However, native Windows does not use pnpm and does not set up corepack (**ADR 0070**). `corepack enable`/`prepare`/`use` pass through.
+- **The mise npm backend must be `bun` (ADR 0036), and the bun backend does not read `npm_args` (ADR 0040)**. With `auto` (aube), claude-code "succeeds" as a 500-byte stub.
+- On **native Windows**, bare `bash` resolves to WSL in System32, so shebang recipes must run from Git Bash. Read `docs/runbook/windows-host.md` before touching justfile shell settings, `scripts/*.sh`, mise config, or Python that runs on Windows (covers shell selection, cygpath, `%APPDATA%\uv`, npm backend stubs, runner Machine PATH, and cp932).
+- **Self-hosted runner disk GC (ADR 0035 / 0067)**: The WSL vhdx grows with container and build caches, and WSL itself fails to start once C: runs out of space. `just runner-gc-install` installs GC, and `just status` reports status and hook acceptance. Read `docs/runbook/runner-disk-gc.md` before touching `scripts/runner_gc*` or `just runner-gc*` / `disk-gc` / `wsl-compact`.
+- Use only official Microsoft devcontainer features (no community features; memory `feedback_no_community_devcontainer_features`).
 
 ## docs / handover / intent
 
-- `docs/handover.md` / `docs/intent.md` は **gitignored** (ローカルのみ、追跡しない)。
-  dated backup は `docs/handover-*.md` / `docs/intent-*.md` glob で ignore。
-- `docs/adr/` は ADR (Accepted 後 immutable)。`docs/` の他は現状のみ記述 (履歴は ADR / git)。
+- `docs/handover.md` / `docs/intent.md` are **gitignored** (local only, untracked).
+  Dated backups are ignored via the `docs/handover-*.md` / `docs/intent-*.md` globs.
+- `docs/adr/` holds ADRs (immutable once Accepted). Other files under `docs/` describe only the current state (history lives in ADRs / git).
 
 ## Git / PR
 
-- default branch = `main`。feature / fix / chore / docs は branch → PR → **squash merge** to `main`。
-- **draft PR では CI が回らない** (全 workflow の job に `if: … pull_request.draft == false`、
-  `ready_for_review` で起動)。作業中は `gh pr create --draft`、検証したくなったら `gh pr ready`。
-  hironow/skills の `ci.yaml` も同じ扱い。
-- Conventional Commits (type が structural/behavioral を encode)。詳細は `ROOT_AGENTS.md`。
-- YAML は `.yaml` (not `.yml`)、Compose ファイルは `compose.yaml`。
+- default branch = `main`. feature / fix / chore / docs go through branch → PR → **squash merge** to `main`.
+- **CI does not run on draft PRs** (all workflow jobs have `if: … pull_request.draft == false` and trigger on `ready_for_review`). Use `gh pr create --draft` while working, and `gh pr ready` when ready to validate.
+  `ci.yaml` in hironow/skills works the same way.
+- Conventional Commits (type encodes structural/behavioral). See `ROOT_AGENTS.md` for details.
+- YAML files use `.yaml` (not `.yml`); Compose files are named `compose.yaml`.

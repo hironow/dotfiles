@@ -1,94 +1,97 @@
-# playwright-cli を初期設定（mise の宣言）に入れる
+# Add playwright-cli to initial setup (mise declarations)
 
 **Date:** 2026-10-21
-**Status:** done(→`config/mise/config.toml` の playwright-cli のコメント)。[#484](https://github.com/hironow/dotfiles/pull/484) で merge（main `bfb36079`）。hironow/skills の fallback 行の follow-up も済み（skill は `bunx --package @playwright/cli` を案内する）。所有者の指示（2026-11-02、チャット）で閉じた
+**Status:** done (→ playwright-cli comments in `config/mise/config.toml`). Merged in [#484](https://github.com/hironow/dotfiles/pull/484) (main `bfb36079`). Follow-up for the fallback line in hironow/skills is also done (skill now instructs `bunx --package @playwright/cli`). Closed by owner instruction (2026-11-02, chat)
 **Branch:** `feat/playwright-cli-mise`
-**Related:** ADR 0006（mise の pin 戦略）/ ADR 0023（activate-only）/ ADR 0017（pnpm global の退役 → global CLI は mise の `npm:` バックエンド）/ ADR 0027・0036・0040（Node は bun、npm backend は bun、bun は `bun_args`）/ hironow/skills の `playwright-cli` skill（`dump/harness/skill-lock.json` で宣言）
-**Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: 版は `latest` / 同梱ブラウザは入れない / 範囲は `config/mise/config.toml` だけ）
-**Graduates to:** 安定後 done。新しい decision は無いので ADR は起こさない（不採用の代替案の理由はこの plan に残す）
+**Related:** ADR 0006 (mise pinning strategy) / ADR 0023 (activate-only) / ADR 0017 (retired pnpm global → global CLIs via mise `npm:` backend) / ADR 0027, 0036, 0040 (Node is bun, npm backend is bun, bun uses `bun_args`) / `playwright-cli` skill in hironow/skills (declared in `dump/harness/skill-lock.json`)
+**Blocking decisions:** none (confirmed with user on 2026-10-21: version is `latest` / do not install bundled browsers / scope is `config/mise/config.toml` only)
+**Graduates to:** `done` once stable. No new decision, so no ADR is created (rejected alternatives and reasons remain in this plan)
 
-## 目的
+## Purpose
 
-hironow/skills の `playwright-cli` skill は `playwright-cli` が PATH にある前提で書かれている（F1）。ところが CLI 本体はどの機体の初期設定にも宣言が無く、skill のフォールバック `bunx --package @playwright/mcp playwright-cli` も成立しない（F2）。`config/mise/config.toml` に 1 行足して、`install.sh` → `mise install`（Mac / Linux / WSL の初期設定）で PATH に載るようにする。変更範囲はこれだけにする（F8 の global gitignore は今回触らない。理由は「対象外」）。
+The `playwright-cli` skill in hironow/skills assumes `playwright-cli` is on PATH (F1).
+However, the CLI itself is not declared in initial setup on any machine, and the skill's fallback `bunx --package @playwright/mcp playwright-cli` also fails (F2).
+Add 1 line to `config/mise/config.toml` so `install.sh` → `mise install` (initial setup on Mac / Linux / WSL) puts it on PATH.
+Keep scope limited to this change (do not touch global gitignore from F8 here; see "Out of scope").
 
-## 確定させた事実（一次情報で確認済み）
+## Confirmed facts (verified against primary sources)
 
-- **F1**: `playwright-cli` はこの Mac に入っていない（`command -v playwright-cli` は空、`mise ls --current` にも無い）。skill だけが `~/.agents/skills/playwright-cli` にあり、`~/.claude/skills` と `~/.codex/skills` へ symlink されている。
-- **F2**: skill のフォールバックは成立しない。npm registry の `@playwright/mcp` の `bin` は `playwright-mcp` だけで、直近 14 版すべて同じ（`playwright-cli` という bin を持つ版は無い）。`playwright-cli` を提供するのは `@playwright/cli`（`bin: {playwright-cli: ...}`）。
-- **F3**: 専用の `MISE_DATA_DIR` で `"npm:@playwright/cli" = "0.1.22"` を `mise install` すると、その下の `installs/npm-playwright-cli/0.1.22/bin/playwright-cli` に入り、`mise which playwright-cli` もそこを返す（`--version` は `0.1.22`）。**ただし `MISE_DATA_DIR`（とスクラッチ `HOME`）を分けても宣言集合は隔離されない**: この機体では mise が利用者の global config も読むため、`mise install` は 36 道具（4.1GB）を入れた（2026-10-21 実測）。隔離できると言えるのは道具の配置先だけ。
-- **F4**: ブラウザの実体は落ちない。`PLAYWRIGHT_BROWSERS_PATH` を空の専用 dir にして `latest`（→ 0.1.22）を入れ、インストール後も `open --browser=chrome` → `close` の後も、その専用 dir は空（0 件）だった。既存の `~/Library/Caches/ms-playwright/chromium-*` も増えていない（2026-10-21 実測）。ただし CLI は既定の `~/Library/Caches/ms-playwright/` に小さなメタデータ（`b/browser@<hash>` 1.1KB × n と `cli-update-check.json`）は書く。
-- **F5**: この Mac の Chrome で実走できた。`playwright-cli open --browser=chrome https://example.com` が headless で開き、`close` も通った（同梱ブラウザ無しで動く）。出力は実行ディレクトリの `.playwright-cli/` に落ちた。
-- **F6**: `@playwright/cli` の `latest` は `0.1.22`（2026-09-28 公開）。`next` は `0.1.18-alpha-...`。`0.1.22` の依存は `playwright` / `playwright-core` の `1.64.0-alpha-...`（パッケージ側が固定する）。
-- **F7**: mise は `config/mise/config.toml` を project config として読まない（`/tmp` に `config/mise/config.toml` を置いた dir で `mise config ls` → 解決は `~/.config/mise/config.toml` だけ）。devcontainer の `post-create.sh` が読むのは baked の `/etc/mise/config.toml`。よってこの追加はイメージとサンドボックスの道具一覧に現れない。
-- **F8**: `playwright-cli` は既定で cwd に `.playwright-cli/` を作る（F5 の実測）。`dump/gitignore-global`（`just deploy` が `~/.config/git/ignore` に置く）には `.cursor/`・`.cline/`・`.copilot/`・`.indexing/` はあるが、`.playwright-cli/` は無い。
-- **F9**: Homebrew にも `playwright-cli` 0.1.22 がある。依存は brew の `node`（mise の node とは別に、brew が node を引く）。
-- **F10**: `just bump-tool` は ruff / ty 専用（`scripts/bump_tool.py` の `TOOLS`）。`npm:` の道具（portless / quint / cf など）は同じく手で行を動かす。
-- **F11**: `latest` の解決結果は **0.1.22**（`mise install` の行 `mise ✓ npm:@playwright/cli@0.1.22` と `installs/npm-playwright-cli/` の dir 名）。`--version` は `0.1.22`、`open --browser=chrome https://example.com` は `Page Title: Example Domain` を返し、`close` も成功した。実走は repo の外（`/tmp/pwiso`）で行っており、repo に `.playwright-cli/` は作っていない。
+- **F1**: `playwright-cli` is not installed on this Mac (`command -v playwright-cli` is empty; absent from `mise ls --current`). Only the skill exists at `~/.agents/skills/playwright-cli`, symlinked to `~/.claude/skills` and `~/.codex/skills`.
+- **F2**: The skill's fallback does not work. `@playwright/mcp` on the npm registry exposes only `bin: playwright-mcp` across all 14 recent releases (no version ships a `playwright-cli` bin). `@playwright/cli` (`bin: {playwright-cli: ...}`) provides `playwright-cli`.
+- **F3**: Running `mise install` for `"npm:@playwright/cli" = "0.1.22"` with a dedicated `MISE_DATA_DIR` installs to `installs/npm-playwright-cli/0.1.22/bin/playwright-cli`, and `mise which playwright-cli` returns that path (`--version` is `0.1.22`). **However, separating `MISE_DATA_DIR` (and scratch `HOME`) does not isolate the declared tool set**: on this machine mise also reads the user's global config, so `mise install` installed 36 tools (4.1 GB) (measured 2026-10-21). Only the installation destination is isolated.
+- **F4**: No browser binary is downloaded. After installing `latest` (→ 0.1.22) with `PLAYWRIGHT_BROWSERS_PATH` set to an empty dedicated dir, and after `open --browser=chrome` → `close`, that dedicated dir remained empty (0 entries), and existing `~/Library/Caches/ms-playwright/chromium-*` did not grow (measured 2026-10-21). However, the CLI does write small metadata (`b/browser@<hash>` 1.1 KB × n and `cli-update-check.json`) to default `~/Library/Caches/ms-playwright/`.
+- **F5**: Verified live with Chrome on this Mac: `playwright-cli open --browser=chrome https://example.com` opened headless and `close` succeeded (works without bundled browsers). Output went to `.playwright-cli/` in the working directory.
+- **F6**: `@playwright/cli` `latest` is `0.1.22` (published 2026-09-28); `next` is `0.1.18-alpha-...`. `0.1.22` depends on `playwright` / `playwright-core` `1.64.0-alpha-...` (pinned by the package).
+- **F7**: mise does not read `config/mise/config.toml` as a project config (`mise config ls` in a `/tmp` dir containing `config/mise/config.toml` resolves only `~/.config/mise/config.toml`). The devcontainer's `post-create.sh` reads baked `/etc/mise/config.toml`. Therefore, this addition does not appear in image or sandbox tool lists.
+- **F8**: `playwright-cli` creates `.playwright-cli/` in cwd by default (measured in F5). `dump/gitignore-global` (`just deploy` places it at `~/.config/git/ignore`) lists `.cursor/`, `.cline/`, `.copilot/`, and `.indexing/`, but not `.playwright-cli/`.
+- **F9**: Homebrew also has `playwright-cli` 0.1.22, depending on brew's `node` (pulling in brew's node separately from mise's node).
+- **F10**: `just bump-tool` is dedicated to ruff / ty (`TOOLS` in `scripts/bump_tool.py`). `npm:` tools (portless / quint / cf, etc.) are updated manually line-by-line.
+- **F11**: `latest` resolved to **0.1.22** (`mise install` printed `mise ✓ npm:@playwright/cli@0.1.22`, dir name under `installs/npm-playwright-cli/`). `--version` printed `0.1.22`, `open --browser=chrome https://example.com` returned `Page Title: Example Domain`, and `close` succeeded. Live run took place outside the repo (`/tmp/pwiso`), creating no `.playwright-cli/` in the repo.
 
-## 変更内容
+## Changes
 
 ### 1. `config/mise/config.toml` — `"npm:@playwright/cli" = "latest"`
 
-"AI agent CLIs" ブロック（`npm:@openai/codex` …）に置く。コメントに次を残す。
+Place in the "AI agent CLIs" block (`npm:@openai/codex`, etc.). Note in comments:
 
-- hironow/skills の `playwright-cli` skill が PATH 前提にする CLI（skill のフォールバックは壊れている）。
-- ゲートではないので、他の agent CLI と同じ `latest`。
-- `npm:` は `[settings.npm] package_manager = "bun"` で解決する（ADR 0036 / 0040）。npm / yarn / pnpm の起動ではないので bun-only（ADR 0027）に触れない。
-- 同梱ブラウザは入れない（`--browser=chrome` か、必要時に `playwright-cli install-browser`）。
-- `playwright-cli install --skills` は走らせない（skill は hironow/skills と `just skills-place` が持つ）。
+- CLI assumed on PATH by hironow/skills' `playwright-cli` skill (skill fallback is broken).
+- Not a gate tool, so `latest` like other agent CLIs.
+- `npm:` resolves via `[settings.npm] package_manager = "bun"` (ADR 0036 / 0040); does not invoke npm / yarn / pnpm, so compatible with bun-only (ADR 0027).
+- Do not install bundled browsers (use `--browser=chrome` or run `playwright-cli install-browser` if needed).
+- Do not run `playwright-cli install --skills` (skills are managed by hironow/skills and `just skills-place`).
 
-### 2. `tests/unit/test_mise_playwright_cli.py`（新規）
+### 2. `tests/unit/test_mise_playwright_cli.py` (new)
 
-宣言の番人。RED を先に取る。検査は決定的（ネットワークを使わない）。
+Guardrail for the declaration. Capture RED first. Deterministic (offline).
 
-- `config/mise/config.toml` の `[tools]` に `npm:@playwright/cli` があること。
-- キーが `playwright`（テストランナー本体）や registry エイリアスでないこと（`npm:playwright` は別物）。
-- 値が `latest` か exact semver であること（空・範囲・`^` 表記を弾く）。
+- `npm:@playwright/cli` exists under `[tools]` in `config/mise/config.toml`.
+- Key is not `playwright` (the test runner itself) or a registry alias (`npm:playwright` is a different package).
+- Value is `latest` or an exact semver (reject empty, ranges, or `^` notation).
 
-### 3. `docs/plan/playwright-cli-in-setup.md`（本ファイル）
+### 3. `docs/plan/playwright-cli-in-setup.md` (this file)
 
-## 検証
+## Verification
 
-- RED: 変更 1 の前にテストを実行し、落ちることを失敗メッセージごと記録する。
-- GREEN: `just ci`（unit を含む）が緑。`[tools]` のキーを全数で列挙するテストは無い（`tests/unit/` の config/mise 読み取りは rtk / headroom / quint / ruff / ty を名指しする）ので、他の gate へは波及しない。
-- 隔離した実機確認（`latest` の解決とブラウザ非同梱を同時に取る。独立レビュー #1 の指摘 2）:
-    - 専用の `MISE_DATA_DIR` とスクラッチ `HOME` に config を置き、**`PLAYWRIGHT_BROWSERS_PATH` も空の専用 dir** にする。cwd は repo の外にする（`.playwright-cli/` を repo に作らせない）。宣言集合は隔離されないので、入った道具の一覧と大きさも記録する（F3）。
-    - `"npm:@playwright/cli" = "latest"` で `mise install` し、**解決された実バージョン**（`installs/npm-playwright-cli/` の dir 名）を記録する（F11）。
-    - インストール直後と、`--version` / `open --browser=chrome` → `close` の後で、`PLAYWRIGHT_BROWSERS_PATH` が空であること。既定の `~/Library/Caches/ms-playwright` にもブラウザ実体が増えていないこと（CLI 自身のメタデータは書かれる。F4）。
-- merge 後の main: `mise -C / install` → `just deploy` → `just doctor`（ok / warn / err の数を記録）→ mise activate 済みのシェルで `playwright-cli --version`。
-- devcontainer の確認: F7 の静的確認に加え、Podman 5 以降と指定した provider、CLI、socket を用意して `just test` を実行する。
-  静的確認だけで実行時の成功を主張しない。
+- RED: run tests before Change 1 and record failures with error messages.
+- GREEN: `just ci` (including unit) green. Because no test enumerates all keys of `[tools]` (reads in `tests/unit/` target rtk / headroom / quint / ruff / ty by name), this does not affect other gates.
+- Isolated physical verification (verifying `latest` resolution and no bundled browsers together; independent review #1 finding 2):
+    - Place config under dedicated `MISE_DATA_DIR` and scratch `HOME`, and set **`PLAYWRIGHT_BROWSERS_PATH` to an empty dedicated dir**. Run outside the repo (preventing `.playwright-cli/` in repo). Because the declared tool set is not isolated, also record the list and size of installed tools (F3).
+    - Run `mise install` with `"npm:@playwright/cli" = "latest"` and record the **resolved actual version** (dir name under `installs/npm-playwright-cli/`) (F11).
+    - Verify `PLAYWRIGHT_BROWSERS_PATH` stays empty both right after install and after `--version` / `open --browser=chrome` → `close`, and that no browser binary was added to default `~/Library/Caches/ms-playwright` (CLI metadata itself is written; F4).
+- Post-merge on main: `mise -C / install` → `just deploy` → `just doctor` (record ok / warn / err counts) → `playwright-cli --version` in a mise-activated shell.
+- Devcontainer verification: in addition to F7 static checks, run `just test` with Podman 5+, the configured provider, CLI, and socket ready.
+  Never claim runtime success from static checks alone.
 
-## 対象外（今回やらない）
+## Out of scope (not doing this time)
 
-- 同梱ブラウザの導入（`install.sh` に `install-browser` を足す）— 利用者判断で却下。Chrome で足りる（F5）。
-- devcontainer image の `/etc/mise` への bake — サンドボックスは `just check` 用で、ブラウザも無い（F7）。
-- `dump/macbook/Brewfile` への `brew "playwright-cli"`（F9）— Mac 専用になり、brew の node を引き、global CLI は mise の `npm:` という方針（ADR 0017、`install.sh` の corepack 節のコメント）に反する。
-- skill 本文のフォールバック行の修正 — hironow/skills 側。PR 本文に follow-up として書く。
-- global gitignore への `.playwright-cli/` の追加（F8）— 全 repo の未追跡ファイル表示に効く独立の設定変更なので、この PR には入れない（独立レビュー #1 の指摘 1。利用者に確認済みの範囲「`config/mise/config.toml` だけ」とも一致）。CLI を使う repo に `.playwright-cli/` が残って邪魔になったら、別の PR として提案する。
-- `scripts/ai_tools_check.py` / doctor への追加検査 — 宣言の存在は変更 2 のテストが押さえる。doctor に足すのは別件。
+- Bundled browser install (adding `install-browser` to `install.sh`) — rejected by user decision; Chrome suffices (F5).
+- Baking into `/etc/mise` in the devcontainer image — sandbox is for `just check` and has no browser (F7).
+- Adding `brew "playwright-cli"` to `dump/macbook/Brewfile` (F9) — Mac-only, pulls brew's node, and conflicts with the policy that global CLIs use mise `npm:` (ADR 0017, corepack section comments in `install.sh`).
+- Fixing the skill's fallback line — handled in hironow/skills; note as a follow-up in the PR body.
+- Adding `.playwright-cli/` to global gitignore (F8) — independent config change affecting untracked-file display across all repos, so exclude from this PR (independent review #1 finding 1; also matches user-confirmed scope "`config/mise/config.toml` only"). Propose in a separate PR if `.playwright-cli/` becomes a nuisance in repos using the CLI.
+- Extra checks in `scripts/ai_tools_check.py` / doctor — Change 2 tests enforce declaration presence; adding to doctor is separate.
 
-## リスク / 未検証
+## Risks / unverified
 
-- Windows native: `install.sh` は Windows で `mise install` を skip し、`bootstrap.ps1` 経由で mise が入る。`npm:` + bun の Windows 経路はこの plan では実機検証していない（他の `npm:` ツールと同じ経路）。
-- `latest` なので CLI のコマンド体系は動きうる。skill は hironow/skills 側で upstream commit（`metadata.upstream: microsoft/playwright-cli@655530f`）に固定されている。実害が出たら pin に切り替える（F10 の手動 bump）。
-- CLI は起動時に `~/Library/Caches/ms-playwright/cli-update-check.json` を書く（F4）。更新確認 / テレメトリの停止は今回扱わない（ADR 0047 の rtk / headroom とは別レイヤ）。
-- F5 の実走は main の作業ツリーで行い、`.playwright-cli/` を作った（削除済み、main は clean）。
+- Native Windows: `install.sh` skips `mise install` on Windows, where `bootstrap.ps1` installs mise. The Windows `npm:` + bun path is not physically verified in this plan (same path as other `npm:` tools).
+- Because of `latest`, CLI command syntax could change. The skill in hironow/skills is pinned to upstream commit `metadata.upstream: microsoft/playwright-cli@655530f`. Switch to a pin if breakage occurs (manual bump per F10).
+- The CLI writes `~/Library/Caches/ms-playwright/cli-update-check.json` on startup (F4). Disabling update checks/telemetry is not handled here (separate layer from rtk/headroom in ADR 0047).
+- The F5 live run ran inside main's working tree and created `.playwright-cli/` (deleted; main is clean).
 
-## レビュー
+## Reviews
 
-### #1（Codex `codex exec`、2026-10-21）— REVISE → 全件採用
+### #1 (Codex `codex exec`, 2026-10-21) — REVISE → all adopted
 
-- **指摘 1（P2、範囲の食い違い）**: `Blocking decisions` の「範囲は `config/mise/config.toml` だけ」に対し、global gitignore の変更と対応テストを同じ PR に入れていた。独立した設定変更なので分けるべき。
-  → **採用**。gitignore の変更とテストを外し、「対象外」に follow-up として移した。全 repo の未追跡表示に効く変更を、CLI 宣言の検証と同じ commit に混ぜないのは妥当。
-- **指摘 2（P2、ブラウザ非同梱の検証欠落）**: `MISE_DATA_DIR` を分けてもブラウザキャッシュは隔離されず、固定版 0.1.22 の F4 だけでは `latest` の解決結果に一般化できない。
-  → **採用**。`PLAYWRIGHT_BROWSERS_PATH` を空の専用 dir にし、インストール後と Chrome 実走後の両方でブラウザ実体が無いことを確かめる手順を「検証」に足し、実行した（F4、F11: `latest` → 0.1.22、専用 dir は前後とも 0 件、Chrome 実走成功）。この過程で、以前の「隔離した」という書き方が誤りだったことも分かった（`MISE_DATA_DIR` を分けても宣言集合は隔離されない。F3 に実測を書き直した）。
+- **Finding 1 (P2, scope mismatch)**: despite `Blocking decisions` stating "scope is `config/mise/config.toml` only", global gitignore changes and tests were included in the same PR. Separate independent config changes.
+  → **Adopted**. Removed gitignore changes and tests, moving them to "Out of scope" as a follow-up. Separating changes affecting untracked display across all repos from CLI declaration checks is right.
+- **Finding 2 (P2, missing verification of no bundled browsers)**: separating `MISE_DATA_DIR` does not isolate browser caches, and F4 on pinned 0.1.22 alone does not generalize to `latest` resolution.
+  → **Adopted**. Added steps under "Verification" setting `PLAYWRIGHT_BROWSERS_PATH` to an empty dedicated dir and confirming no browser binaries exist both after install and after Chrome execution, then ran it (F4, F11: `latest` → 0.1.22, dedicated dir 0 entries before/after, Chrome run succeeded). This also revealed our earlier phrasing "isolated" was inaccurate (`MISE_DATA_DIR` separation does not isolate the declared tool set; updated F3 with measured facts).
 
-### #2（Codex `codex exec resume --last`、2026-10-21）— APPROVE
+### #2 (Codex `codex exec resume --last`, 2026-10-21) — APPROVE
 
-- 指摘 1・2 の解消を確認。「追加で修正必須の指摘はありません」。実測はこちらの報告として受理（再実行はしていない）。新しい宣言は既存の経路（global mise config を置いて `mise -C / install`）に乗り、`just ci` が unit test と `just check` を含むので、この規模で追加の仕組みは要らない、と判断。
+- Confirmed resolution of findings 1 and 2 ("No further required fixes"). Accepted our measurements as reported (did not re-run). Judged that because the new declaration rides existing paths (global mise config + `mise -C / install`) and `just ci` covers unit tests and `just check`, no extra mechanism is needed at this scale.
 
-### 実装後の gate
+### Post-implementation gates
 
-- `just ci`（worktree `feat/playwright-cli-mise`）: exit 0（fast gate passed。markdownlint 0 issues、semgrep 0 findings、forbidden-token branch/tree clean を含む）。
-- RED → GREEN: `tests/unit/test_mise_playwright_cli.py` は宣言前に 2 failed / 1 passed、宣言後に 3 passed。
+- `just ci` (worktree `feat/playwright-cli-mise`): exit 0 (fast gate passed; includes markdownlint 0 issues, semgrep 0 findings, forbidden-token branch/tree clean).
+- RED → GREEN: `tests/unit/test_mise_playwright_cli.py` ran 2 failed / 1 passed before the declaration, then 3 passed after.

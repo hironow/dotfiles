@@ -1,14 +1,14 @@
 # Brotli doctor
 
-`just brotli-doctor` は、導入済みCLIのバイナリからBrotliに関する証拠を集める。
-CVEの影響判定や「Brotliが含まれない」という保証は行わない。
-証明書の診断は [ca-doctor](ca-doctor.md) を使う。
+`just brotli-doctor` collects Brotli-related evidence from installed CLI binaries.
+It does not assess CVE impact or guarantee that a binary "contains no Brotli".
+For certificate diagnostics, use [ca-doctor](ca-doctor.md).
 
-## 実行方法
+## How to run
 
-ビルドには導入済みのGo 1.27以降が必要。
-診断中にコンパイラやパッケージをインストールしない。
-コードを更新したら再ビルドする。
+Building requires an installed Go 1.27 or newer compiler.
+It never installs compilers or packages during diagnostics.
+Rebuild after updating the code.
 
 ```bash
 just brotli-doctor-build
@@ -16,21 +16,21 @@ just brotli-doctor
 just brotli-doctor --json
 ```
 
-既定の走査範囲は次のとおり。
+The default scan covers:
 
-- `mise ls --installed --json` が返す全導入版の配置先を再帰走査する。非アクティブ版も含む。
-- PATHの各ディレクトリは直下だけを調べる。symlinkで別ディレクトリへ再帰しない。
-- Unixでは実行ビットのある通常ファイル、Windowsでは `.exe` または `.com` の通常ファイルを候補にする。
-- 候補のうちELF、Mach-O、PEを解析する。スクリプトやラッパーは実行せず、非ネイティブとして数える。
+- Recursively scans every installation directory returned by `mise ls --installed --json`, including inactive versions.
+- Inspects only direct entries in each PATH directory without recursing through symlinks into other directories.
+- Selects regular files with an execute bit on Unix, or `.exe`/`.com` regular files on Windows.
+- Parses ELF, Mach-O, and PE candidates; scripts and wrappers are not executed and are counted as non-native.
 
-mise配下から外へ出るsymlinkは除外して未完了を報告する。
-PATH直下のファイルsymlinkは実体を調べ、同じ実体を重複解析しない。
-ホーム全体、その祖先、ファイルシステムのルートをmiseの再帰走査先として受け付けない。
-空または相対パスのPATH要素も除外して報告する。
-mise自体はPATHから起動するため、PATHとmiseは信頼できるものを使う。
+Symlinks pointing outside mise directories are skipped and reported as incomplete.
+File symlinks directly in PATH resolve to their targets, and duplicate targets are scanned once.
+Home root, its ancestors, and filesystem roots are rejected as recursive mise scan targets.
+Empty or relative PATH entries are also skipped and reported.
+Because mise itself runs from PATH, use a trusted PATH and mise.
 
-対象を狭める場合は次のように実行する。
-ファイル指定時はmiseもPATHも走査しない。
+To narrow the scope, run as follows.
+When explicit files are passed, neither mise nor PATH is scanned.
 
 ```bash
 just brotli-doctor --mise=false
@@ -39,98 +39,98 @@ just brotli-doctor '/path/with spaces/tool'
 just brotli-doctor --json ./output/brotli-doctor/brotli-doctor
 ```
 
-`--max-bytes` は1ファイルの解析上限で、既定値と最大値は512MiB。
-上限超過、読み取り失敗、解析失敗、走査打ち切りは未完了になる。
-走査項目は最大200,000件、miseの出力は最大8MiB。
-`--timeout=2m` は走査と文字列読み取りの協調的な期限であり、ファイルI/Oを強制中断する保証ではない。
-変更され続けるディレクトリの一貫したスナップショットや、敵対的な同時ファイル差し替えに対する隔離は提供しない。
+`--max-bytes` caps per-file analysis size, defaulting to and capped at 512MiB.
+Exceeding the cap, read errors, parse errors, and truncated scans result in incomplete status.
+Scans are capped at 200,000 items and 8MiB of mise output.
+`--timeout=2m` is a cooperative deadline for scanning and string reads, not a hard interrupt on file I/O.
+It does not provide a consistent snapshot of actively changing directories or isolation against adversarial concurrent file swaps.
 
-## 出力の読み方
+## Reading the output
 
-| 表示 | 意味 |
+| Output | Meaning |
 | --- | --- |
-| `dynamic-import` | 直接のimportにBrotli名のライブラリがある。実際に解決されるパスと導入版を確認する |
-| `c-defined-symbol` | 定義済みC API名がある。Cコード内包の手掛かりだが、静的リンクや実際の呼び出しの確定ではない |
-| `c-undefined-symbol` | 未定義C API名がある。供給元は別途確認する |
-| `go-build` | Goのビルド版。これ単独ではBrotliの証拠にならない |
-| `go-module` | Brotli名のGoモジュールの記録。置換先があれば併記する |
-| `c-api-string` / `rust-path-string` | 文字列の手掛かり。リンク方式、Rustクレート版、使用実態は確定できない |
-| `UNKNOWN` | 当該アーキテクチャでBrotliの証拠を取得できなかった。未使用という意味ではない |
-| `HINT` | 文字列の手掛かりだけがある |
-| `EVIDENCE` | import、シンボル、モジュールの証拠がある。脆弱という意味ではない |
-| `INCOMPLETE` | 走査または解析の一部が完了していない。JSONでは `incomplete: true` |
+| `dynamic-import` | Direct import of a Brotli-named library; check the resolved path and installed version |
+| `c-defined-symbol` | Defined C API symbol; clues to embedded C code, not proof of static linking or actual calls |
+| `c-undefined-symbol` | Undefined C API symbol; check the provider separately |
+| `go-build` | Go build version; alone, not evidence of Brotli |
+| `go-module` | Recorded Brotli-named Go module; prints any replacement alongside |
+| `c-api-string` / `rust-path-string` | String clues; cannot determine link type, Rust crate version, or actual use |
+| `UNKNOWN` | No Brotli evidence found for that architecture; does not mean unused |
+| `HINT` | String clues only |
+| `EVIDENCE` | Import, symbol, or module evidence found; does not mean vulnerable |
+| `INCOMPLETE` | Part of the scan or analysis did not finish (`incomplete: true` in JSON) |
 
-Pure Goに対応するモジュール名やPure Rustらしい文字列があっても、同じバイナリにC実装が共存しうる。
-動的リンクが見つかっても、別途静的リンクされたコピーの不在は保証できない。
-fat Mach-Oは各スライスを別々に扱い、対応できない形式や壊れたスライスは未完了として報告する。
+Even when Pure Go module names or Pure Rust-like strings appear, a C implementation can coexist in the same binary.
+Finding dynamic linking does not rule out a separate statically linked copy.
+Fat Mach-O binaries inspect each slice separately; unsupported formats or corrupt slices report incomplete.
 
-終了コードは0が解析完了、1が未完了、2が引数エラー。
-**0を脆弱性検査の合格条件として使わない。**
-非ネイティブなラッパーしか見つからない場合も、正常に走査できれば0になる。
+Exit codes are 0 for complete analysis, 1 for incomplete, and 2 for argument errors.
+**Never use 0 as a passing vulnerability check.**
+If only non-native wrappers are found, a clean scan still exits 0.
 
-## 影響調査と更新
+## Impact assessment and updates
 
-直接importは、そのライブラリがさらに読み込むライブラリまで追跡しない。
-`dlopen`、PEのdelay-load、stripや最適化で消えた情報、スクリプトの実行先、コンテナ内の別環境も自動追跡しない。
-Goのビルド情報が読めない場合やRustのクレート版が不明な場合は、ビルド記録、lockfile、SBOMを照合する。
+Direct imports do not trace transitive libraries loaded by those libraries.
+`dlopen`, PE delay-loads, symbols stripped or optimized away, script targets, and environments inside containers are not traced automatically.
+When Go build info is unreadable or Rust crate versions are unknown, check build logs, lockfiles, and SBOMs.
 
-CVEの対象実装と修正版を一次情報で確認してから更新する。
-動的ライブラリを更新した場合、既に起動しているプロセスは再起動が必要になる場合がある。
-影響を受けるコードを静的に含むバイナリは、依存更新後の再ビルドと置き換えが必要。
-Pure実装もアルゴリズム由来の問題や独自の脆弱性を持ちうるため、C実装とは分けて調べる。
-このコマンドは更新、再ビルド、再起動、ネットワーク経由のCVE照会を行わない。
+Confirm the affected implementation and fixed version in primary sources before updating.
+After updating dynamic libraries, already-running processes may need a restart.
+Binaries that statically embed affected code require a rebuild against updated dependencies and replacement.
+Pure implementations can also have algorithmic issues or their own vulnerabilities, so check them separately from C implementations.
+This command never updates, rebuilds, restarts, or queries CVEs over the network.
 
-## Bunの内包BrotliとCVE-2026-111497
+## Bun's embedded Brotli and CVE-2026-111497
 
-2026-10-24に確認した公式情報では、Bun 1.4.4はこの修正を取り込んだリリースである。
-根拠は次のとおり。
+Per official sources checked on 2026-10-24, Bun 1.4.4 includes this fix.
+The evidence is as follows:
 
-- [提案PR #46351](https://github.com/oven-sh/bun/pull/46351) は、C版Brotliへの修正に加えてRustのFFI enumに `ERROR_FORMAT_BLOCK_SWITCH = -17` を追加し、Rust側のエラー変換も変更する。このPR自体は確認時点で未マージ。
-- 実際の取り込みは [マージ済みPR #46392](https://github.com/oven-sh/bun/pull/46392)（`2a5cbbcb084770dec7d7e2f21cdfd4f7f49b1ee3`）によるBrotli 1.2.1への更新。このコミットをbase、Bun 1.4.4の解決済みコミット `38afee6c84fcf48c0edb2466aa4b27d287a59c30` をheadとする [比較](https://github.com/oven-sh/bun/compare/2a5cbbcb084770dec7d7e2f21cdfd4f7f49b1ee3...38afee6c84fcf48c0edb2466aa4b27d287a59c30) は `behind_by: 0` で、取り込みを確認できる。
-- [Bun 1.4.4のビルド定義](https://github.com/oven-sh/bun/blob/38afee6c84fcf48c0edb2466aa4b27d287a59c30/scripts/build/deps/brotli.ts) はBrotli 1.2.1の `db24a98aed38a16de78cc05ca15cdd8dc2a0d92d` を指定し、Cソースをアーカイブへビルドする。[Rust側のFFI定義](https://github.com/oven-sh/bun/blob/38afee6c84fcf48c0edb2466aa4b27d287a59c30/src/brotli_sys/brotli_c.rs) にも新しいエラー値がある。
-- [Brotli 1.2.1の公式リリース](https://github.com/google/brotli/releases/tag/v1.2.1) は、このCVEの境界外書き込みをセキュリティ修正として記載する。[1.2.0からの差分](https://github.com/google/brotli/compare/v1.2.0...v1.2.1) に修正コミット `b418fa81c48262a86a95332b0bc6d62c30aa78b6` が含まれる。
+- [Proposed PR #46351](https://github.com/oven-sh/bun/pull/46351) adds `ERROR_FORMAT_BLOCK_SWITCH = -17` to the Rust FFI enum and updates Rust error mapping in addition to fixing C Brotli. That PR itself was unmerged when checked.
+- The actual merge came via [merged PR #46392](https://github.com/oven-sh/bun/pull/46392) (`2a5cbbcb084770dec7d7e2f21cdfd4f7f49b1ee3`), updating to Brotli 1.2.1. A [compare](https://github.com/oven-sh/bun/compare/2a5cbbcb084770dec7d7e2f21cdfd4f7f49b1ee3...38afee6c84fcf48c0edb2466aa4b27d287a59c30) from that commit as base to Bun 1.4.4's resolved commit `38afee6c84fcf48c0edb2466aa4b27d287a59c30` as head shows `behind_by: 0`, confirming inclusion.
+- [Bun 1.4.4's build definition](https://github.com/oven-sh/bun/blob/38afee6c84fcf48c0edb2466aa4b27d287a59c30/scripts/build/deps/brotli.ts) pins Brotli 1.2.1 (`db24a98aed38a16de78cc05ca15cdd8dc2a0d92d`) and compiles the C source into an archive. The [Rust FFI definition](https://github.com/oven-sh/bun/blob/38afee6c84fcf48c0edb2466aa4b27d287a59c30/src/brotli_sys/brotli_c.rs) also includes the new error value.
+- The [official Brotli 1.2.1 release](https://github.com/google/brotli/releases/tag/v1.2.1) notes the out-of-bounds write fix for this CVE, and the [diff from 1.2.0](https://github.com/google/brotli/compare/v1.2.0...v1.2.1) includes fix commit `b418fa81c48262a86a95332b0bc6d62c30aa78b6`.
 
-したがって「Rustには関係ない」という説明は不正確。
-脆弱性の修正対象は内包されたCデコーダだが、Rust側も新しいFFIエラー値に対応する必要がある。
+Therefore, saying "Rust is unaffected" is inaccurate.
+The vulnerable code is the embedded C decoder, but the Rust side also needed to handle the new FFI error value.
 
-`bun build --compile` の生成物はランタイムを内包するため、ビルドホストのBun更新だけでは既存の生成物は変わらない。
-修正を取り込んだランタイムで生成物を再ビルドし、配布先のバイナリを置き換える。
-コンテナは、確認した修正版のタグとdigestをDockerfileへ反映して再ビルドし、通常のデプロイ手順で置き換える。
-`latest` というタグや、ホストのBunの版だけを修正取り込みの証拠にしない。
+Because `bun build --compile` embeds the runtime in its output, updating Bun on the build host does not update existing artifacts.
+Rebuild artifacts with a fixed runtime and replace distributed binaries.
+For containers, update Dockerfiles to the verified fixed tag and digest, rebuild, and redeploy normally.
+Never treat a `latest` tag or the host Bun version alone as proof of a fix.
 
-診断は `Bun v...` または `bun-v...` の版文字列を候補として検出する。
-出力の `runtime_reviews` は候補ごとに1.4.4との比較を示すが、`binary_identity` と `patch_status` は常に `unverified` のまま。
-`below-reviewed-release-threshold` は候補が修正取り込み版より古いこと、`at-or-above-reviewed-release-threshold` は候補の数値がその版以上であることだけを示す。
-実際のバイナリ内容や将来版の修正保持を保証しない。
-バックポートされた旧版も、文字列だけで影響ありとは断定しない。
+The diagnostic detects `Bun v...` or `bun-v...` version strings as candidates.
+`runtime_reviews` in the output compares each candidate against 1.4.4, while `binary_identity` and `patch_status` always remain `unverified`.
+`below-reviewed-release-threshold` means only that the candidate is older than the fixed release, and `at-or-above-reviewed-release-threshold` means only that its number is at or above that version.
+It does not guarantee actual binary contents or that future versions retain the fix.
+Backported older versions are not declared affected based on version strings alone.
 
-プレリリース、不正な版、256文字を超える版、読み取り中断中の版は `unverified-version` になる。
-有効なbuild metadataは数値比較から除外し、候補文字列には残す。
-複数の候補を見つけても最大版だけを選ばず、最大16個までそれぞれ表示する。
-候補数の上限超過は未完了として報告する。
-文字列がなければBun不在と判断せず、出所とビルド記録を照合する。
+Prereleases, malformed versions, versions over 256 characters, and versions cut off by truncated reads become `unverified-version`.
+Valid build metadata is excluded from numeric comparison while kept in the candidate string.
+When multiple candidates are found, up to 16 are shown rather than picking only the highest.
+Exceeding the candidate cap is reported as incomplete.
+Absence of a version string does not prove Bun is absent; check provenance and build logs.
 
-信頼できる実行環境では、担当者が次のコマンドで版を確認できる。
-これらは `brotli-doctor` が自動実行するコマンドではない。
+In trusted runtime environments, operators can check versions with these commands.
+These are not run automatically by `brotli-doctor`.
 
 ```bash
 bun --version
-# 実環境の名前に置き換えて実行する
+# Replace placeholders with names from your actual environment before running
 # podman exec <container> bun --version
 # kubectl exec <pod> -c <container> -- bun --version
 ```
 
-実際の攻撃到達性は、`fetch()` のBrotliレスポンス展開、`node:zlib`、`DecompressionStream("brotli")` などの利用状況で別途確認する。
-受信リクエストの `Content-Encoding: br` をプロキシで遮断しても、外部レスポンスの展開は防げない。
-この診断だけから、サービスが脆弱な処理へ到達可能かを断定しない。
+Check actual exploitability separately by inspecting usage of `fetch()` Brotli response decompression, `node:zlib`, `DecompressionStream("brotli")`, and similar APIs.
+Blocking `Content-Encoding: br` on incoming requests at a proxy does not prevent decompressing external responses.
+Never conclude from this diagnostic alone whether a service is reachable by the vulnerable code path.
 
-## 他OSへの配置
+## Distributing to other OSes
 
 ```bash
 just brotli-doctor-build-all
 ```
 
-Linux、macOS、Windowsの各amd64とarm64向けバイナリを `output/brotli-doctor/` に生成する。
-対象OS用のファイルを `brotli-doctor`（Windowsは `brotli-doctor.exe`）という名前で同ディレクトリに置く。
-WindowsのrecipeはGit Bashを経由するが、診断自体はネイティブのGoバイナリが行う。
-既存の `just doctor` からは自動起動しない。
+Generates binaries for Linux, macOS, and Windows (both amd64 and arm64) in `output/brotli-doctor/`.
+Place the target OS binary in that directory named `brotli-doctor` (`brotli-doctor.exe` on Windows).
+On Windows, the recipe runs through Git Bash, while diagnostics run as a native Go binary.
+It is not invoked automatically by `just doctor`.

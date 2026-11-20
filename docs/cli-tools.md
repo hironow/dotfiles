@@ -1,18 +1,18 @@
-# レビュー、検索、データ抽出、プロセス調査のCLI
+# CLIs for review, search, data extraction, and process inspection
 
-Hunk、ripgrep（`rg`）、fd、sd、mq、witr、jq、Mike Farahのyq、fqは、共通のmise設定から導入する。
-版の正本は [`config/mise/config.toml`](../config/mise/config.toml) である。
-通常のsetupでは、Mac、Linux、WSLの `install.sh` と、Windowsの `bootstrap.ps1` から呼ぶ `just deploy` が導入する。
-jqも `aqua:jqlang/jq` の固定版で揃える。
-MacのHomebrew復元対象からjqを外し、miseへ揃える。
-導入済みのHomebrew版を除去する場合は、mise版が通常のシェルから動くことを先に確認する。
-Windowsのmise導入前に使うbootstrap用jqと、既存のaliasは変更しない。
+Install Hunk, ripgrep (`rg`), fd, sd, mq, witr, jq, Mike Farah's yq, and fq from the shared mise configuration.
+[`config/mise/config.toml`](../config/mise/config.toml) is the source of truth for versions.
+Normal setup installs them via `install.sh` on Mac, Linux, and WSL, and via `just deploy` called from `bootstrap.ps1` on Windows.
+jq also uses a pinned version from `aqua:jqlang/jq`.
+Exclude jq from the Mac Homebrew restore list and standardize on mise.
+Before removing an existing Homebrew installation, verify that the mise version works from a normal shell.
+Keep existing aliases and the Windows bootstrap jq used before mise is installed.
 
-## AWS CLI v2の管理
+## Managing AWS CLI v2
 
-AWS CLIは `http:aws` の公式配布物をmiseで管理する。
-固定版は2.39.6で、2026-11-07の調査時点の公式 `v2/version.txt` と配布物を確認した。
-PyPIのAWS CLI v1やHomebrew版への自動フォールバックは行わない。
+Manage the AWS CLI from the official `http:aws` distribution using mise.
+The pinned version is 2.39.6, verified against the official `v2/version.txt` and release artifacts as of 2026-11-07.
+Do not fall back automatically to PyPI AWS CLI v1 or the Homebrew version.
 
 ```shell
 env MISE_GLOBAL_CONFIG_FILE="$PWD/config/mise/config.toml" \
@@ -20,123 +20,123 @@ env MISE_GLOBAL_CONFIG_FILE="$PWD/config/mise/config.toml" \
 just aws-list
 ```
 
-Mac arm64とx64は同じUniversalパッケージ、Linux/WSLのx64とarm64はglibc用ZIPを選ぶ。
-Windowsはこのbackendの対象外とし、既存のstandalone版を使う。
-muslや他のCPU、WindowsのMSIについて、この設定での動作確認はしていない。
-`aws-list` はPOSIXではcheckoutのmise版を明示して、古いPATHのAWSを実行しない。
-Windowsの呼出しは従来どおりである。
-いずれもローカルのprofile一覧であり、リモートの権限確認やログインは行わない。
+Select the same Universal package for Mac arm64 and x64, and the glibc ZIP for Linux/WSL x64 and arm64.
+Windows is outside this backend's scope and keeps using the existing standalone version.
+This configuration has not been tested on musl, other CPUs, or the Windows MSI.
+On POSIX, `aws-list` explicitly uses this checkout's mise version so it does not run an older AWS binary on PATH.
+Windows invocation remains unchanged.
+Both only list local profiles and do not check remote permissions or log in.
 
-配布物ごとのSHA256をmiseが展開前に照合する。
-MacではさらにAppleの信頼検証とDeveloper IDのTeam `94KV3E626L` を確認し、完全なbundled runtimeをmiseの専用ディレクトリへ展開する。
-書込み先は環境変数だけで信用せず、実行中のmiseが認可する導入先と物理パスを比較する。
-パッケージのinstallerやroot権限は使わず、既存の `/usr/local/aws-cli` と `~/.aws` は変更しない。
-mise自体は標準の導入先（`~/.local/bin` など）にあるものを使い、取得したpayload内のプログラムで導入先を調べない。
+mise verifies each artifact's SHA256 before extraction.
+On Mac, it also verifies Apple trust and Developer ID Team `94KV3E626L`, then extracts the complete bundled runtime into mise's dedicated directory.
+Do not trust the target path from environment variables alone; compare the physical path against the install destination authorized by the running mise instance.
+Do not use the package installer or root privileges, and leave existing `/usr/local/aws-cli` and `~/.aws` untouched.
+Use mise itself from a standard location (such as `~/.local/bin`), and do not run any program from the downloaded payload to inspect the install destination.
 
-更新では、版、各URL、全checksum、Mac hook内の版とdigestを一緒に更新する。
-MacのApple署名とLinuxのAWS CLI Team署名（fingerprint `FB5DB77FD5C118B80511ADA8A6310ACC4672475C`）を検証してからhashを採用する。
-実行前に署名済みpayloadと導入先の全パス、型、内容、実行権限、link先を比較する。
-checksum不一致、導入先のすり替え、署名失敗が未完了の導入として拒否され、再試行できることも確認する。
-2.39.6のMac payloadにはsymlinkがないため、hookは新たなlinkを拒否する。
-配布構造が変わった場合は、単に検査を緩めず構造を再確認する。
+Update the version, all URLs and checksums, and the Mac hook's version and digest together.
+Verify the Apple signature on Mac and the AWS CLI Team signature on Linux (fingerprint `FB5DB77FD5C118B80511ADA8A6310ACC4672475C`) before accepting any hash.
+Before execution, compare every path, type, content, executable bit, and symlink target between the signed payload and the installed directory.
+Also verify that checksum mismatches, swapped install destinations, and signature failures are rejected as incomplete installs and can be retried.
+Because the 2.39.6 Mac payload contains no symlinks, the hook rejects any new links.
+If the distribution layout changes, re-verify the layout rather than relaxing the checks.
 
-このMacでは全8,706エントリの一致とARM64起動を確認した。
-Linuxは署名とELFのCPU種別を確認したが、LinuxやIntel Macでの実行を確認したという意味ではない。
-miseをactivateする前から動いているプロセスのPATHは自動では変わらない。
-新しいmise環境か明示したrecipeを使い、旧root所有のAWSは別途許可なく削除しない。
+On this Mac, all 8,706 entries matched and ARM64 startup succeeded.
+For Linux, signatures and ELF CPU types were checked, which does not mean execution on Linux or Intel Mac was tested.
+Processes started before activating mise do not get an updated PATH automatically.
+Use a fresh mise environment or the explicit recipe, and do not delete the old root-owned AWS installation without separate permission.
 
-参照：[AWSの導入手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)、[公式の現在版](https://awscli.amazonaws.com/v2/version.txt)、[mise HTTP backend](https://mise.jdx.dev/dev-tools/backends/http.html)。
+References: [AWS installation guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [official current version](https://awscli.amazonaws.com/v2/version.txt), [mise HTTP backend](https://mise.jdx.dev/dev-tools/backends/http.html).
 
 ## Google Colab CLI
 
-`colab` は、Google Colab のCPU、GPU、TPUのruntimeを端末から使うCLIである（[googlecolab/google-colab-cli](https://github.com/googlecolab/google-colab-cli)）。
-miseの `pypi:google-colab-cli` で入れ、0.8.0に固定する。上げるときは変更履歴を読んでから版を書き換える。
-上流はLinuxとmacOSだけに対応するので、miseはWindowsでは入れない。
-Colab APIの認証は、既定でApplication Default Credentials（`--auth adc`）を使う。`--auth oauth2` と、OAuth clientの設定ファイル（既定は `~/.colab-cli-oauth-config.json`）も選べる（上流のREADME）。
+`colab` is a CLI for using Google Colab CPU, GPU, and TPU runtimes from the terminal ([googlecolab/google-colab-cli](https://github.com/googlecolab/google-colab-cli)).
+Install it via mise as `pypi:google-colab-cli` and pin it to 0.8.0. Read the changelog before bumping the version.
+Because upstream supports only Linux and macOS, mise does not install it on Windows.
+Authentication to the Colab API uses Application Default Credentials (`--auth adc`) by default. You can also use `--auth oauth2` with an OAuth client config file (default `~/.colab-cli-oauth-config.json`, per upstream README).
 
-## 常設CLIと7日の待機
+## Permanent CLIs and the 7-day cooldown
 
-待機の例外は、dotfilesで常設する主CLIと、そのCLI専用の導入環境内の依存パッケージに限定する。
-方針の正本は [`ROOT_AGENTS_docs_agents_dependency-policy.md`](../ROOT_AGENTS_docs_agents_dependency-policy.md) である。
-固定版やLTS、betaの選択は維持し、この変更で既存CLIをまとめて更新しない。
+Cooldown exceptions apply only to permanent primary CLIs managed by dotfiles and dependencies inside each CLI's dedicated install environment.
+[`ROOT_AGENTS_docs_agents_dependency-policy.md`](../ROOT_AGENTS_docs_agents_dependency-policy.md) is the source of truth for this policy.
+Keep pinned versions, LTS, and beta selections as they are, and do not bulk-update existing CLIs with this change.
 
-| 導入対象 | 現在の設定と境界 |
+| Target | Current configuration and boundary |
 | --- | --- |
-| hostのmise管理CLI、just、uv | `minimum_release_age = "0d"`。mise自体のbootstrapにも7日判定を追加しない |
-| 常設npm CLI | 各宣言の `bun_args = "--minimum-release-age=0"`。各CLIの専用環境の依存も対象 |
-| headroom | 専用uv tool環境の `--exclude-newer 0d`。Python 3.13、extras、固定版は維持 |
-| Podman 5+ | 必須の常設CLI。Homebrew／Linux OSパッケージ／Podman専用のwinget経路に7日判定を追加しない |
-| podman-compose | hostと画像で1.6.0に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象 |
-| Google Colab CLI | hostだけで0.8.0に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象。LinuxとmacOSだけ |
-| devcontainer CLI | hostと画像で既存の0.90.0を固定し、CIも同じ正本を使う。専用npm環境の依存も0日 |
-| Homebrew、Scoop、検証付きbootstrap | このrepoの7日判定はない。配布元のcatalog更新時期や固定版とは別の話 |
-| npmとuvの機体設定 | 既存の `min-release-age=7` と `exclude-newer = "7 days"` を維持 |
-| repoのPython依存 | 各projectの7日を維持。ruff/tyの既存例外はそのまま |
-| LSP/MCP、単発uvx/bunx、CI専用、marketplace/plugin | 現状維持。新しい例外は個別判断 |
-| devcontainerの凍結世代 | 既存の版と唯一の生成器を維持。providerとdevcontainer CLIの宣言だけを追加し、一括更新しない |
+| Host mise-managed CLIs, just, uv | `minimum_release_age = "0d"`. Do not add a 7-day check to mise's own bootstrap either |
+| Permanent npm CLIs | `bun_args = "--minimum-release-age=0"` per declaration. Also covers dependencies in each CLI's dedicated environment |
+| headroom | `--exclude-newer 0d` in its dedicated uv tool environment. Keep Python 3.13, extras, and pinned version |
+| Podman 5+ | Required permanent CLI. Do not add a 7-day check to Homebrew, Linux OS packages, or Podman's dedicated winget path |
+| podman-compose | Pinned to 1.6.0 on host and in images. Dedicated uv tool environment uses `--python 3.13 --exclude-newer 0d`, covering dependencies |
+| Google Colab CLI | Pinned to 0.8.0 on host only. Dedicated uv tool environment uses `--python 3.13 --exclude-newer 0d`, covering dependencies. Linux and macOS only |
+| devcontainer CLI | Keep existing pin at 0.90.0 on host and in images; CI uses the same source of truth. Dedicated npm environment dependencies also use 0 days |
+| Homebrew, Scoop, verified bootstrap | No 7-day check in this repo. Separate from upstream catalog update timing or pinned versions |
+| Machine-level npm and uv settings | Keep existing `min-release-age=7` and `exclude-newer = "7 days"` |
+| Repo Python dependencies | Keep 7-day cooldown per project. Keep existing exceptions for ruff/ty |
+| LSP/MCP, one-off uvx/bunx, CI-only tools, marketplace/plugin | No change. Evaluate new exceptions individually |
+| devcontainer frozen generation | Keep existing versions and the single generator. Add only provider and devcontainer CLI declarations without bulk-updating |
 
-npm設定があるだけでBunの待機が働くとは判断しない。
-Bun 1.4.4の隔離したglobal導入試験では、npmrcの7日指定だけでは新しい依存を拒否しなかった。
-明示したBunの7日引数とuvの7日設定では新しい依存を拒否し、CLI専用の0日指定では本体と依存を導入できた。
-本体だけの例外、0日指定の除去、依存の公開日時だけを古くする対照も試験する。
-全体のnpm/uv設定を0日にしたり、repo依存の判断をこのCLI例外で置き換えたりしない。
+Do not assume that having an npm config alone enables Bun's cooldown.
+In an isolated global install test with Bun 1.4.4, a 7-day setting in npmrc alone did not reject newer dependencies.
+Explicit 7-day Bun flags and 7-day uv settings rejected newer dependencies, while CLI-specific 0-day settings installed both the package and its dependencies.
+Also test controls for package-only exceptions, removing the 0-day setting, and backdating only dependency publish timestamps.
+Do not set global npm/uv settings to 0 days, and do not apply this CLI exception to repo dependencies.
 
-## このcheckoutから導入する
+## Installing from this checkout
 
-次のrecipeは、このcheckoutの9つの道具を選択して導入し、それぞれの版を確認する。
-機体のglobalなmise設定は変更しない。
+The following recipe selectively installs the 9 tools from this checkout and checks each version.
+It does not modify the machine's global mise configuration.
 
 ```shell
 just cli-tools-install
 ```
 
-古いシェルのPATHが別のjqを指していても、checkoutのルートから次のように固定版を確認できる。
+Even if an older shell's PATH points to a different jq, you can verify the pinned version from the checkout root:
 
 ```shell
 env MISE_GLOBAL_CONFIG_FILE="$PWD/config/mise/config.toml" \
   mise -C / exec aqua:jqlang/jq -- jq --version
 ```
 
-| 道具 | macOS | Linux / WSL | Windows native |
+| Tool | macOS | Linux / WSL | Windows native |
 | --- | --- | --- | --- |
-| Hunk | arm64、x64 | glibc、arm64、x64 | x64、mise 2026.8.6以降 |
-| rg、fd | arm64、x64 | arm64、x64 | arm64、x64 |
-| sd | arm64、x64 | arm64、x64 | x64のみ |
-| mq | arm64のみ | GNU/glibc版、arm64、x64 | arm64、x64 |
-| witr、fq | arm64、x64 | arm64、x64 | arm64、x64 |
-| jq | arm64、x64 | arm64、x64 | x64（arm64ではx64版を選択） |
-| mikefarah/yq | arm64、x64 | arm64、x64 | このaqua backendではx64のみ |
+| Hunk | arm64, x64 | glibc, arm64, x64 | x64, mise 2026.8.6 or later |
+| rg, fd | arm64, x64 | arm64, x64 | arm64, x64 |
+| sd | arm64, x64 | arm64, x64 | x64 only |
+| mq | arm64 only | GNU/glibc build, arm64, x64 | arm64, x64 |
+| witr, fq | arm64, x64 | arm64, x64 | arm64, x64 |
+| jq | arm64, x64 | arm64, x64 | x64 (uses x64 build on arm64) |
+| mikefarah/yq | arm64, x64 | arm64, x64 | x64 only with this aqua backend |
 
-表は上流の配布物と選択したbackendの対応を示し、すべての環境での実機検証を意味しない。
-9つすべてを導入できる共通範囲は、Mac arm64、glibc Linux/WSLのarm64とx64、Windows native x64である。
-Intel Macでは、共通設定の `mise install` もこのrecipeもmqをスキップし、他の8つを導入する。
-recipeはmqが利用できない旨を表示する。
-Windows arm64ではHunk、sd、yqのbackendが共通範囲に入らず、musl LinuxではHunkとこのmq設定を利用できない。
-ソースビルドへの自動フォールバックは行わない。
+The table shows upstream artifact availability and selected backends, not hardware testing on every platform.
+All 9 tools install cleanly on Mac arm64, glibc Linux/WSL arm64 and x64, and Windows native x64.
+On Intel Mac, both `mise install` with the shared config and this recipe skip mq and install the other 8 tools.
+The recipe prints a message noting that mq is unavailable.
+On Windows arm64, the Hunk, sd, and yq backends are outside this shared set; on musl Linux, Hunk and this mq configuration are unavailable.
+Do not fall back automatically to building from source.
 
-mq以外はmiseのaqua backendで上流の実行ファイルを取得する。
-yqは `aqua:mikefarah/yq`、fqは `aqua:wader/fq` を明示し、Python版yqや同名の別ツールとの混同を避ける。
-mqはGitHub backendで本体のraw binaryだけを選び、`mq`（Windowsでは `mq.exe`）として導入する。
-同じreleaseにある補助CLIやdeb/rpmは選ばない。
-NodeやRustのビルド環境は追加しない。
+Except for mq, fetch upstream binaries via mise's aqua backend.
+Specify `aqua:mikefarah/yq` for yq and `aqua:wader/fq` for fq to avoid confusion with Python yq or other tools of the same name.
+For mq, use the GitHub backend to select only the main raw binary and install it as `mq` (`mq.exe` on Windows).
+Do not select auxiliary CLIs or deb/rpm packages in the same release.
+Do not add a Node or Rust build toolchain.
 
-mqは対応する5環境ごとにSHA256を固定し、miseが実行前に照合する。
-更新時は版と全環境のchecksumをセットで更新し、release APIのdigest、上流の `checksums.txt`、取得した実物のハッシュを照合する。
-同一配布元のchecksumは改変検出の材料であり、発行者のprovenanceを保証するものではない。
-他の道具はaqua registryのchecksum検証を使う。
+mq pins SHA256 checksums for each of the 5 supported targets, and mise verifies them before execution.
+When updating, update the version and all target checksums together, and cross-check the release API digest, upstream `checksums.txt`, and the hash of the downloaded binary.
+Checksums from the same host detect tampering but do not prove publisher provenance.
+The other tools use aqua registry checksum verification.
 
-miseで入れた版の更新はmiseで行う。
-sdのv1.1.0は、上流の版番号が未更新のため `sd --version` が `1.0.0` と表示される（[タグ内の設定](https://github.com/chmln/sd/blob/v1.1.0/Cargo.toml)）。
+Update mise-installed versions using mise.
+In sd v1.1.0, `sd --version` prints `1.0.0` because upstream did not bump the version number ([tag manifest](https://github.com/chmln/sd/blob/v1.1.0/Cargo.toml)).
 
-## エージェントが必要部分を抽出する
+## Extracting only what agents need
 
-JSONは `jq`、YAMLは `yq`、バイナリ構造は `fq`、Markdownは `mq`、プロセスの起動元は `witr` を使い分ける。
-対象を絞って抽出してからモデルへ渡すことで、ファイル全体やプロセス一覧を読む必要を減らす。
-処理時間やトークン削減率は入力と操作に依存するため、一定の改善は保証しない。
+Use `jq` for JSON, `yq` for YAML, `fq` for binary formats, `mq` for Markdown, and `witr` for process ancestry.
+Extracting only the relevant slice before passing data to the model reduces the need to read entire files or full process lists.
+Latency and token savings depend on the input and operation, so fixed gains are not guaranteed.
 
-コマンド例、既定動作、witrの終了コードは [`ROOT_AGENTS_docs_agents_cli-tools.md`](../ROOT_AGENTS_docs_agents_cli-tools.md) にまとめる。
-エージェント向けの正本は `ROOT_AGENTS.md` とこのspokeであり、配布先を直接編集しない。
-配布は [`docs/agent-sync.md`](agent-sync.md) に従い、`just sync-agents-preview` で対象homeの差分を確認してから行う。
-既存の `grep`、`find`、`sed` を同名のaliasで上書きせず、スクリプトの移行は必要な箇所ごとに動作を確かめる。
+See [`ROOT_AGENTS_docs_agents_cli-tools.md`](../ROOT_AGENTS_docs_agents_cli-tools.md) for command examples, defaults, and `witr` exit codes.
+The source of truth for agents is `ROOT_AGENTS.md` and this spoke; do not edit deployed copies directly.
+Deploy per [`docs/agent-sync.md`](agent-sync.md), checking target home diffs with `just sync-agents-preview` first.
+Do not alias over existing `grep`, `find`, or `sed`, and verify behavior per call site when migrating scripts.
 
-参照: [Hunkの導入条件](https://github.com/modem-dev/hunk/tree/v0.25.0#install)、[mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html)、[mise registry](https://mise.jdx.dev/registry.html)。
+References: [Hunk install requirements](https://github.com/modem-dev/hunk/tree/v0.25.0#install), [mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html), [mise registry](https://mise.jdx.dev/registry.html).

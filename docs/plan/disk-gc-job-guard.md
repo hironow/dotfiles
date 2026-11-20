@@ -1,82 +1,74 @@
-# 計画: `just disk-gc` を job の実行中に止める
+# Plan: Stop `just disk-gc` while a job is running
 
-## なぜ
+## Why
 
-2026-11-16 01:33 JST、`just disk-gc` (`scripts/disk_gc.sh clean`) の WSL leg が、
-WSL の runner で Rust の CI の job が build している最中に
-`~/.cargo/registry/{src,cache}` を消した。
-rustc は registry の crate (`darling`) を compile している途中で、自分の cwd を失って panic した。
-cargo 1.95 は、registry の crate については rustc の cwd をその crate の展開先にする
-(`util/workspace.rs` の `path_args`)。続く 13 件の `.d` のエラーは、
-`fingerprint/dep_info.rs` の `try_canonicalize(pkg_root)` が ENOENT になったものである。
-証拠は、`registry/src` と `registry/cache` の birth が 01:49 で `index` は 7/17 のままであること、
-`disk_gc.sh` の 70〜71 行がちょうどこの 2 つを対象にしていること、そして PowerShell の履歴。
+At 2026-11-16 01:33 JST, the WSL leg of `just disk-gc` (`scripts/disk_gc.sh clean`) deleted `~/.cargo/registry/{src,cache}` while a Rust CI job was building on the WSL runner.
+While rustc was compiling a registry crate (`darling`), it lost its cwd and panicked.
+For registry crates, cargo 1.95 sets rustc's cwd to the crate's extracted source directory (`path_args` in `util/workspace.rs`).
+The 13 `.d` errors that followed came from `try_canonicalize(pkg_root)` in `fingerprint/dep_info.rs` hitting ENOENT.
+Evidence: `registry/src` and `registry/cache` have birth time 01:49 while `index` remains 7/17, lines 70-71 of `disk_gc.sh` target those exact two paths, and PowerShell history confirms the run.
 
-`runner_gc.sh` には job の検出があるが、`disk_gc.sh` には無い。
-それなのに justfile は `just disk-gc` を「safe unattended」と説明している。
+`runner_gc.sh` checks for running jobs, whereas `disk_gc.sh` does not.
+Yet the justfile still describes `just disk-gc` as "safe unattended".
 
-Windows の profile の cache (`~/.cargo`、uv、bun) も、Windows ネイティブの runner
-(`actions-runner-win`、利用者 absin) の job と共有されているので、同じことが起きうる。
+Windows profile caches (`~/.cargo`, uv, bun) are also shared with jobs of the Windows-native runner (`actions-runner-win`, user absin), so the same failure can happen there.
 
-## 変えること
+## What to change
 
-`scripts/disk_gc.sh` の `clean` に guard を入れ、`report` には判定を 1 行だけ足す。
+Add a guard to `clean` in `scripts/disk_gc.sh`, and add one check line to `report`.
 
-1. その leg の runner の job の状態を 3 値で返す関数 `_runner_job_state` を作る (0 = 実行中、1 = idle、2 = 判定不能)。
-   - Linux / WSL: `pgrep -x Runner.Worker` (`runner_gc.sh` と同じ。`-f` は自分自身に一致する)。rc 0 → 実行中、1 → idle、それ以外 (127 など) → 判定不能。
-   - Windows (Git Bash): `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH`。
-     rc が 0 以外 → 判定不能。出力に `"Runner.Worker.exe"` があれば実行中、無ければ idle (該当なしの文言は言語で変わるが、image 名はそのまま出る)。
-   - `set -eu` のもとでは、`_st=0; _runner_job_state || _st=$?` の形で受ける (idle の rc=1 で script が止まらないように)。
-2. 削除の各段 (`mise prune`、`go clean -modcache`、`go clean -cache`、cache の 1 項目ごとの `rm -rf`) の直前で判定する。
-   実行中なら `SKIP: a runner job is executing (Runner.Worker alive); rerun when idle` を出して、残りを消さずに exit 0。
-   判定不能なら `SKIP: cannot tell whether a runner job is executing; nothing more deleted` を出して exit 2
-   (fail-closed。WSL leg では呼び出し側の「WSL leg failed」が出る)。
-   cache のループは今 `printf | awk | while` の pipeline で、中の `exit` が subshell しか終わらせないので、here-string に変える。
-3. 上書きの鍵は `DISK_GC_ALLOW_BUSY=1` とする (runner-gc の `RUNNER_GC_ALLOW_BUSY` と同じ考え方。使用中の cache を消せば job は落ちる)。
-   SKIP の行では上書きの方法を示さず、runbook に書く。値は 0/1 に正規化してから、
-   Windows から WSL leg を呼ぶ `bash -lc` のコマンド行に埋め込む (`wsl.exe -e` は呼び出し元の環境を引き継がない)。
-4. 判定は leg ごとに行う。WSL leg は distro の中で動く `disk_gc.sh` が WSL の runner を見る。
-   Windows leg は Windows の runner を見る。一方の leg が SKIP しても、もう一方は続ける。
-5. `report` に `runner job: busy|idle|unknown` を 1 行足す。何も消さずに、本物の検出を実機で確かめる経路になる。
-6. justfile の `disk-gc` の説明の「safe unattended」と、`disk_gc.sh` の冒頭の注釈を直す。
-   runbook `docs/runbook/runner-disk-gc.md` の §開発用キャッシュに guard の挙動を書く。§実行中のジョブの検出に次の規則を足す:
-   「runner の job と共有する path を消す処理は、削除の各段の直前で job を判定する。『再生成できる』は『使用中に消してよい』ではない」。
+1. Add a function `_runner_job_state` returning a 3-state status for that leg's runner jobs (0 = running, 1 = idle, 2 = unknown):
+   - Linux / WSL: `pgrep -x Runner.Worker` (same as `runner_gc.sh`; `-f` would match itself). rc 0 → running, 1 → idle, anything else (e.g., 127) → unknown.
+   - Windows (Git Bash): `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH`.
+     Non-zero rc → unknown. If output contains `"Runner.Worker.exe"`, running; otherwise idle (the "no tasks" message varies by locale, while the image name appears verbatim).
+   - Under `set -eu`, capture as `_st=0; _runner_job_state || _st=$?` (so idle rc=1 does not abort the script).
+2. Check right before each deletion step (`mise prune`, `go clean -modcache`, `go clean -cache`, and each `rm -rf` in the cache loop).
+   If running, print `SKIP: a runner job is executing (Runner.Worker alive); rerun when idle` and exit 0 without deleting anything further.
+   If unknown, print `SKIP: cannot tell whether a runner job is executing; nothing more deleted` and exit 2 (fail-closed; the WSL leg prints "WSL leg failed" on the caller side).
+   Replace the current `printf | awk | while` pipeline in the cache loop with a here-string so `exit` terminates the script instead of only a subshell.
+3. Use `DISK_GC_ALLOW_BUSY=1` as the override key (matching `RUNNER_GC_ALLOW_BUSY` in runner-gc; deleting active caches fails running jobs).
+   Do not mention the override in the SKIP line; document it in the runbook. Normalize the value to 0/1 and embed it in the `bash -lc` command line when invoking the WSL leg from Windows (`wsl.exe -e` does not inherit the caller's environment).
+4. Check per leg: the WSL leg runs `disk_gc.sh` inside the distro and checks the WSL runner; the Windows leg checks the Windows runner. If one leg skips, the other continues.
+5. Add one line `runner job: busy|idle|unknown` to `report`, giving a way to verify real detection on a physical machine without deleting anything.
+6. Fix "safe unattended" in `justfile`'s `disk-gc` description and the header comment in `disk_gc.sh`.
+   Document the guard behavior in `docs/runbook/runner-disk-gc.md` under the development caches section, and add this rule to the running-job detection section:
+   "Any cleanup deleting paths shared with runner jobs must check job state immediately before each deletion step. 'Re-creatable' does not mean 'safe to delete while in use'."
 
-## やらないこと
+## What we will not do
 
-- 判定と削除の間に始まった job は防げない (判定は観測で、lock ではない。runner-gc と同じ限界)。各段の直前で判定して、その窓を最小にする。lock も、削除前の退避 (mv) も作らない。
-- 対象の cache の一覧は変えない。ADR は変えない (runbook の規則で補う)。
+- Cannot prevent a job that starts between check and deletion (the check is an observation, not a lock, same limit as runner-gc). Checking right before each step minimizes that window; do not add locks or pre-deletion staging (`mv`).
+- Keep the list of target caches unchanged. Keep ADRs unchanged (supplement with the runbook rule).
 
-## 独立レビュー (subagent、APPROVE WITH CHANGES) の扱い
+## Independent review (subagent, APPROVE WITH CHANGES)
 
-指摘 6 件はすべて採用した。どれも実機かコードで確かめた。
+Adopted all 6 findings; every one was verified on a physical machine or in code:
 
-1. fail-open: tasklist を MSYS 変換なしで実行すると `/FI` が `C:/…/FI` に書き換わり rc=1 になることを実測した。pipefail が無い `set -eu` (`disk_gc.sh:22`) では、これが「idle」と判定される。→ 3 値化、tasklist 行の静的検査、偽の argv の厳密照合。
-2. 判定が 1 回だけ: `runner_gc.sh:262` と `:302` は項目ごとに再判定している。→ 各段の直前で判定。
-3. 本物の検出がどこでも動かない。→ report に判定の行。
-4. テストの隔離。→ env は白紙から組む、PATH は `test_podman_gc_simulation.py` と同じ、事前の検査、偽の `uname` で両分岐をパラメータ化。
-5. `FORCE` の意味が repo の規則と食い違う。→ `DISK_GC_ALLOW_BUSY` に改名、値の正規化。
-6. runbook。→ 上の 6。
+1. Fail-open: measured that running `tasklist` without MSYS conversion rewrites `/FI` to `C:/…/FI` and returns rc=1. Under `set -eu` without pipefail (`disk_gc.sh:22`), this was misjudged as "idle". → 3-state return, static check on the `tasklist` line, strict argv checks in fakes.
+2. Checking only once: `runner_gc.sh:262` and `:302` re-check before each item. → Check right before each step.
+3. Real detection unexercised anywhere. → Add check line to `report`.
+4. Test isolation. → Build env from scratch, match `test_podman_gc_simulation.py` PATH, pre-verify fakes, parameterize both branches with fake `uname`.
+5. `FORCE` naming conflicts with repo conventions. → Rename to `DISK_GC_ALLOW_BUSY` and normalize value.
+6. Runbook. → Item 6 above.
 
 ## TDD
 
-- **[Red]** `tests/unit/test_disk_gc_job_guard.py` を新しく作る。偽の `uname` で Linux と Windows の両分岐をパラメータ化する。
-    - 偽の HOME と LOCALAPPDATA に cache を作る。偽の `pgrep`、`tasklist`、`mise`、`go` を置く。偽の検出は、argv が想定どおりでなければ exit 2 を返す。
-    - env は白紙から組む。実行前に、偽の bin が使われていることと、`wsl.exe`、`powershell.exe`、`tasklist.exe` に届かないことを確かめる。
-      さらに同じ env で `report` を実行し、候補の path がすべて tmp の下にあることを確かめる。
-    - ケースは次の 5 つ。
-        - idle (対照): cache が消え、`mise` と `go` が呼ばれる。guard が常に SKIP する、黙った故障を防ぐ。
-        - 最初から実行中: 何も消えず、`SKIP` が出て、exit 0。
-        - 判定不能 (偽が exit 3 / exit 1): 何も消えず、exit 2。
-        - 途中から実行中 (最初の cache が消えた後に実行中と答える偽): 後ろの cache が残る。
-        - `DISK_GC_ALLOW_BUSY=1`: 実行中でも消える。
-    - report に `runner job:` の行が出ること。
-    - 静的な検査: tasklist を呼ぶ論理行に `MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL` があること。WSL leg の dispatch 行に `DISK_GC_ALLOW_BUSY` があること。
-- **[Green]** 上の「変えること」の 1〜5 を実装する。
-- **[Refactor]** 6 (説明文と runbook)。
+- **[Red]** Create `tests/unit/test_disk_gc_job_guard.py`, parameterizing Linux and Windows branches with a fake `uname`.
+    - Create caches under fake HOME and LOCALAPPDATA; place fake `pgrep`, `tasklist`, `mise`, and `go`. Fake detectors exit 2 if argv does not match expectations.
+    - Build env from scratch. Before running, verify fake bins are resolved and `wsl.exe`, `powershell.exe`, and `tasklist.exe` are unreachable.
+      Also run `report` in the same env and verify every candidate path lies under tmp.
+    - Five cases:
+        - idle (control): caches deleted, `mise` and `go` called (prevents a silent bug where the guard always skips).
+        - busy from the start: nothing deleted, prints `SKIP`, exits 0.
+        - unknown (fake exits 3 / exits 1): nothing deleted, exits 2.
+        - becomes busy midway (fake reports busy after the first cache is deleted): later caches remain.
+        - `DISK_GC_ALLOW_BUSY=1`: deletes even while busy.
+    - `report` outputs the `runner job:` line.
+    - Static checks: logical line calling `tasklist` includes `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL`; WSL leg dispatch line includes `DISK_GC_ALLOW_BUSY`.
+- **[Green]** Implement items 1-5 under "What to change".
+- **[Refactor]** Item 6 (descriptions and runbook).
 
-## 確かめ方
+## How to verify
 
-- `uv run pytest tests/unit/test_disk_gc_job_guard.py tests/unit/test_runner_gc.py` (Windows の native。Linux 分岐も偽の uname で通る)。
-- `just ci` の lint (shellcheck、ruff、ty、markdownlint) と unit tests。
-- 実機: `just disk-report` で、両 leg の `runner job:` の行が実際の状態と合うこと (WSL の job 中は busy、idle なら idle)。clean は実行しない。
+- `uv run pytest tests/unit/test_disk_gc_job_guard.py tests/unit/test_runner_gc.py` (native Windows; Linux branch also passes via fake `uname`).
+- `just ci` lint (shellcheck, ruff, ty, markdownlint) and unit tests.
+- Physical machine: `just disk-report` prints `runner job:` lines matching actual state for both legs (busy during a WSL job, idle when idle). Do not run `clean`.

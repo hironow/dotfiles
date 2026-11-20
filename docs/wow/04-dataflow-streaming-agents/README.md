@@ -1,62 +1,61 @@
-# Dataflow Streaming Agents（記事の "In-stream Agents"）
+# Dataflow Streaming Agents ("In-stream Agents" in the article)
 
-Dataflow（= Apache Beam のマネージドランナー）のパイプラインに、**ADK（Agent Development
-Kit）で書いたエージェントを 1 ノードとして組み込み**、高スループットなストリームに対して数百の
-エージェントセッションを並列実行する。記事が「Dataflow — In-stream Agents によるカスタム AI
-実行」と書いた機能の実体。
+Embed **an agent written with ADK (Agent Development Kit) as a single node** in a Dataflow
+(managed Apache Beam runner) pipeline to run hundreds of agent sessions in parallel over
+high-throughput streams. This is the actual mechanism behind what the article calls
+"Dataflow — custom AI execution via In-stream Agents" (translated).
 
-## ファクトチェック（最重要）
+## Fact-check (most important)
 
-- **"In-stream Agents" は正式な製品名ではない。** 記事の意訳であり、公式 SKU / 機能名では
-  ない。公式（Google Cloud Blog "Streaming AI news from Next '26"）の表現は
-  **"event-driven autonomous agents in Dataflow"** / 「agentic logic を Dataflow パイプラインの
-  first-class citizen として扱う」。
-- **実装の実体は次の 3 つの組み合わせ**:
-    1. Apache Beam の **`RunInference`** トランスフォーム（GA、Beam 2.40.0+）
-    2. 新しいモデルハンドラ **`ADKAgentModelHandler`**（`apache_beam.ml.inference.agent_development_kit`）
-    3. **ADK（Agent Development Kit）** で定義したエージェント
-- 記事の「複数データソース統合（Spanner / AlloyDB / BigQuery / GCS / Kafka）」は **正確**。
-  これは Beam の I/O コネクタと enrichment 変換で実現する従来からの強み。
-- `ADKAgentModelHandler` クラスは Apache Beam の current
-  [pydoc](https://beam.apache.org/releases/pydoc/current/apache_beam.ml.inference.agent_development_kit.html)
-  に実在する。
+- **"In-stream Agents" is not an official product name.** It is the article's loose translation, not
+  an official SKU or feature name. The official phrasing (Google Cloud Blog, "Streaming AI news
+  from Next '26") is **"event-driven autonomous agents in Dataflow"** / "treat agentic logic as a
+  first-class citizen of Dataflow pipelines" (translated).
+- **The actual implementation combines these three components**:
+    1. Apache Beam's **`RunInference`** transform (GA, Beam 2.40.0+)
+    2. The new **`ADKAgentModelHandler`** model handler (`apache_beam.ml.inference.agent_development_kit`)
+    3. An agent defined with **ADK (Agent Development Kit)**
+- The article's claim of "multi-data-source integration (Spanner / AlloyDB / BigQuery / GCS / Kafka)" (translated)
+  is **accurate**. This builds on Beam's existing strength in I/O connectors and enrichment transforms.
+- The `ADKAgentModelHandler` class exists in the current Apache Beam
+  [pydoc](https://beam.apache.org/releases/pydoc/current/apache_beam.ml.inference.agent_development_kit.html).
 
-## なぜ Dataflow にエージェントを載せるのか
+## Why run agents on Dataflow
 
-- **スケーラビリティ**: 高速イベントを上流（Dataflow）で前処理・集約し、数百のエージェント
-  セッションを並列実行。エージェント側は重い I/O やバッチングを意識しなくてよい。
-- **"action-ready" コンテキスト**: Dataflow が複雑なデータ充実化（enrichment / join / 整形）を
-  済ませ、エージェントには「すぐ行動に移せる」入力だけ渡す。
-- **統一エンジン**: Dataflow は batch / streaming / agentic AI を 1 つのサーバーレスエンジンで
-  扱う、という位置づけになった。
+- **Scalability**: Preprocess and aggregate high-velocity events upstream in Dataflow, and run
+  hundreds of agent sessions in parallel. The agent does not need to handle heavy I/O or batching.
+- **"Action-ready" context**: Dataflow handles enrichment, joins, and formatting upstream,
+  passing only action-ready inputs to the agent.
+- **Unified engine**: Dataflow is positioned as a single serverless engine for batch, streaming,
+  and agentic AI.
 
-## `ADKAgentModelHandler` の仕様（pydoc 実機確認）
+## `ADKAgentModelHandler` specification (verified against pydoc)
 
 `apache_beam.ml.inference.agent_development_kit.ADKAgentModelHandler`
 
-コンストラクタ引数:
+Constructor arguments:
 
-- `agent`: ADK の `Agent` インスタンス、または **ゼロ引数の callable**（シリアライズ不可能な
-  状態を持つエージェントは lambda でラップして遅延生成する）
-- `app_name`: ADK アプリ名（デフォルト `'beam_inference'`）
-- `session_service_factory`: `BaseSessionService` を返す callable（任意）
+- `agent`: An ADK `Agent` instance, or a **zero-argument callable** (wrap agents with
+  non-serializable state in a lambda for lazy creation)
+- `app_name`: ADK app name (default `'beam_inference'`)
+- `session_service_factory`: Callable returning a `BaseSessionService` (optional)
 - `min_batch_size` / `max_batch_size` / `max_batch_duration_secs` / `max_batch_weight`:
-  バッチ制御（任意）
-- `element_size_fn`: 要素サイズを返す関数（任意）
+  Batch controls (optional)
+- `element_size_fn`: Function returning element size (optional)
 
-主なメソッド:
+Main methods:
 
-- `load_model()`: ワーカー上で ADK `Runner` を初期化
-- `run_inference()`: バッチの各要素に対しエージェントを実行
-- `get_metrics_namespace()`: メトリクス名前空間
+- `load_model()`: Initializes the ADK `Runner` on the worker
+- `run_inference()`: Runs the agent on each element in the batch
+- `get_metrics_namespace()`: Metrics namespace
 
-基底 / 戻り値: `ModelHandler` / `PredictionResult`。
+Base class / return type: `ModelHandler` / `PredictionResult`.
 
-## 検証済み最小例
+## Verified minimal example
 
-Apache Beam ソース（`sdks/python/apache_beam/ml/inference/agent_development_kit.py`、
-2026-06 時点）の docstring にある最小例。`LlmAgent` をそのまま `ADKAgentModelHandler` に渡し、
-`RunInference` で実行する。
+Minimal example from the docstring in Apache Beam source
+(`sdks/python/apache_beam/ml/inference/agent_development_kit.py`, as of 2026-06). Pass an `LlmAgent`
+directly to `ADKAgentModelHandler` and run it with `RunInference`.
 
 ```python
 import apache_beam as beam
@@ -78,14 +77,15 @@ with beam.Pipeline() as p:
     )
 ```
 
-- **stateful なマルチターン会話**: `RunInference(..., inference_args={"session_id": ...})` で
-  `session_id` を渡すと、同じ `session_id` の要素が会話履歴を共有する（test
-  `test_shared_session_id_from_inference_args` で実証）。
+- **Stateful multi-turn conversations**: Passing `session_id` via
+  `RunInference(..., inference_args={"session_id": ...})` shares conversation history across
+  elements with the same `session_id` (demonstrated by test
+  `test_shared_session_id_from_inference_args`).
 
-### ストリーミングへの応用（Pub/Sub 入力）
+### Streaming application (Pub/Sub input)
 
-上記の `beam.Create(...)` を Pub/Sub 読み取りに差し替え、前段で enrichment するのが
-ストリーミング構成。Dataflow ランナーで実行する。
+To build a streaming setup, replace `beam.Create(...)` above with a Pub/Sub read and add upstream
+enrichment. Run it on the Dataflow runner.
 
 ```python
 with beam.Pipeline(options=pipeline_options) as p:
@@ -93,13 +93,13 @@ with beam.Pipeline(options=pipeline_options) as p:
         p
         | "Read"
         >> beam.io.ReadFromPubSub(subscription="projects/.../subscriptions/...")
-        | "Prep" >> beam.Map(to_action_ready_context)  # Dataflow 側で enrichment
+        | "Prep" >> beam.Map(to_action_ready_context)  # Enrichment on the Dataflow side
         | "Agent" >> RunInference(ADKAgentModelHandler(agent=agent))
-        | "Sink" >> beam.Map(dispatch_action)  # 結果を下流へ
+        | "Sink" >> beam.Map(dispatch_action)  # Send results downstream
     )
 ```
 
-## パイプライン像
+## Pipeline overview
 
 ```text
  Pub/Sub / Kafka --> Dataflow --> [ enrichment ] --> RunInference(ADKAgentModelHandler) --> action
@@ -107,81 +107,84 @@ with beam.Pipeline(options=pipeline_options) as p:
                                    BigQuery/GCS lookup                                      / DB update
 ```
 
-Legend / 凡例:
+Legend:
 
-- events: 着信イベント（Pub/Sub / Kafka）
-- enrichment: 文脈付与（外部データソース参照による充実化）
-- RunInference(ADKAgentModelHandler): エージェント実行ノード
-- ADK agent: ADK 定義のエージェント（Gemini 等）
-- action: エージェントの決定（下流アクション・DB 更新・通知など）
+- events: Incoming events (Pub/Sub / Kafka)
+- enrichment: Context enrichment by looking up external data sources
+- RunInference(ADKAgentModelHandler): Agent execution node
+- ADK agent: Agent defined in ADK (such as Gemini)
+- action: Agent decision (downstream action, DB update, notification, etc.)
 
-## 関連機能: Dataflow Unified Embeddings Sinks
+## Related feature: Dataflow Unified Embeddings Sinks
 
-記事本文では薄いが、同じ Next '26 発表の一部。ストリーム内で埋め込みを生成し、**Cloud
-Spanner（新ベクトル検索）/ AlloyDB** に materialize する sink。エージェント RAG の long-term
-memory を最新化し続ける用途。
+Mentioned only briefly in the article, but part of the same Next '26 announcement. This sink
+generates embeddings in-stream and materializes them to **Cloud Spanner (new vector search) or
+AlloyDB**. Use it to keep an agent RAG's long-term memory up to date.
 
-- `MLTransform`（Beam 2.53.0+）で Vertex AI / Hugging Face の埋め込みを生成、または `Gemma` 等を
-  ローカル推論。
-- 参考: [Deploying EmbeddingGemma at scale with Dataflow](https://developers.googleblog.com/en/deploying-embeddinggemma-at-scale-with-dataflow/)
+- Generate Vertex AI or Hugging Face embeddings with `MLTransform` (Beam 2.53.0+), or run local
+  inference on models like `Gemma`.
+- Reference: [Deploying EmbeddingGemma at scale with Dataflow](https://developers.googleblog.com/en/deploying-embeddinggemma-at-scale-with-dataflow/)
 
-## Dataflow ML の基礎（前提知識）
+## Dataflow ML basics (prerequisites)
 
-- `RunInference`（GA、Beam 2.40.0+）: モデル設定を `ModelHandler` に渡すだけで推論を組み込める。
-  PyTorch / scikit-learn / TensorFlow / ONNX / TensorRT / Vertex AI endpoint / **ADK** 等の
-  ハンドラがある。複数モデルの keyed handler、自動モデルリフレッシュ（side input）にも対応。
-- `MLTransform`（Beam 2.53.0+）: 前処理を 1 クラスに集約。
-- GPU/TPU 対応（H100 / TPU v5e・v5p・v6e、GPU autoscaling、right fitting）。
-- batch / streaming 両対応。
+- `RunInference` (GA, Beam 2.40.0+): Embed inference simply by passing model configuration to a
+  `ModelHandler`. Handlers exist for PyTorch, scikit-learn, TensorFlow, ONNX, TensorRT, Vertex AI
+  endpoints, **ADK**, and more. Also supports multi-model keyed handlers and automatic model
+  refresh (side input).
+- `MLTransform` (Beam 2.53.0+): Consolidates preprocessing into one class.
+- GPU/TPU support (H100; TPU v5e, v5p, and v6e; GPU autoscaling; right fitting).
+- Supports both batch and streaming.
 
-## 開発リポジトリ / SDK / サンプル実装
+## Repositories, SDKs, and sample implementations
 
-2026-06 に実在を確認した。
+Verified to exist in 2026-06.
 
-### Apache Beam（`ADKAgentModelHandler` 本体）
+### Apache Beam (`ADKAgentModelHandler` core)
 
-- リポジトリ: <https://github.com/apache/beam>（製品サイト <https://beam.apache.org/>）
-- **ソース実体**:
-    - 本体: [`sdks/python/apache_beam/ml/inference/agent_development_kit.py`](https://github.com/apache/beam/blob/master/sdks/python/apache_beam/ml/inference/agent_development_kit.py)
-    - テスト（使い方の実例。`test_string_input_returns_prediction_result` /
-      `test_batch_of_strings` / `test_shared_session_id_from_inference_args`）:
+- Repository: <https://github.com/apache/beam> (product site <https://beam.apache.org/>)
+- **Source files**:
+    - Implementation: [`sdks/python/apache_beam/ml/inference/agent_development_kit.py`](https://github.com/apache/beam/blob/master/sdks/python/apache_beam/ml/inference/agent_development_kit.py)
+    - Tests (usage examples: `test_string_input_returns_prediction_result`,
+      `test_batch_of_strings`, `test_shared_session_id_from_inference_args`):
       [`sdks/python/apache_beam/ml/inference/agent_development_kit_test.py`](https://github.com/apache/beam/blob/master/sdks/python/apache_beam/ml/inference/agent_development_kit_test.py)
-- `RunInference` 全般のサンプル集:
+- General `RunInference` examples:
   [`sdks/python/apache_beam/examples/inference`](https://github.com/apache/beam/tree/master/sdks/python/apache_beam/examples/inference)
 - pydoc: <https://beam.apache.org/releases/pydoc/current/apache_beam.ml.inference.agent_development_kit.html>
-- Beam ML / LLM ガイド: <https://beam.apache.org/documentation/ml/large-language-modeling/>
+- Beam ML / LLM guide: <https://beam.apache.org/documentation/ml/large-language-modeling/>
 
-### ADK（Agent Development Kit）
+### ADK (Agent Development Kit)
 
-- ドキュメント: <https://google.github.io/adk-docs/>
+- Docs: <https://google.github.io/adk-docs/>
 - Python: <https://github.com/google/adk-python> / Go: <https://github.com/google/adk-go>
-- サンプル集: <https://github.com/google/adk-samples>
-- Google サービス統合一覧: <https://adk.dev/integrations/?topic=google>
+- Samples: <https://github.com/google/adk-samples>
+- Google service integrations: <https://adk.dev/integrations/?topic=google>
 
-### Dataflow ML（RunInference / remote inference）
+### Dataflow ML (RunInference / remote inference)
 
-- Dataflow ML ドキュメント: <https://docs.cloud.google.com/dataflow/docs/machine-learning>
-- サンプル一覧（Colab 手順あり）:
+- Dataflow ML docs: <https://docs.cloud.google.com/dataflow/docs/machine-learning>
+- Samples (includes Colab steps):
   <https://docs.cloud.google.com/dataflow/docs/machine-learning/ml-about>
-- remote inference notebook（Vertex AI / 外部エンドポイント呼び出し）:
+- Remote inference notebook (calling Vertex AI / external endpoints):
   <https://docs.cloud.google.com/dataflow/docs/notebooks/custom_remote_inference>
-- codelab（Beam + Dataflow でリアルタイム AI/ML 評価）:
+- Codelab (real-time AI/ML evaluation with Beam + Dataflow):
   <https://codelabs.developers.google.com/beam-ai-evaluation-pipeline>
 
-### エンドツーエンド・デモ（CQ + Pub/Sub SMT + ADK の 3 機能横断）
+### End-to-end demo (across CQ, Pub/Sub SMT, and ADK)
 
-codelab と GitHub リポジトリは
-[03 の公式サンプル](../03-bigquery-continuous-queries-stateful/README.md#公式サンプル実装--codelab) にまとめた。
+The codelab and GitHub repository are listed under
+[Official samples in 03](../03-bigquery-continuous-queries-stateful/README.md#official-sample-implementations-and-codelabs).
 
-## 制約・注意
+## Constraints and caveats
 
-- `ADKAgentModelHandler` は新しい API。Preview 相当として扱い、引数・挙動は最新版で確認する。
-- 1 イベント = 1 エージェント実行が基本。スループットは `max_batch_size` 等とワーカー数で調整。
-- LLM 呼び出しは外部 quota / レイテンシに律速される。Dataflow の autoscaling と合わせて設計する。
+- `ADKAgentModelHandler` is a new API. Treat it as Preview-equivalent and check the latest version
+  for arguments and behavior.
+- The baseline is one agent execution per event. Tune throughput with `max_batch_size` (and similar
+  options) plus worker count.
+- External quotas and latency bottleneck LLM calls. Design this alongside Dataflow autoscaling.
 
-## 関連リンク
+## Related links
 
-- 公式ブログ（Next '26 総括、Dataflow agentic の一次情報）:
+- Official blog (Next '26 summary, primary source for Dataflow agentic features):
   <https://cloud.google.com/blog/products/data-analytics/streaming-ai-news-from-next26>
 - Apache Beam RunInference: <https://beam.apache.org/documentation/ml/about-ml/>
-- Dataflow（製品トップ）: <https://cloud.google.com/products/dataflow>
+- Dataflow (product home): <https://cloud.google.com/products/dataflow>

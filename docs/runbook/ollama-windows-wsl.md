@@ -1,16 +1,15 @@
-# Windows と WSL の Ollama を一本化する
+# Unifying Ollama across Windows and WSL
 
-Windows と WSL が共存する機体では、Scoop の `extras/ollama-full` だけを Ollama 本体として使う（[ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)）。
-モデルと認証情報も Windows 側に置く。
-Scoop の CLI 版 `main/ollama`、WinGet 版、単独インストーラ版、WSL の Linux 版を併設しない。
-WSL のない Linux と macOS の導入方法は変えない。
+On hosts running both Windows and WSL, use only Scoop's `extras/ollama-full` as the Ollama runtime ([ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)).
+Keep models and credentials on the Windows side as well.
+Do not install Scoop's CLI edition `main/ollama`, the WinGet edition, the standalone installer, or the WSL Linux edition alongside it.
+Installation on Linux without WSL and on macOS is unchanged.
 
-## Windows 側の準備
+## Windows setup
 
-`dump/windows/scoop.json` は `ollama-full` を宣言している。
-新規セットアップでは `just add-scoop` が復元する。
-既存の CLI 版から移す場合は、動作中の Ollama を終了してから次を実行する。
-モデルや `~/.ollama` は削除しない。
+`dump/windows/scoop.json` declares `ollama-full`.
+Fresh setups restore it via `just add-scoop`.
+To migrate from the existing CLI edition, stop Ollama without deleting models or `~/.ollama`, then run:
 
 ```powershell
 scoop uninstall ollama
@@ -19,40 +18,40 @@ just deploy
 just doctor
 ```
 
-Ollama のフル版アプリケーションが Windows の `127.0.0.1:11434` を所有する構成にする。
-`0.0.0.0` や WSL のゲートウェイへ公開せず、ファイアウォールの例外や portproxy は追加しない。
+Configure the full Windows Ollama app to own `127.0.0.1:11434` on Windows.
+Do not bind to `0.0.0.0` or the WSL gateway, and do not add firewall exceptions or portproxy rules.
 
-### 単独インストーラ版を外すときはモデルを先に移す
+### Move models before removing the standalone installer
 
-単独インストーラ版（`%LOCALAPPDATA%\Programs\Ollama`）のアンインストーラは、既定パス `%USERPROFILE%\.ollama\models` のモデルを消す。
-既定パスに `models\blobs` があると「Remove models」を既定で選び、`/VERYSILENT` でもそのまま `models\blobs` と `models\manifests` を消す。
-`OLLAMA_MODELS` は見ない。
-既定パスに別のドライブへのリンク（ジャンクションやシンボリックリンク）があると、リンク先の実体も同じように消える。
-ごみ箱は通らない。
+The standalone installer (`%LOCALAPPDATA%\Programs\Ollama`) uninstaller deletes models at the default path `%USERPROFILE%\.ollama\models`.
+If `models\blobs` exists at the default path, it selects "Remove models" by default and deletes `models\blobs` and `models\manifests` even under `/VERYSILENT`.
+It ignores `OLLAMA_MODELS`.
+If the default path is a link (junction or symlink) to another drive, the target files are deleted as well.
+They bypass the Recycle Bin.
 
-アンインストールの前に、次の順で進める。
+Before uninstalling, proceed in this order:
 
-1. Ollama をすべて終了する。
-2. 既定パスのモデルを別のドライブへ写し、各ブロブの SHA-256 がファイル名と一致することを確かめる。
-3. User 環境変数 `OLLAMA_MODELS` で写し先を指し、新しく開いた端末で `ollama list` の digest が元と同じことを確かめる。
-4. 既定パスにはフォルダもリンクも残さない。見るためのリンクは別の名前で作る。
-5. アンインストールした後に、写し先をもう一度照合する。
+1. Stop all Ollama processes.
+2. Copy models from the default path to another drive and verify each blob's SHA-256 matches its filename.
+3. Point the User environment variable `OLLAMA_MODELS` to the new location and verify `ollama list` in a new terminal shows the same digests.
+4. Leave neither a folder nor a link at the default path; create any convenience link under a different name.
+5. Re-verify the destination after uninstalling.
 
-画面の「Remove models」を外すだけに頼らない。既定のままの実行や `/VERYSILENT` では消える。
+Do not rely on unchecking "Remove models" in the UI; defaults and `/VERYSILENT` still delete them.
 
-## WSL 側の共有
+## WSL sharing
 
-WSL の網の形は、WSL の中で `wslinfo --networking-mode` を読んで決める（WSL 2.0.4 以降）。
-`nat` なら、この節のブリッジを置く。
-`mirrored` なら、ブリッジを置かない（次の節）。
-それ以外か読めない時は、ブリッジを作らずに止まる。`wsl --update` で WSL を新しくする。
+WSL network mode is determined inside WSL via `wslinfo --networking-mode` (WSL 2.0.4 or newer).
+If `nat`, install the bridge described in this section.
+If `mirrored`, do not install the bridge (see the next section).
+Otherwise, or if unreadable, stop without creating a bridge; update WSL with `wsl --update`.
 
-NAT の WSL では、`just deploy` が Pi の拡張導入時にユーザーの `ollama-windows-bridge.service` を設定する。
-Windows のフル版と mise 管理の Windows Python が先に必要であり、不足していても WSL に Linux 版を導入しない。
-ユーザーの systemd と Windows interop が利用できなければ、不足を表示する。
-ヘルパーは `~/.local/lib/dotfiles/ollama_host.py` に管理対象としてコピーし、`/usr/bin/python3` で動かす。
-worktree や一時的な venv の存続には依存させない。
-既存の無関係なファイル、変更された管理対象、symlink は上書きしない。
+In NAT WSL, `just deploy` configures the user service `ollama-windows-bridge.service` when installing Pi extensions.
+Both the full Windows edition and mise-managed Windows Python are required first; if missing, the Linux edition is never installed in WSL.
+If user systemd or Windows interop is unavailable, the missing requirement is reported.
+The helper is installed as a managed file at `~/.local/lib/dotfiles/ollama_host.py` and runs under `/usr/bin/python3`.
+It does not depend on any worktree or temporary venv staying around.
+Unrelated existing files, modified managed files, and symlinks are never overwritten.
 
 ```bash
 just deploy
@@ -60,40 +59,40 @@ systemctl --user status ollama-windows-bridge.service
 just doctor
 ```
 
-ブリッジは WSL の `127.0.0.1:11434` と `[::1]:11434` だけで待ち受ける。
-検証した物理パスの Windows Python を `-I -S -B -u` で隔離起動し、Windows の `127.0.0.1:11434` にバイト列を転送する。
-転送は両方向とも raw binary の32KiB単位とし、PowerShell のテキスト pipeline は使わない。
-Windows の `MISE_DATA_DIR` に対応し、完全なバージョン番号のディレクトリだけを数値順で調べる。
-最初の3候補を最大3秒ずつ隔離検証し、Windows 本体の Python であることと venv でないことを確認する。
-`~/.local/bin/ollama` は、本体ではなく Windows のフル版 CLI を呼ぶ管理対象の shim とする。
-この shim は backend の状態にかかわらず先に配置し、既存の導入処理が停止中の backend を Linux 版の不足と誤認しないようにする。
-`serve`、`launch`、未知のコマンドは拒否し、既知の client コマンドだけを正規 backend の稼働確認後に渡す。
-Windows に渡す `OLLAMA_HOST` は loopback に固定し、既存の `WSLENV` の他の項目は残す。
-Ollama 本体やモデルは持たず、`appendWindowsPath=false` を維持する。
-ユーザーサービス内では、セッションごとの socket を設定に固定せず、利用可能な interop socket を確認する。
+The bridge listens only on `127.0.0.1:11434` and `[::1]:11434` inside WSL.
+It launches the verified physical Windows Python binary in isolation (`-I -S -B -u`) and forwards byte streams to `127.0.0.1:11434` on Windows.
+Both directions transfer raw binary in 32KiB chunks without a PowerShell text pipeline.
+It supports Windows `MISE_DATA_DIR` and inspects only full-version directories in numeric order.
+It tests up to the first 3 candidates in isolation for up to 3 seconds each, confirming native Windows Python and not a venv.
+`~/.local/bin/ollama` is a managed shim calling the full Windows CLI rather than a local binary.
+This shim is installed regardless of backend state so installers do not mistake a stopped backend for a missing Linux binary.
+`serve`, `launch`, and unknown commands are rejected; only known client commands are forwarded after confirming the genuine backend is running.
+`OLLAMA_HOST` passed to Windows is pinned to loopback while preserving other `WSLENV` entries.
+WSL holds no Ollama binary or models and keeps `appendWindowsPath=false`.
+Inside the user service, rather than pinning a per-session socket in config, it probes for an available interop socket.
 
-接続ごとに Windows の待受 PID と実行ファイルを確認し、`127.0.0.1:11434` を Scoop のフル版が所有している場合だけ接続する。
-Windows が `::1:11434` に作る WSL の転送 listener は、Ollama の第2 backend とは数えない。
-この例外は、保護された `Program Files/WSL/wslrelay.exe` の正確な配置、symlink でないこと、Microsoft の有効な署名を確認できる場合に限る。
-同じ転送 listener が IPv4 の接続先を所有していても正規 backend の代わりにはせず、署名不明や wildcard の待受も認めない。
-Windows の localhost 転送が WSL のブリッジへ戻る場合も、正規の Windows 所有者がない接続を拒否する。
-同時転送は8接続、接続待ちは2秒とし、終了処理と子プロセスの回収まで接続枠を保持する。
-Windows の socket timeout は方向ごとに300秒とする。
-アップロードが続いていても、応答が300秒間届かなければ受信側は失敗する。
-送信スレッドのエラーも失敗として伝え、stdout は転送データだけに使う。
-ポートの競合時に既存のプロセスを停止したり、別のアドレスへ公開したりしない。
+On each connection, it checks the Windows listening PID and executable, connecting only when Scoop's full edition owns `127.0.0.1:11434`.
+WSL's forwarding listener that Windows creates on `::1:11434` is not counted as a second Ollama runtime.
+This exception applies only when the protected `Program Files/WSL/wslrelay.exe` path is exact, is not a symlink, and carries a valid Microsoft signature.
+The same forwarding listener owning an IPv4 target never substitutes for the genuine backend, and unknown signatures or wildcard listeners are rejected.
+Even when Windows localhost forwarding loops back to the WSL bridge, connections lacking a genuine Windows owner are rejected.
+Concurrent transfers are capped at 8 connections with a 2-second wait, holding the slot until cleanup and child process reaping finish.
+Windows socket timeout is 300 seconds per direction.
+Even during an active upload, the receiver fails if no response arrives within 300 seconds.
+Send-thread errors are also propagated as failures, and stdout carries transferred data only.
+On port conflict, existing processes are never stopped and nothing binds to another address.
 
-## mirrored の WSL（loopback を Windows と共有する）
+## Mirrored WSL (sharing loopback with Windows)
 
-`.wslconfig` で `networkingMode=mirrored` にした WSL は、`127.0.0.1` を Windows と共有する（[ADR-0064](../adr/0064-mirrored-wsl-uses-the-shared-loopback.md)）。
-WSL から `127.0.0.1:11434` に繋ぐと、ブリッジ無しで Windows の本体に届く。
-ここにブリッジを置くと、Windows の本体と同じ番号を取り合うので置かない。
-dotfiles は `.wslconfig` を変えない。
+WSL configured with `networkingMode=mirrored` in `.wslconfig` shares `127.0.0.1` with Windows ([ADR-0064](../adr/0064-mirrored-wsl-uses-the-shared-loopback.md)).
+Connecting to `127.0.0.1:11434` from WSL reaches the Windows runtime directly without a bridge.
+Placing a bridge here would contend for the same port as Windows, so none is installed.
+dotfiles never modifies `.wslconfig`.
 
-mirrored の `just deploy` は、CLI の口 `~/.local/bin/ollama` とヘルパーだけを置き、ブリッジの unit は書かない。
-ブリッジの unit が有効か動いている、ブリッジのプロセスがいる、WSL に 11434 の待受がある、のどれかなら、何も変えずに止まる。
-それらの状態を読めない時も止まる。
-NAT から mirrored に変えた機体では、先に古いブリッジを止める。
+In mirrored mode, `just deploy` installs only the CLI shim `~/.local/bin/ollama` and the helper, without writing the bridge unit.
+If the bridge unit is enabled or active, a bridge process is running, or anything listens on 11434 in WSL, it stops without changing anything.
+It also stops if those states cannot be read.
+On machines switched from NAT to mirrored, stop the old bridge first.
 
 ```bash
 systemctl --user disable --now ollama-windows-bridge.service
@@ -101,76 +100,75 @@ just deploy
 just doctor
 ```
 
-古いブリッジが手で起こされても、mirrored では待ち受けずに終わる。
-CLI の口は、mirrored でも Windows 側の所有を確かめてから Windows の CLI を呼ぶ。
+Even if an old bridge is started manually, it exits without listening in mirrored mode.
+In mirrored mode, the CLI shim still verifies Windows ownership before calling the Windows CLI.
 
-WSL の doctor は、次の順で確かめる。
-途中で外れたら、通信を1回もしない。
+WSL doctor verifies in this order:
+If any step fails, it makes zero network requests.
 
-1. 網の形が mirrored と決まった。
-2. WSL の待受の調べが成功し、11434 の待受が無い。
-3. Windows で `127.0.0.1:11434` を持つのが正規の本体だと確かめた。
-4. WSL から `127.0.0.1:11434/api/version` を1回聞き、Windows と同じ版が返る。
+1. Network mode is confirmed as mirrored.
+2. WSL listener inspection succeeds and nothing listens on 11434.
+3. On Windows, `127.0.0.1:11434` is verified to be owned by the genuine runtime.
+4. WSL queries `127.0.0.1:11434/api/version` once and gets the same version as Windows.
 
-Windows の doctor が WSL の中で走らせる調べは、Windows 側の判定を受け取らないので、通信しない。
-HTTP で直接 `localhost:11434` に繋ぐ道具（Pi の web 検索など）は、ブリッジの接続ごとの確認を通らない。
-これは mirrored の網の性質で、その代わり doctor が上の順で確かめる。
-本体は IPv4 の loopback だけで待ち受けるので、`localhost` を先に `::1` で試す道具は、断られてから `127.0.0.1` に落ちる。
+Checks that Windows doctor runs inside WSL do not receive the Windows-side verdict, so they make no network requests.
+Tools connecting directly to `localhost:11434` over HTTP (such as Pi web search) bypass the bridge's per-connection check.
+That is inherent to mirrored networking, so doctor checks the sequence above instead.
+Because the runtime listens only on IPv4 loopback, tools that try `::1` first for `localhost` get refused and fall back to `127.0.0.1`.
 
-## tailnet の中だけの Tailscale 転送を認める（宣言した機体だけ）
+## Allowing Tailscale forwarding only inside the tailnet (declared hosts only)
 
-所有者が、Tailscale の TCP 転送で 11434 を tailnet に出すと決めた機体がある（例: `tailscale serve --bg --tcp=11434 tcp://localhost:11434`）。
-その機体では、ユーザーの宣言ファイルを置くと、転送を2つ目の本体とも公開とも数えない（[ADR-0063](../adr/0063-declared-tailnet-forward-of-ollama.md)）。
+Some hosts are configured by the owner to expose 11434 to the tailnet via Tailscale TCP forwarding (e.g., `tailscale serve --bg --tcp=11434 tcp://localhost:11434`).
+On those hosts, placing a user declaration file prevents the forwarder from counting as a second runtime or public exposure ([ADR-0063](../adr/0063-declared-tailnet-forward-of-ollama.md)).
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dotfiles" | Out-Null
 Set-Content -NoNewline "$env:USERPROFILE\.config\dotfiles\ollama-tailnet-forward" '11434'
 ```
 
-宣言はユーザー単位の設定の選択で、本人に対する認可の境界ではない。
-ファイルを消せば、元の判定（転送の待受は ERR）に戻る。
-宣言の無い機体では、Tailscale のコマンドを1回も実行しない。
-dotfiles は Tailscale の設定を作りも消しもしない。
+The declaration is a per-user config choice, not an authorization boundary against the user.
+Deleting the file restores the original verdict (forwarding listeners report ERR).
+On hosts without the declaration, Tailscale commands are never run.
+dotfiles never creates or removes Tailscale configuration.
 
-宣言があっても、次をすべて満たす待受だけを認める。
-1つでも読めない・調べられない時は認めない。
+Even with the declaration, a listener passes only if every check below holds (reject if any fails or cannot be read):
 
-- ポートが 11434。
-- 待受のプロセスが、動いている Tailscale サービスそのものか、その直接の子の `tailscaled.exe`。子の時は、親の作成時刻が子より前。確かめた後でサービスの pid を読み直し、変わっていない。
-- サービスの実行ファイルが `%ProgramFiles%\Tailscale\tailscaled.exe` で、そのファイルと親フォルダがリンクでなく、Tailscale Inc. の有効な署名がある。CLI の `tailscale.exe` も同じ検証の後で使う。
-- 待受のアドレスが、`tailscale ip` が返すこの機体のアドレスで、`100.64.0.0/10` か `fd7a:115c:a1e0::/48` に入る。
-- serve の設定のどこにも（foreground のセッションを含む）有効な Funnel（`AllowFunnel`）が無い。
-- 11434 の転送先が `127.0.0.1:11434`、または `[::1]:11434` に待受が無い時の `localhost:11434`。11434 を別の handler（foreground、Tailscale Services、web、Tun）が持たず、ほかの転送や web の proxy が 11434 を指さない。
+- Port is 11434.
+- The listening process is the running Tailscale service itself or its direct child `tailscaled.exe`. If a child, the parent's creation time precedes the child's; afterward, re-read the service PID and confirm it has not changed.
+- The service binary is `%ProgramFiles%\Tailscale\tailscaled.exe`, neither the file nor its parent folder is a link, and it has a valid Tailscale Inc. signature. The `tailscale.exe` CLI is used only after the same verification.
+- The listening address is this host's address returned by `tailscale ip`, within `100.64.0.0/10` or `fd7a:115c:a1e0::/48`.
+- No Funnel (`AllowFunnel`) is enabled anywhere in serve config (including foreground sessions).
+- 11434 forwards to `127.0.0.1:11434`, or `localhost:11434` when nothing listens on `[::1]:11434`. No other handler (foreground, Tailscale Services, web, Tun) owns 11434, and no other forwarder or web proxy points to 11434.
 
-認めた転送は、doctor に `OK ollama-tailnet-forward` と出る。
-宣言があるのに認めなかった待受は、`ERR ollama-tailnet-forward` に理由が出て、公開の ERR も残る。
-tailnet の ACL（`tofu/tailnet/acl.hujson`）は、どの機体にも Funnel を許していない。
+An approved forwarder reports `OK ollama-tailnet-forward` in doctor.
+If a declaration exists but the listener is rejected, `ERR ollama-tailnet-forward` prints the reason and the exposure ERR remains.
+The tailnet ACL (`tofu/tailnet/acl.hujson`) permits Funnel on no machine.
 
-## Doctor の検査範囲
+## Doctor check scope
 
-`just doctor` は `scripts/ollama_host.py --check` を呼ぶ。
-検査は読み取り専用であり、修復やサービス起動は行わない。
-Windows の調べのスクリプトは、Windows のコマンド行の長さの上限（32,767 文字）を超えるので、標準入力で PowerShell に渡す。
+`just doctor` calls `scripts/ollama_host.py --check`.
+Checks are read-only and never remediate or start services.
+Because the Windows inspection script exceeds the Windows command-line length limit (32,767 characters), it is piped to PowerShell via stdin.
 
-- Windows のフル版と Scoop の bucket、既知の重複インストール、動作中の Ollama の実行ファイルを調べる。
-- 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。宣言した機体では、tailnet の中だけの Tailscale 転送を確かめ、認めた物は公開と数えない。
-- WSL の native binary、package、process、system/user service、モデル配置を調べる。
-- NAT の WSL では、ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。mirrored の WSL では、上の順で共有の loopback を確かめる。網の形が分からない WSL は WARN にする。
-- 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro（`docker-desktop`）は Ollama のクライアントにならないので、検査せず、未検査であることを INFO で表示する。
-- 戻し先などとして止めて残す distro は、`%USERPROFILE%\.config\dotfiles\wsl-retained-distros` に 1 行 1 つ、`wsl -l -q` が出すのと同じ名前で書く（`#` で始まる行は注釈）。書いた distro は、止まっている間は検査せず INFO で表示する。起動すれば普通に検査する。ファイルは UTF-8（BOM は可）で書く。UTF-8 で読めないファイルは何も宣言していないとみなし、WARN のままになる。宣言は distro を消してよいという意味ではない（ADR-0077）。宣言の書き方は下にある。
-- Windows が届かないだけで unit や socket が正しく管理されているブリッジは、構成違反ではなく通常の停止として WARN にする。identity や version の不一致は ERR のままである。
-- WSL2 のカーネルを共有する Docker / Podman コンテナは Windows との相互運用を持たないため、この方針の適用外（該当なし）と判定する。
+- Checks the full Windows edition, Scoop buckets, known duplicate installs, and the running Ollama executable.
+- Inspects listening PIDs, ports, and addresses for runtime ownership and non-loopback exposure. On declared hosts, verifies tailnet-only Tailscale forwarding and exempts approved ones from exposure.
+- Checks WSL for native binaries, packages, processes, system/user services, and model placement.
+- In NAT WSL, verifies the bridge's managed unit, binary, PID, listening socket, and forwarded version response. In mirrored WSL, checks the shared loopback in the order above. Unknown network mode reports WARN.
+- Stopped or unreachable WSL distros are not started and report uninspected WARN. Platform-managed distros (`docker-desktop`) cannot be Ollama clients, so they are skipped and reported as INFO.
+- Distros kept stopped as rollback targets or backups can be listed one per line in `%USERPROFILE%\.config\dotfiles\wsl-retained-distros` using exact `wsl -l -q` names (`#` lines are comments). Listed distros are skipped and reported as INFO while stopped, and checked normally when running. Write the file in UTF-8 (BOM allowed); unreadable UTF-8 is treated as empty and stays WARN. Listing a distro does not authorize deleting it (ADR-0077). See below for format.
+- A bridge with properly managed unit and socket that fails only because Windows is unreachable reports WARN as a normal stopped state, not a misconfiguration. Identity or version mismatches stay ERR.
+- Docker / Podman containers sharing the WSL2 kernel lack Windows interop and are marked out of scope (N/A) for this policy.
 
-止めて残す distro（例: `Ubuntu`）は、Windows の PowerShell で次のように宣言する。
+Declare a retained stopped distro (e.g., `Ubuntu`) from Windows PowerShell as follows:
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dotfiles" | Out-Null
 Add-Content -Encoding utf8 "$env:USERPROFILE\.config\dotfiles\wsl-retained-distros" 'Ubuntu'
 ```
 
-既知の配置や実行中のプロセスから外れた休眠コピーまで、存在しないと保証する検査ではない。
-構成違反は ERR、検査不能や停止中の正規 backend は WARN とし、HTTP 応答だけで正しい所有者とは判定しない。
-version 応答は通信の確認であり、Ollama のログイン状態や Pi の web 検索の成功とは別に確認する。
+This check does not guarantee that dormant copies outside known paths and running processes do not exist.
+Misconfigurations are ERR and uninspectable or stopped genuine backends are WARN; HTTP responses alone never prove valid ownership.
+The version response verifies connectivity and does not replace checking Ollama login state or Pi web search.
 
-Windows 側を終了すると、WSL の接続は失敗する。
-復旧は Windows のフル版を起動してから行い、代わりに WSL の `ollama serve` を起動しない。
+Stopping the Windows runtime causes WSL connections to fail.
+Recover by starting the full Windows edition; never start `ollama serve` inside WSL instead.
