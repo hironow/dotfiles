@@ -23,7 +23,7 @@ Because Claude Code runs hooks in Git Bash, hook commands with `C:\` paths lose 
 ## uv config file
 
 Native Windows uv reads `%APPDATA%\uv\uv.toml`, not `~/.config/uv/uv.toml`.
-Without it, supply-chain quarantine does not apply, `uv run` rewrites the committed `uv.lock`, and pre-commit lint blocks commits.
+Without it, supply-chain quarantine does not apply, and `uv run` rewrites the committed `uv.lock`.
 `just harden-env` writes both, and `just doctor` detects when it is missing (memory `project_windows_uv_appdata_config`).
 
 ## mise npm backend

@@ -1,8 +1,13 @@
 # prek (j178/prek) — Rust reimplementation of pre-commit
 # Install: just install-hooks  (== mise exec -- prek install)
 # Run:     just pre-commit     (== mise exec -- prek run --all-files)
-# Push gate (also runs pre-push stage hooks):
-#          just check-all      (== prek run --all-files + just check + just test)
+# Manual push gate (not a git hook):
+#          just check-all      (== prek run --all-files + just ci-all)
+#
+# ADRs 0083/0084: nine read-only guards; no whole-project or rewriting hooks.
+# Run fmt/lint explicitly and review their diff before staging. CI retains
+# fmt/lint/check/test coverage through the disposable sandbox tests. The fast
+# version-consistency recipe is the only recipe retained at commit time.
 minimum_prek_version: "0.3.0"
 
 # `prek install` with no --hook-type installs exactly these shims. The guard
@@ -33,7 +38,7 @@ exclude: |
 
 repos:
   # ======================================================================
-  # Confidentiality guard — runs FIRST, before anything rewrites a file.
+  # Confidentiality guard — runs FIRST, ahead of every other hook.
   #
   # This repo is PUBLIC. A locally-declared token list (outside the repo, at
   # ~/.config/dotfiles/forbidden-tokens, mode 0600) names the strings that must
@@ -68,15 +73,11 @@ repos:
         stages: [commit-msg]
         description: Refuse a commit message that leaks a private identifier.
 
-  # Rust-native builtin hooks (fast, no external repo clone needed)
+  # Rust-native builtin hooks (fast and read-only). Whitespace/EOF detection
+  # moves to the Go hygiene leg of `just check` (ADR 0084), which preserves
+  # site/vendor's byte exclusion and SHA-256 checks (ADR 0076).
   - repo: builtin
     hooks:
-      # site/vendor holds npm's bytes as published; rewriting them breaks the
-      # SHA-256 check in tests/unit/test_site_vendor.py (ADR-0076).
-      - id: trailing-whitespace
-        exclude: '^site/vendor/'
-      - id: end-of-file-fixer
-        exclude: '^site/vendor/'
       - id: check-yaml
       - id: check-toml
       - id: check-json
@@ -89,44 +90,19 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
-  # Local hooks delegate to just recipes so the same checks run from
-  # the CLI (`just fmt`, `just lint`, `just check`) and from prek.
+  # ADR 0060's commit-time drift check stays as a designed fast subset,
+  # explicitly retained by ADR 0083. Always run: changes to either input,
+  # either generated install script, or the generator itself are covered.
   - repo: local
     hooks:
-      - id: just-fmt
-        name: just fmt
-        entry: just fmt
+      - id: mise-versions-check
+        name: frozen image tool versions (check only)
+        entry: just mise-versions-check
         language: system
         pass_filenames: false
-        files: '\.(py|sh|md|yaml|toml|json|html)$'
-        description: Auto-format Python (ruff) and other files (prettier).
+        always_run: true
+        stages: [pre-commit]
+        description: Check the frozen version source and generated files without rewriting them.
 
-      - id: just-lint
-        name: just lint
-        entry: just lint
-        language: system
-        pass_filenames: false
-        files: '\.(py|sh|md|yaml|toml|json|html)$'
-        description: Lint Python (ruff --fix), shell (shellcheck), prettier --check.
-
-  # ======================================================================
-  # pre-push hooks (slower checks, run only on git push)
-  # ======================================================================
-
-  - repo: local
-    hooks:
-      - id: just-check
-        name: just check (strict, no writes)
-        entry: just check
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-        description: Strict gate — ruff format --check, ruff check, shellcheck, prettier --check, meta-semgrep.
-
-      - id: just-test
-        name: just test (sandbox + pytest)
-        entry: just test
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-        description: Build a fresh Podman devcontainer image and run the required sandbox lifecycle tests.
+  # No rewriting hooks, whole-project recipes or pre-push hooks (ADR 0084).
+  # fmt/lint/check/test remain explicit commands; check-all is the manual gate.

@@ -4,9 +4,9 @@ The Pages site hands out install commands, so it loads no third-party script
 from a CDN: `just site-vendor-ui-sdk` copies the browser build of
 `@ui-sdk/web` from a bun install (which checks the registry's integrity) into
 site/vendor/ui-sdk/<version>/, with a SHA-256 for every file and a record of
-where the bytes came from. The formatters and the end-of-file and whitespace
-hooks leave the folder alone, so these checks stand in for them: any edit, a
-formatter run, or a CRLF checkout on Windows fails here.
+where the bytes came from. The formatters and Go text-hygiene gate leave
+this folder alone, so these byte checks stand in for them: any edit, a
+formatter run, or a CRLF checkout on Windows fails here (ADRs 0076/0084).
 `just site-vendor-ui-sdk-check` compares the copy with the registry again.
 """
 
@@ -100,12 +100,13 @@ def test_git_never_converts_the_vendored_bytes() -> None:
     assert len(out) == len(files) and converted == [], converted[:5]
 
 
-def test_only_the_rewriting_hooks_skip_the_vendored_folder() -> None:
+def test_guard_hooks_still_read_the_vendored_folder() -> None:
     config = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     top_level = config.split("\nrepos:", 1)[0]
     assert "site/" not in top_level, (
         "the other hooks must still read the vendored files"
     )
+    # CLI tests in test_check_text_hygiene.py exercise the replacement
+    # gate's vendor exclusion alongside a dirty first-party site source.
     for hook in ("trailing-whitespace", "end-of-file-fixer"):
-        block = re.search(rf"- id: {hook}\n((?:\s+[a-z_]+:.*\n)*)", config)
-        assert block and "exclude: '^site/vendor/'" in block.group(1), hook
+        assert not re.search(rf"(?m)^\s+- id: {hook}$", config), hook
