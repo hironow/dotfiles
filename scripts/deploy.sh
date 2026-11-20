@@ -62,22 +62,24 @@ case "$(uname -s)" in
     ps_marker_end="# <<< end dotfiles managed block <<<"
     mkdir -p "$(dirname "$ps_profile")"
     touch "$ps_profile"
-    # mise activate block (ADR 0024). Written before the starship block:
-    # starship is mise-managed, so its Get-Command needs mise on PATH first.
+    # mise activate block (ADR 0024, ADR 0086). Written before the starship
+    # block: starship is mise-managed, so its Get-Command needs mise on PATH
+    # first. Its text lives in ps_profile_mise_block; it skips activation in a
+    # GitHub Actions job. Unlike the other blocks, an existing one that differs
+    # from that text is rewritten in place (ADR 0086), so old profiles get the
+    # Actions guard. An unclosed block is left alone: rewriting it could take
+    # the user's lines with it.
     ps_mise_marker_begin="# >>> dotfiles managed block: mise activate >>>"
-    if grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
-      echo "==> PowerShell \$PROFILE mise-activate block already present (skip)"
-    else
-      {
-        printf '\n%s\n' "$ps_mise_marker_begin"
-        # shellcheck disable=SC2016  # literal backticks: written verbatim into $PROFILE
-        printf '# Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.\n'
-        printf 'if (Get-Command mise -ErrorAction SilentlyContinue) {\n'
-        printf '    Invoke-Expression (&mise activate pwsh | Out-String)\n'
-        printf '}\n'
-        printf '%s\n' "$ps_marker_end"
-      } >> "$ps_profile"
+    if ps_profile_mise_unclosed "$ps_profile"; then
+      echo "==> WARNING: PowerShell \$PROFILE has '${ps_mise_marker_begin}' with no end marker after it; close or remove that block, then run just deploy again (left as is)"
+    elif ! grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
+      { printf '\n'; ps_profile_mise_block; } >> "$ps_profile"
       echo "==> PowerShell \$PROFILE updated with mise-activate block"
+    elif ps_profile_mise_stale "$ps_profile"; then
+      ps_profile_mise_upgrade "$ps_profile"
+      echo "==> PowerShell \$PROFILE mise-activate block rewritten in place (ADR 0086)"
+    else
+      echo "==> PowerShell \$PROFILE mise-activate block already current (skip)"
     fi
     # starship init block (ADR 0022), after mise activate. Profiles deployed
     # with the old order carry it first, where it silently skips unless mise's

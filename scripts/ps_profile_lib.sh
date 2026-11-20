@@ -106,3 +106,54 @@ ps_profile_drop_block() {
   rm -f "$tmp"
   return "$rc"
 }
+
+# The `mise activate` block deploy writes (ADR 0024, ADR 0086). Inside a
+# GitHub Actions job mise is not activated: Actions starts `shell: pwsh` steps
+# without -NoProfile, and an activated mise put its tools ahead of the job's
+# GITHUB_PATH. Actions sets GITHUB_ACTIONS=true in every step.
+ps_profile_mise_block() {
+  # shellcheck disable=SC2016  # PowerShell, written into the profile verbatim
+  printf '%s\n' \
+    '# >>> dotfiles managed block: mise activate >>>' \
+    '# Managed by `just deploy` (see ADR 0024, ADR 0086). Edits inside this block are overwritten on next deploy.' \
+    "# Not inside a GitHub Actions job: there the job's GITHUB_PATH must come first (ADR 0086)." \
+    "if (\$env:GITHUB_ACTIONS -ne 'true' -and (Get-Command mise -ErrorAction SilentlyContinue)) {" \
+    '    Invoke-Expression (&mise activate pwsh | Out-String)' \
+    '}' \
+    '# <<< end dotfiles managed block <<<'
+}
+
+# The mise block's state in $1: absent, unclosed, current or stale
+# (mise_block.awk). A missing file is absent.
+ps_profile_mise_state() {
+  if [ ! -f "$1" ]; then
+    printf 'absent\n'
+    return 0
+  fi
+  PS_MISE_BLOCK="$(ps_profile_mise_block)" \
+    awk -v mode=state -f "$_PS_PROFILE_LIB_DIR/mise_block.awk" "$1"
+}
+
+# Succeeds when $1 holds a closed mise block that differs from the current one.
+ps_profile_mise_stale() {
+  [ "$(ps_profile_mise_state "$1")" = stale ]
+}
+
+# Succeeds when $1's mise block has no end marker before the end of the file or
+# before another managed block. Nothing may rewrite such a profile.
+ps_profile_mise_unclosed() {
+  [ "$(ps_profile_mise_state "$1")" = unclosed ]
+}
+
+# Rewrites $1's mise block in place with the current one, keeping every other
+# line. Fails, leaving the file as it was, when the block is absent or
+# unclosed. Written back through `cat >`, like ps_profile_drop_block.
+ps_profile_mise_upgrade() {
+  local tmp rc=0
+  tmp="$(mktemp)" || return 1
+  PS_MISE_BLOCK="$(ps_profile_mise_block)" \
+    awk -v mode=upgrade -f "$_PS_PROFILE_LIB_DIR/mise_block.awk" "$1" >"$tmp" \
+    && cat "$tmp" >"$1" || rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
