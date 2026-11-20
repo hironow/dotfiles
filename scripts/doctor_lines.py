@@ -2,7 +2,7 @@
 """The doctor line protocol: how a checker prints a finding and doctor reads it.
 
 Every checker (codex_hooks_trust, codex_sandbox_tools, claude_plugins,
-headroom_mcp, ai_tools_check) prints `LEVEL name - detail` lines, LEVEL padded
+headroom_mcp, agent_mcp, ai_tools_check) prints `LEVEL name - detail` lines, LEVEL padded
 to four (OK, WARN, ERR, INFO), and exits 1 on a WARN. WARN means the operator
 should look or act on this host; INFO is a caveat or a fact, shown but never a
 failure and never a pass. scripts/doctor.sh counts the lines; ai_tools_check

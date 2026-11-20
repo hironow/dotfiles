@@ -230,32 +230,21 @@ If the clone has `.git`, `postCreateCommand` installs prek hooks via `just insta
 
 ## MCP
 
-Chrome DevTools MCP is installed by a required plugin (`dump/harness/claude-plugins.json`), so it is omitted here.
+`just deploy` registers the remote MCP servers declared in `dump/harness/mcp-servers.json` with Claude Code (every home), Codex, Pi and Antigravity (`just agent-mcp-install`, ADR 0087).
+
+- A server that a Claude plugin already carries (context7, cloudflare, vercel) is left to that plugin in Claude Code.
+- A server that needs a browser sign-in (cloudflare, vercel) asks for it once in each agent. Codex signs in as soon as the server is added, so the run prints that command for Codex instead of running it.
+- A server that needs an API key (google-dev-knowledge) is never registered. The run prints its setup steps for each agent that lacks it.
+- Chrome DevTools MCP comes from a required plugin (`dump/harness/claude-plugins.json`).
+
+Set up by hand:
 
 ```bash
-claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
-
-# Documentation servers (user scope)
-claude mcp add -s user -t http bun https://bun.com/docs/mcp
-claude mcp add -s user -t http cloudflare https://docs.mcp.cloudflare.com/mcp
-claude mcp add -s user -t http vercel https://mcp.vercel.com
-claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
-claude mcp add -s user -t http openai https://developers.openai.com/mcp
-# Google Cloud: https://developers.google.com/knowledge/mcp#gcloud-cli
-# Local MCP connection setup, run once. Do not use for production resources managed by tofu
-YOUR_PROJECT_ID=<your-project-id>
-gcloud beta services mcp enable developerknowledge.googleapis.com --project=$YOUR_PROJECT_ID
-# Requires auth: gcloud auth login / gcloud auth application-default login
-gcloud services api-keys create --project=$YOUR_PROJECT_ID --display-name="DK API Key"
-YOUR_API_KEY=<your-keyString>
-claude mcp add google-dev-knowledge -s user -t http https://developerknowledge.googleapis.com/mcp --header "X-Goog-Api-Key: $YOUR_API_KEY"
-# AWS: https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server/
-claude mcp add -s user -t http aws-knowledge-mcp-server https://knowledge-mcp.global.api.aws
 # k6: https://grafana.com/docs/k6/latest/release-notes/v1.6.0/#introducing-mcp-k6-ai-assisted-k6-script-writing-mcp-k6
 claude mcp add --scope=user --transport=stdio k6 -- podman run --rm -i docker.io/grafana/mcp-k6
 
-# Per-project (also copy to other agent config directories)
-claude mcp add -s project -t http jaeger http://localhost:16687/mcp
+# Jaeger v2, per project (also copy to other agent config directories)
+claude mcp add -s project -t http jaeger http://localhost:16686/api/ai/mcp/
 ```
 
 ## Other settings
