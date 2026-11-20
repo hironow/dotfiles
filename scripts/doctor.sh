@@ -403,6 +403,14 @@ EOF_WSL
     if ps_profile_starship_before_mise "$ps_profile"; then
       stale="${stale}${stale:+, }profile:starship-before-mise"
     fi
+    # An old mise block activates mise inside GitHub Actions jobs too, ahead
+    # of the job's GITHUB_PATH (ADR 0086); deploy rewrites it.
+    if ps_profile_mise_stale "$ps_profile"; then
+      stale="${stale}${stale:+, }profile:mise-activate-outdated"
+    fi
+    if ps_profile_mise_unclosed "$ps_profile"; then
+      log_warn 'win-profile-mise-unclosed' "the mise activate block in ${ps_profile} has no end marker -- close or remove it, then run: just deploy"
+    fi
     cmp -s config/mise/config.toml "$HOME/.config/mise/config.toml" 2>/dev/null \
       || stale="${stale}${stale:+, }mise-config"
     if [ -z "$stale" ]; then

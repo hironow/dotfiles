@@ -91,11 +91,12 @@ engine. Unix engine-only replay exits before filesystem janitors, with destructi
 commands also stubbed as tripwires. A separate synthetic-root replay checks the
 owner reentry's exact arguments; it stubs runuser and root maintenance I/O, and
 has no workspace/toolcache trees. PowerShell exits before filesystem janitors. HOME/profile
-and state are disposable. Assertions include the seed and full CLI trace.
+and state are disposable. Assertions include the scenario and full CLI trace.
 
 ```bash
 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py
-PODMAN_GC_SEED=23 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k seeded
+# Every fault x keep x fresh x ID-spelling combination (96 per platform) instead of the covering set.
+PODMAN_GC_FULL_SWEEP=1 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k scenarios
 # Required Windows/isolated PowerShell acceptance: absent pwsh fails explicitly.
 PODMAN_GC_REQUIRE_PWSH=1 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
 # The same cases on a chosen PowerShell (powershell.exe = Windows PowerShell 5.1).
