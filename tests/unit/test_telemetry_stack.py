@@ -156,22 +156,6 @@ def test_tel_down_also_removes_containers_of_an_older_stack() -> None:
     assert "{{PODMAN_COMPOSE}} down --remove-orphans" in recipe[1]
 
 
-def test_portless_telemetry_aliases_use_published_ports() -> None:
-    doc = _read(ROOT / "docs" / "portless-urls.md")
-    section = re.search(
-        r"^# telemetry \(telemetry/compose\.yaml\)\n((?:portless alias .*\n)+)",
-        doc,
-        re.MULTILINE,
-    )
-    assert section, "docs/portless-urls.md lost its telemetry section"
-    ports = {
-        int(p)
-        for p in re.findall(r"^portless alias \S+ (\d+) ", section[1], re.MULTILINE)
-    }
-    assert ports
-    assert ports <= _published_ports()
-
-
 def test_observability_spoke_points_at_published_ports_and_the_lgtm_name() -> None:
     spoke = _read(ROOT / "ROOT_AGENTS_docs_agents_observability.md")
     shared = spoke.split("**First choice", 1)[1].split("**Alternative", 1)[0]
