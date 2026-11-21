@@ -1,12 +1,12 @@
 // 配布・同期・スキル配置（scripts/skills_lock.py, scripts/sync_agents.py）の状態機械モデル。
 // 2つのエージェントホーム（h1, h2）と、ストア世代（1 -> 2）を扱う。
 //
-// codeAsIs: 現行コードそのままの挙動。
+// preFix: 修正前コードの挙動。
 //   - skills_lock.py#place は全ループ終了後にのみ _save_state を呼ぶ（PERSIST_PER_ITEM = false）。
 //   - sync_agents.py#sync_mode は hook_session.apply_home より前に指示ファイルを書き込む（STAGE_HOOK_BEFORE_FILES = false）。
-// guarded: 提案設計。
-//   - _swap_in ごとに .skills-lock-state.json を永続化する（PERSIST_PER_ITEM = true）。
-//   - ホーム単位でフック登録と指示ファイル更新を揃えて確定する（STAGE_HOOK_BEFORE_FILES = true）。
+// codeAsIs: 修正後の現行コードの挙動。
+//   - _swap_in ごとに .skills-lock-state.json を原子的リネームで永続化する（PERSIST_PER_ITEM = true）。
+//   - hook_session.apply_home を先に実行し、停止時は指示ファイルも削除も書き込まない（STAGE_HOOK_BEFORE_FILES = true）。
 module deploy_sync {
   const PERSIST_PER_ITEM: bool
   const STAGE_HOOK_BEFORE_FILES: bool
@@ -34,8 +34,8 @@ module deploy_sync {
   }
 
   // scripts/skills_lock.py#place（コピーモード初回配置）:
-  // _swap_in でホームへコピーを書き込む。PERSIST_PER_ITEM = false の現行コードでは
-  // state[name] をメモリ上だけ更新し、_save_state はループ末尾まで遅延する。
+  // _swap_in でホームへコピーを書き込む。PERSIST_PER_ITEM = true（修正後の現行コード）では
+  // 直後に _save_state でディスクへ永続化する。
   action placeCopy(h: str): bool = all {
     not(stopped),
     placedVer.get(h) == 0,
@@ -46,8 +46,7 @@ module deploy_sync {
     fileVer' = fileVer, hookVer' = hookVer,
   }
 
-  // scripts/skills_lock.py#place 末尾の _save_state(skills_dir, state):
-  // ループ完走時にメモリ上の state をディスクへ永続化する。
+  // 修正前コードのループ末尾 _save_state(skills_dir, state)
   action finishPlace = all {
     not(stopped),
     inMemVer != recordedVer,
@@ -58,7 +57,6 @@ module deploy_sync {
   }
 
   // 外部確認（bunx skills update）: システム外でストアが世代 1 -> 2 へ進む。
-  // 配布が中断していても起き得る。
   action storeUpdates = all {
     storeVer == 1,
     storeVer' = 2,
@@ -68,8 +66,7 @@ module deploy_sync {
   }
 
   // 次回の scripts/skills_lock.py#place 再実行:
-  // 既にコピーが存在しストアと異なる場合、recordedVer == placedVer（own_copy）なら更新する。
-  // 未記録（recordedVer != placedVer）なら利用者編集とみなして kept に分類し更新を止める。
+  // recordedVer == placedVer（own_copy）なら更新する。未記録なら kept に分類し更新を止める。
   action rePlace(h: str): bool = all {
     not(stopped),
     placedVer.get(h) != 0,
@@ -83,8 +80,7 @@ module deploy_sync {
     fileVer' = fileVer, hookVer' = hookVer,
   }
 
-  // scripts/sync_agents.py#sync_mode のファイル適用（_apply_sync_action）:
-  // 現行コード（STAGE_HOOK_BEFORE_FILES = false）では apply_home より先に指示ファイルを更新する。
+  // 修正前コードのファイル先行書き込み（STAGE_HOOK_BEFORE_FILES = false のみ有効）
   action syncWriteFiles(h: str): bool = all {
     not(stopped),
     not(STAGE_HOOK_BEFORE_FILES),
@@ -95,8 +91,9 @@ module deploy_sync {
     hookVer' = hookVer,
   }
 
-  // scripts/sync_agents.py#sync_mode のフック登録（hook_session.apply_home）:
-  // 提案設計（STAGE_HOOK_BEFORE_FILES = true）ではホーム単位でフックと指示ファイルを同時に確定する。
+  // scripts/sync_agents.py#sync_mode のホーム処理:
+  // 修正後の現行コード（STAGE_HOOK_BEFORE_FILES = true）では apply_home が先に実行され、
+  // committed の場合のみ指示ファイルへ進むためホーム内で世代が分裂しない。
   action syncApplyHome(h: str): bool = all {
     not(stopped),
     hookVer.get(h) == 1,
@@ -107,8 +104,7 @@ module deploy_sync {
     recordedVer' = recordedVer, inMemVer' = inMemVer, keptOrphan' = keptOrphan,
   }
 
-  // 配布中断（SyncStopped / ChangedSinceRead / プロセス終了）:
-  // 未永続化の inMemVer は失われる。
+  // 配布中断（SyncStopped / ChangedSinceRead / プロセス終了）
   action stopRun = all {
     not(stopped),
     stopped' = true,
@@ -142,25 +138,25 @@ module deploy_sync {
   val allHomesConsistent = Homes.forall(h1 => Homes.forall(h2 => hookVer.get(h1) == hookVer.get(h2)))
 }
 
-module codeAsIs {
+module preFix {
   import deploy_sync(PERSIST_PER_ITEM = false, STAGE_HOOK_BEFORE_FILES = false).*
 
-  // 現行コードの反例1: placeCopy 後に _save_state 前で中断し、ストアが更新されると次回 place で kept になる
+  // 修正前の反例1: placeCopy 後に _save_state 前で中断し、ストアが更新されると次回 place で kept になる
   run orphanedCopyTest =
     init.then(placeCopy("h1")).then(stopRun).then(storeUpdates)
       .then(recover).then(rePlace("h1"))
       .expect("h1".in(keptOrphan))
 
-  // 現行コードの反例2: syncWriteFiles 後に apply_home 前で中断するとホーム内の指示とフックの世代が分裂する
+  // 修正前の反例2: syncWriteFiles 後に apply_home 前で中断するとホーム内の指示とフックの世代が分裂する
   run splitHomeTest =
     init.then(syncWriteFiles("h1")).then(stopRun)
       .expect(fileVer.get("h1") == 2 and hookVer.get("h1") == 1)
 }
 
-module guarded {
+module codeAsIs {
   import deploy_sync(PERSIST_PER_ITEM = true, STAGE_HOOK_BEFORE_FILES = true).*
 
-  // 提案設計の確認: 中断後にストアが更新されても、永続化済み state により次回 place で v2 へ更新される
+  // 修正後の現行コード確認: 中断後にストアが更新されても、項目別永続化により次回 place で v2 へ更新される
   run perItemRecoveryTest =
     init.then(placeCopy("h1")).then(stopRun).then(storeUpdates)
       .then(recover).then(rePlace("h1"))

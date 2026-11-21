@@ -72,7 +72,7 @@ help:
 # Lint markdown files
 [group('Check')]
 lint-md:
-    @{{MARKDOWNLINT}} --fix "glossary/README.md" "glossary/docs/findings.md" "!sets/**" "!input/**" "!output/**"
+    @{{MARKDOWNLINT}} --fix "glossary/README.md" "glossary/docs/findings.md" "glossary/docs/business-gaps.md" "!sets/**" "!input/**" "!output/**"
 
 [group('Check')]
 pdoc port="8888" pkg=".":

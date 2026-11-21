@@ -13,8 +13,8 @@
 | 切替ロックとジャーナル | `switchLock` | distribution | ホーム単位のフック切替中に排他と復旧証跡を保持する switch.lock および switch-<home>.json | エージェントホーム |  |
 | 同期マニフェスト | `syncManifest` | distribution | dotfiles 側で追跡するディレクトリ項目（commands, agents）を記録する .sync-manifest.json。同期末尾で保存される | 指示・設定の正本, エージェントホーム |  |
 | 外部スキルストア反映 | `storeInstall` | skills | ピン留めした外部 CLI（bunx skills@1.5.22）による ~/.agents/skills と .skill-lock.json への書き込み。同期処理の外部で上流世代が更新され得る |  |  |
-| 配置済みスキル | `placedSkill` | skills | 各エージェントホームの skills/ へ相対シンボリックリンク（不可時はコピー＋.skills-lock-state.json 記録）として配置されたスキル | エージェントホーム, 外部スキルストア反映 |  |
-| 登録済みフック | `wiredHook` | distribution | agent-hook バイナリまたは設定フラグメントがホームの settings.json / hooks.json に確定登録された状態 | 指示・設定の正本, エージェントホーム, 切替ロックとジャーナル |  |
+| 配置済みスキル | `placedSkill` | skills | 各エージェントホームの skills/ へ相対シンボリックリンク（不可時はコピー＋原子的 _save_state による項目別永続化）として配置されたスキル | エージェントホーム, 外部スキルストア反映 |  |
+| 登録済みフック | `wiredHook` | distribution | agent-hook バイナリまたは設定フラグメントがホームの settings.json / hooks.json に確定登録された状態。sync_mode ではファイル適用より先に apply_home を確定する | 指示・設定の正本, エージェントホーム, 切替ロックとジャーナル |  |
 | 配布・同期の中断 | `syncStop` | operations | apply_home の停止（SyncStopped / ChangedSinceRead）やプロセス途中終了により、配布・配置ループが完走前に止まること | 切替ロックとジャーナル, 配置済みスキル, 登録済みフック |  |
 | プレビュー実行 | `previewMode` | operations | ホームへ一切書き込まずに差分計画のみを表示する --preview 実行（just sync-agents-preview） | 指示・設定の正本, エージェントホーム |  |
 | 診断と手動復旧 | `doctorRecovery` | operations | 中断・ドリフト発生後に just doctor で状態を診断し、just sync-agents / just skills-place / 個別レシピで再同期する経路 | エージェントホーム, 配布・同期の中断 |  |
@@ -24,14 +24,14 @@
 | 判定 | 主張 | 用語 | 証拠 |
 |---|---|---|---|
 | 証明済み | 配布・同期用語集は ID が一意で、参照先が存在し、定義が循環していない | 指示・設定の正本, エージェントホーム, 切替ロックとジャーナル, 配置済みスキル, 登録済みフック | Lean: `Glossary.DeploySync.terms_wellFormed` |
-| 反例あり | 現行コードそのまま（scripts/skills_lock.py#place のループ末尾一括 _save_state）では、コピー配置途中で中断して外部ストアが更新されても、dotfiles が配置したコピーが未記録の孤児（kept）にならない | 配置済みスキル, 外部スキルストア反映, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `codeAsIs.noOrphanedCopy` |
-| 反例あり | 現行コードそのまま（scripts/sync_agents.py#sync_mode のファイル先行書き込み）では、apply_home が中断してもホーム内の指示ファイル世代とフック登録世代が分裂しない | 登録済みフック, エージェントホーム, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `codeAsIs.noSplitHome` |
-| 証明済み | 提案設計（_swap_in ごとに .skills-lock-state.json を永続化）では、配布中断と外部ストア更新を経ても未記録の孤児コピー（kept）が生じない | 配置済みスキル, 外部スキルストア反映, 配布・同期の中断 | Quint + TLC 全状態: `Spec/deploy_sync.qnt` `guarded.noOrphanedCopy` |
-| 証明済み | 提案設計（ホーム単位でフック登録と指示ファイル更新を揃えて確定）では、配布中断が起きても単一ホーム内で指示とフックの世代が分裂しない | 登録済みフック, エージェントホーム, 配布・同期の中断 | Quint + TLC 全状態: `Spec/deploy_sync.qnt` `guarded.noSplitHome` |
-| 反例あり | 提案設計（ホーム単位の原子的確定）であっても、複数ホーム同期の途中で中断したとき全ホームの世代が常に一致する | エージェントホーム, 登録済みフック, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `guarded.allHomesConsistent` |
-| 未決定 | skills_lock.py のコピーモード配置で途中中断した場合、_save_state を項目ごとに永続化すべきか、それとも --force による手動復旧に委ねるか？ | 配置済みスキル, 配布・同期の中断, 診断と手動復旧 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `codeAsIs.noOrphanedCopy` |
-| 未決定 | sync_agents.py で hook_session.apply_home が停止したとき、直前に書き込んだ指示ファイル（CLAUDE.md / AGENTS.md）をロールバックすべきか？ | 登録済みフック, エージェントホーム, 配布・同期の中断 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `codeAsIs.noSplitHome` |
-| 未決定 | 複数ホーム同期で一部ホームだけ apply_home が停止したとき、完了済みホームを新世代のまま進める（現行の継続方針）か、全ホームを旧世代へ戻すべきか？ | エージェントホーム, 登録済みフック, 配布・同期の中断 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `guarded.allHomesConsistent` |
+| 反例あり | 修正前設計（scripts/skills_lock.py#place のループ末尾一括 _save_state）では、コピー配置途中で中断して外部ストアが更新されても、dotfiles が配置したコピーが未記録の孤児（kept）にならない | 配置済みスキル, 外部スキルストア反映, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `preFix.noOrphanedCopy` |
+| 反例あり | 修正前設計（scripts/sync_agents.py#sync_mode のファイル先行書き込み）では、apply_home が中断してもホーム内の指示ファイル世代とフック登録世代が分裂しない | 登録済みフック, エージェントホーム, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `preFix.noSplitHome` |
+| 証明済み | 現行コード（_swap_in ごとに原子的 _save_state で .skills-lock-state.json を永続化）では、配布中断と外部ストア更新を経ても未記録の孤児コピー（kept）が生じない | 配置済みスキル, 外部スキルストア反映, 配布・同期の中断 | Quint + TLC 全状態: `Spec/deploy_sync.qnt` `codeAsIs.noOrphanedCopy` |
+| 証明済み | 現行コード（sync_mode で apply_home を先行確定し停止時は書き込みを飛ばす）では、配布中断が起きても単一ホーム内で指示とフックの世代が分裂しない | 登録済みフック, エージェントホーム, 配布・同期の中断 | Quint + TLC 全状態: `Spec/deploy_sync.qnt` `codeAsIs.noSplitHome` |
+| 反例あり | 現行コード（ホーム単位の先行確定）であっても、複数ホーム同期の途中で中断したとき全ホームの世代が常に一致する | エージェントホーム, 登録済みフック, 配布・同期の中断 | Quint 反例: `Spec/deploy_sync.qnt` `codeAsIs.allHomesConsistent` |
+| 未決定 | skills_lock.py のコピーモード配置で途中中断した場合、_save_state を項目ごとに永続化すべきか、それとも --force による手動復旧に委ねるか？ | 配置済みスキル, 配布・同期の中断, 診断と手動復旧 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `preFix.noOrphanedCopy` |
+| 未決定 | sync_agents.py で hook_session.apply_home が停止したとき、直前に書き込んだ指示ファイル（CLAUDE.md / AGENTS.md）をロールバックすべきか？ | 登録済みフック, エージェントホーム, 配布・同期の中断 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `preFix.noSplitHome` |
+| 未決定 | 複数ホーム同期で一部ホームだけ apply_home が停止したとき、完了済みホームを新世代のまま進める（現行の継続方針）か、全ホームを旧世代へ戻すべきか？ | エージェントホーム, 登録済みフック, 配布・同期の中断 | 業務側への質問。空白を示す反例: `Spec/deploy_sync.qnt` `codeAsIs.allHomesConsistent` |
 
 ## リポジトリ不変条件（旧ADR群の証明化）
 

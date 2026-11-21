@@ -20,9 +20,11 @@
 | 外部スキルストア反映 | `storeInstall` | `scripts/skills_lock.py` | `SKILLS_CLI_VERSION = "1.5.22"` |
 | 外部スキルストア反映 | `storeInstall` | `scripts/skills_lock.py` | `def build_restore_command(record: SkillRecord)` |
 | 配置済みスキル | `placedSkill` | `scripts/skills_lock.py` | `STATE_FILE = ".skills-lock-state.json"` |
+| 配置済みスキル | `placedSkill` | `scripts/skills_lock.py` | `tmp.replace(state_file)` |
 | 配置済みスキル | `placedSkill` | `scripts/skills_lock.py` | `def _swap_in(` |
 | 配置済みスキル | `placedSkill` | `scripts/skills_lock.py` | `def place(` |
 | 登録済みフック | `wiredHook` | `scripts/agent_hook_sync.py` | `def apply_home(self, key: str) -> HomeResult:` |
+| 登録済みフック | `wiredHook` | `scripts/sync_agents.py` | `result = hook_session.apply_home(plan.agent.key)` |
 | 配布・同期の中断 | `syncStop` | `scripts/sync_agents.py` | `raise hook_sync.SyncStopped(` |
 | 配布・同期の中断 | `syncStop` | `scripts/agent_hook_sync.py` | `raise wiring.ChangedSinceRead(` |
 | プレビュー実行 | `previewMode` | `scripts/sync_agents.py` | `def preview_mode(` |

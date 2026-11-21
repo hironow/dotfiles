@@ -194,7 +194,8 @@ def claims : List (Claim Term) := [
   { about := [readonlyGitHooks, declaredRemoteMcp],
     statement := "既存の Proposed 状態 ADR（0065 kernel-cve evidence-only、0085、0087）および退役済み Coder 関連 ADR（0002〜0013, 0045）は、docs/adr/ 削除後に git 履歴のみへ委ねてよいか？",
     verdict := .undecided,
-    evidence := .questionOutsideModel "過去の経緯や未決裁 ADR を git 履歴のみに残すか否かは運用上の意思決定であり、状態機械モデルでは決定できない" }
+    evidence := .questionOutsideModel "過去の経緯や未決裁 ADR を git 履歴のみに残すか否かは運用上の意思決定であり、状態機械モデルでは決定できない",
+    industry := some (.gap "ThoughtWorks の進化アーキテクチャでは適合度関数で規則を検証しつつ ADR に背景を残すのが主流であり、ADR 全廃と git 履歴委譲は標準がない") }
 ]
 
 def book : Book Term Ctx :=

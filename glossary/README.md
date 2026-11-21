@@ -2,8 +2,8 @@
 
 `hironow/dotfiles` の用語・アーキテクチャ不変条件（旧 ADR 群）・配布同期の状態機械を Lean 4 と Quint で機械検証し、ドキュメントを生成するプロジェクト。
 
-- **開始点**: B（既存コードから構築。参照コミット: `064a35c9`）
-- **到達 Tier**: Tier 1（必須項目完了。Tier 2 の業界調査および Tier 3 の対照実験は未実施）
+- **開始点**: B（既存コードから構築。参照コミット: `064a35c9`、その後反例 2 件を実装修正済み）
+- **到達 Tier**: Tier 2（必須項目＋業界慣行との比較完了。Tier 3 の対照実験およびポリシー草案は未実施）
 - **判定の 3 区分**: 証明済み（Lean 証明または Quint + TLC 全状態検査）、反例あり（反証または到達可能な反例）、未決定（業務・運用判断が必要な質問）
 - **件数と一覧**: [docs/generated/summary.md](./docs/generated/summary.md)
 
@@ -30,6 +30,7 @@
 4. [docs/generated/claims.md](./docs/generated/claims.md) — 全主張と証拠
 5. [docs/generated/questions.md](./docs/generated/questions.md) — 未決定の質問一覧
 6. [docs/findings.md](./docs/findings.md) — モデル検査の比較表・結果・限界
+7. [docs/business-gaps.md](./docs/business-gaps.md) — 業界慣行との比較と運用判断の空白
 
 ## 使い方
 
