@@ -107,7 +107,7 @@ ADR 0014 (emulator vendoring) / 0015 (portless) / 0016 (emulate) / 0072 (telemet
 
 - `docs/handover.md` / `docs/intent.md` are **gitignored** (local only, untracked).
   Dated backups are ignored via the `docs/handover-*.md` / `docs/intent-*.md` globs.
-- `docs/adr/` holds ADRs (immutable once Accepted). Other files under `docs/` describe only the current state (history lives in ADRs / git).
+- Human-maintained `docs/` and `docs/adr/` are retired. The SSOT is code, tests, and `glossary/` (`provable-glossary`: Lean 4 proofs, Quint models, and generated docs under `glossary/docs/generated/`, verified by `just glossary check`). History lives in git and PR rulings.
 
 ## Git / PR
 

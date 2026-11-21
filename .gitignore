@@ -122,3 +122,5 @@ tools/simple-server/simple-server.exe
 # unrooted pattern would over-match any future subdirectory copy.
 /skills-lock.json
 .e2e-snapshots/
+/glossary-scan/
+.remember/

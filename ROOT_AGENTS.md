@@ -215,7 +215,7 @@ Open the matching file as soon as its trigger applies:
 | touching `tofu/`, `gcloud`, `kubectl`, Cloud Run | docs/agents/iac-drift-policy.md   |
 | creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |
 | adding or maintaining a Semgrep rule           | docs/agents/semgrep.md              |
-| editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
+| editing docs / rules registry / intent / handover | docs/agents/docs-discipline.md   |
 | creating dirs or files, or unsure where code goes | docs/agents/project-structure.md |
 | blocked by a hook, or scanning a repo for banned patterns | docs/agents/enforcement.md |
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |

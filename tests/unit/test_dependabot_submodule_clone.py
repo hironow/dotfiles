@@ -120,15 +120,6 @@ def _submodule_args(line: str) -> list[str]:
     return tokens[tokens.index("submodule") :]
 
 
-def _readme_fetch_args() -> list[str]:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    lines = re.findall(r"^git .*\bsubmodule update --init\b.*$", text, re.MULTILINE)
-    assert len(lines) == 1, (
-        f"expected one submodule fetch step in README.md, got {lines}"
-    )
-    return _submodule_args(lines[0])
-
-
 def _recipe_update_args() -> list[str]:
     lines = (ROOT / "justfile").read_text(encoding="utf-8").splitlines()
     start = next(
@@ -264,15 +255,6 @@ def test_dependabot_clone_skips_every_submodule(tmp_path: Path) -> None:
     status = _ok("-C", dest, "submodule", "status").splitlines()
     assert len(status) == len(REAL_SUBMODULE)
     assert all(line.startswith("-") for line in status), status
-
-
-def test_readme_step_fetches_skipped_submodules(tmp_path: Path) -> None:
-    checkout = tmp_path / "machine"
-    all_none = dict.fromkeys(REAL_SUBMODULE, "none")
-    _ok("clone", "-q", _superproject(tmp_path, all_none), checkout)
-    _run_in(checkout, tmp_path, _readme_fetch_args())
-    for role in REAL_SUBMODULE:
-        assert (checkout / role / "a.txt").is_file(), role
 
 
 def test_update_recipe_advances_a_skipped_submodule(tmp_path: Path) -> None:

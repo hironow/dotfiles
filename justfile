@@ -72,7 +72,7 @@ help:
 # Lint markdown files
 [group('Check')]
 lint-md:
-    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
+    @{{MARKDOWNLINT}} --fix "glossary/README.md" "glossary/docs/findings.md" "glossary/docs/business-gaps.md" "!sets/**" "!input/**" "!output/**"
 
 [group('Check')]
 pdoc port="8888" pkg=".":
@@ -2566,3 +2566,6 @@ tel-check:
 tel-logs svc='':
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     cd telemetry && if [ -n {{quote(svc)}} ]; then {{PODMAN_COMPOSE}} logs -f {{quote(svc)}}; else {{PODMAN_COMPOSE}} logs -f; fi
+
+# Provable glossary: `just glossary check`, `just glossary generate`
+mod? glossary

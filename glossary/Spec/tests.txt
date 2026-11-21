@@ -1,0 +1,3 @@
+# One scripted test per line: <file> <module>
+Spec/deploy_sync.qnt preFix
+Spec/deploy_sync.qnt codeAsIs

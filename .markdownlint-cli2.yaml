@@ -30,3 +30,4 @@ ignores:
   - tools/rttm/.venv/**
   - output/**
   - /private/**
+  - glossary/docs/generated/**

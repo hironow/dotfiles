@@ -11,7 +11,8 @@ repos) are exempt.
 
 | path            | purpose                                                       |
 | --------------- | ------------------------------------------------------------- |
-| `docs/`         | current-implementation docs + ADRs                            |
+| `glossary/`     | *(optional)* provable-glossary (Lean 4 proofs, Quint models, generated docs) |
+| `docs/`         | *(optional)* rules registry (`docs/rules.toml`) and gitignored `intent.md` / `handover.md` |
 | `experiments/`  | research, preliminary experiments, exploratory implementations|
 | `output/`       | generated artifacts and build outputs                         |
 | `examples/`     | usage examples and sample code                                |
@@ -35,10 +36,6 @@ repos) are exempt.
   (`docker/api.Dockerfile`, `docker/worker.Dockerfile`, …).
 - `compose.yaml` always stays at the root. It points to `docker/*.Dockerfile`
   with `build.dockerfile`.
-
-## docs/ subdirectories
-
-- `docs/adr/` — Architecture Decision Records (see docs/agents/docs-discipline.md).
 
 ## scripts/ rules
 

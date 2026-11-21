@@ -44,7 +44,7 @@ rules:
     metadata:
       category: concurrency
       added: "2026-04-18"
-      adr: docs/adr/NNNN-goroutine-context.md
+      rule: concurrency.goroutine-context
 ```
 
 ## Running the rules
@@ -57,8 +57,8 @@ rules:
 ## When to add a rule
 
 - Reviewers made the same comment twice or more.
-- An ADR decision needs a mechanical check (for example "always Cloud SQL
-  PostgreSQL, never Spanner").
+- A rule in `docs/rules.toml` or `provable-glossary` needs a mechanical check
+  (for example "always Cloud SQL PostgreSQL, never Spanner").
 - You can express the root cause of a production incident as a code pattern.
 
 ## When *not* to add a rule

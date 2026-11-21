@@ -265,7 +265,7 @@ def test_what_survives_is_still_here() -> None:
     retirement must NOT have taken with it, because "scrub every mention" would
     have deleted the record of why any of it happened."""
     for kept in (
-        "docs/adr",
+        "glossary/docs/generated",
         "tofu/tailnet",
         # Kept independently of any one model: the formal-methods policy applies
         # to every scaffolded repo and now also to the local runner-GC model.

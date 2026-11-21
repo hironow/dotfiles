@@ -88,5 +88,18 @@
     "**/protocols/**",
     "**/tools/tmux/plugins/**",
     "**/knowledge-work-plugins/**"
-  ]
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect_generated.py\""
+          }
+        ]
+      }
+    ]
+  }
 }
