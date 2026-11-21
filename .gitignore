@@ -123,3 +123,4 @@ tools/simple-server/simple-server.exe
 /skills-lock.json
 .e2e-snapshots/
 /glossary-scan/
+.remember/
