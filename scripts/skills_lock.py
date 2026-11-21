@@ -410,9 +410,11 @@ def _load_state(skills_dir: Path) -> dict[str, dict[str, str]]:
 def _save_state(skills_dir: Path, state: dict[str, dict[str, str]]) -> None:
     state_file = skills_dir / STATE_FILE
     if state:
-        state_file.write_text(
+        tmp = skills_dir / f".{STATE_FILE}.tmp"
+        tmp.write_text(
             json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        tmp.replace(state_file)
     elif state_file.exists():
         state_file.unlink()
 
@@ -508,6 +510,7 @@ def place(
                 if identical and not will_link:
                     # an up-to-date copy and no symlink to upgrade it to
                     state[name] = {"mode": "copy", "fingerprint": _fingerprint(source)}
+                    _save_state(skills_dir, state)
                     continue
                 verb = "replaced" if will_link else "refreshed"
             else:
@@ -522,9 +525,8 @@ def place(
             else:
                 verb = {"linked": "copied", "replaced": "refreshed"}.get(verb, verb)
                 state[name] = {"mode": "copy", "fingerprint": _fingerprint(source)}
+            _save_state(skills_dir, state)
             getattr(result, verb).append(label)
-    for skills_dir, state in states.items():
-        _save_state(skills_dir, state)
     return result
 
 

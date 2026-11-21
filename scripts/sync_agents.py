@@ -2147,6 +2147,17 @@ def _sync_mode_files(
     for plan in plans:
         print(f"\n📋 Processing {plan.agent.name}...")
 
+        # Register the hooks first when a hook session plans this home: if
+        # apply_home stops, nothing in the home (neither instruction files nor
+        # deletions) is written, preventing a split generation inside the home.
+        # Other homes still proceed, and the run exits 1 at the end.
+        if hook_session is not None and plan.agent.key in hook_session.plans:
+            result = hook_session.apply_home(plan.agent.key)
+            print(f"  {result.message}")
+            if result.status != "committed":
+                stopped.append(result.message)
+                continue
+
         plan.agent.directory.mkdir(parents=True, exist_ok=True)
 
         for action in plan.items:
@@ -2166,22 +2177,12 @@ def _sync_mode_files(
                 else:
                     print(f"  ⏭️  {icon} {action.relative_path}: Skipped")
 
-        # Register the hooks: the session for a home it plans (the Claude
-        # homes, and Codex since PR 3d.2), else the scripts' merge (native
-        # Windows). Idempotent and manifest-independent.
-        if hook_session is not None and plan.agent.key in hook_session.plans:
-            # A home that stops keeps its state; the other homes go on, and
-            # the run exits 1 after the manifest and the Codex steps.
-            result = hook_session.apply_home(plan.agent.key)
-            print(f"  {result.message}")
-            if result.status != "committed":
-                # Nothing more of that home is written: its deletions could
-                # take a script the registration it kept still runs.
-                stopped.append(result.message)
-                continue
-        elif (
-            plan.agent.receives_hooks or plan.agent.receives_codex_hooks
-        ) and _merge_hook_settings(dotfiles_dir, plan.agent, system=system):
+        # Fallback hook merge when no hook_session is active (native Windows).
+        if (
+            hook_session is None
+            and (plan.agent.receives_hooks or plan.agent.receives_codex_hooks)
+            and _merge_hook_settings(dotfiles_dir, plan.agent, system=system)
+        ):
             hooks_file = (
                 "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
             )

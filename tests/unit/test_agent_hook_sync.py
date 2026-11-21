@@ -1593,6 +1593,39 @@ def test_a_stop_with_nothing_else_to_change_still_fails_the_run(
     assert "already in sync" not in out
 
 
+def test_stopped_hook_session_does_not_write_instruction_files_into_home(
+    workspace: tuple,
+) -> None:
+    dotfiles, agent, roots, source = workspace
+    agent.directory.mkdir(parents=True)
+    (agent.directory / "AGENTS.md").write_text("base\n", encoding="utf-8")
+    sync.sync_mode(
+        dotfiles,
+        auto_yes=True,
+        agents=[agent],
+        hook_source=source,
+        env=dict(os.environ),
+        system="Darwin",
+    )
+    # Mark uninstalled by hand so hook_session.apply_home stops for this home,
+    # and advance ROOT_AGENTS.md to v2.
+    roots.mark("claude").parent.mkdir(parents=True, exist_ok=True)
+    roots.mark("claude").write_bytes(b"")
+    (dotfiles / "ROOT_AGENTS.md").write_text("base v2\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exit_info:
+        sync.sync_mode(
+            dotfiles,
+            auto_yes=True,
+            agents=[agent],
+            hook_source=source,
+            env=dict(os.environ),
+            system="Darwin",
+        )
+    assert exit_info.value.code == 1
+    assert (agent.directory / "AGENTS.md").read_text(encoding="utf-8") == "base\n"
+
+
 def test_gc_refuses_a_releases_directory_that_is_a_link(
     workspace: tuple, tmp_path: Path
 ) -> None:

@@ -771,3 +771,37 @@ def test_restore_retries_a_failed_install_in_the_skill_folder(
         "mattpocock/skills",
         "mattpocock/skills/skills",
     ]
+
+
+def test_copy_mode_persists_state_per_item_so_mid_run_stop_does_not_orphan_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import skills_lock
+
+    home = tmp_path / "home"
+    _store_skill(home, "alpha", "v1\n")
+    _store_skill(home, "beta", "v1\n")
+    (home / ".claude").mkdir()
+    records = [_rec("alpha"), _rec("beta")]
+
+    real_swap_in = skills_lock._swap_in
+
+    def fail_on_beta(skills_dir: Path, name: str, build):
+        if name == "beta":
+            raise OSError("simulated mid-run stop")
+        return real_swap_in(skills_dir, name, build)
+
+    monkeypatch.setattr(skills_lock, "_swap_in", fail_on_beta)
+    with pytest.raises(OSError, match="simulated mid-run stop"):
+        skills_lock.place(records, home, link=False)
+
+    # External store update advances alpha to v2 after the crash.
+    monkeypatch.setattr(skills_lock, "_swap_in", real_swap_in)
+    _store_skill(home, "alpha", "v2\n")
+
+    result = skills_lock.place([_rec("alpha")], home, link=False)
+    assert result.kept == []
+    assert result.refreshed == [".claude/alpha"]
+    assert (home / ".claude" / "skills" / "alpha" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ) == "v2\n"
