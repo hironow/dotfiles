@@ -192,6 +192,42 @@ func TestCheckFailsWhenTheSlowestShardIsTooFarAboveTheMean(t *testing.T) {
 	}
 }
 
+// A module that calls pytest.skip(allow_module_level=True) has no collected
+// ids, and every shard's JUnit holds one case for it: classname "" and the
+// module as the name, skipped. That is a report about a module, not a test.
+func moduleCase(module, outcome string) shardcheck.Case {
+	return shardcheck.Case{Key: shardcheck.Key{Class: "", Name: module}, Outcome: outcome}
+}
+
+func TestCheckReportsAModuleSkippedAtCollectionAndDoesNotCountIt(t *testing.T) {
+	shards := shardsOf(3)
+	for i := range shards {
+		shards[i].Cases = append(shards[i].Cases, moduleCase("tests.unit.test_posix_only", "skipped"))
+	}
+	r := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 10})
+	if !r.OK() {
+		t.Fatalf("a module skipped at collection must not fail: %v", r.Problems)
+	}
+	if r.Executed != len(allIDs) {
+		t.Errorf("executed = %d, want %d: a skipped module is not a test", r.Executed, len(allIDs))
+	}
+	if strings.Join(r.SkippedModules, ",") != "tests.unit.test_posix_only" {
+		t.Errorf("skipped modules = %v, want the one module, listed once", r.SkippedModules)
+	}
+}
+
+func TestCheckFailsOnAModuleThatFailedToCollect(t *testing.T) {
+	shards := shardsOf(3)
+	shards[1].Cases = append(shards[1].Cases, moduleCase("tests.unit.test_broken", "error"))
+	r := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 10})
+	if r.OK() {
+		t.Fatal("a module that failed to collect must fail the check")
+	}
+	if !strings.Contains(strings.Join(r.Problems, "\n"), "tests.unit.test_broken") {
+		t.Fatalf("the module is not named: %v", r.Problems)
+	}
+}
+
 func TestCheckWritesDurationsKeyedByNodeID(t *testing.T) {
 	r := shardcheck.Check(shardsOf(3), shardcheck.Options{MaxImbalance: 10})
 	if len(r.Durations) != len(allIDs) {

@@ -130,6 +130,14 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 	for _, s := range shards {
 		fmt.Fprintf(stdout, "  %-60s %6.0fs\n", s.Name, report.ShardSeconds[s.Name])
 	}
+	if n := len(report.SkippedModules); n > 0 {
+		noun := "modules"
+		verb := "skipped themselves"
+		if n == 1 {
+			noun, verb = "module", "skipped itself"
+		}
+		fmt.Fprintf(stdout, "%d %s %s at collection: %s\n", n, noun, verb, strings.Join(report.SkippedModules, ", "))
+	}
 	if *durationsOut != "" {
 		data, err := json.MarshalIndent(withoutSecretShapes(report.Durations), "", "  ")
 		if err != nil {

@@ -114,6 +114,24 @@ func TestShardsNeedsOneCollectedListOrOnePerShard(t *testing.T) {
 	}
 }
 
+// A module that skips itself at collection (POSIX-only modules on Windows)
+// is not a test, but it must stay visible in the gate's output.
+func TestShardsNamesTheModulesSkippedAtCollection(t *testing.T) {
+	dir := t.TempDir()
+	list := write(t, dir, "all.txt", collectedList)
+	skip := `<testcase classname="" name="tests.unit.test_posix_only" time="0.000"><skipped message="collection skipped"/></testcase>`
+	one := write(t, dir, "1.xml", junit(tc("tests.unit.test_a", "test_one", "1"), tc("tests.unit.test_b", "test_three", "1"), skip))
+	two := write(t, dir, "2.xml", junit(tc("tests.unit.test_a", "test_two", "2"), skip))
+	var stdout, stderr bytes.Buffer
+	args := []string{"shards", "--collected", list, "--junit", one, "--junit", two, "--max-imbalance", "0"}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 module skipped itself at collection: tests.unit.test_posix_only") {
+		t.Fatalf("the skipped module is not named:\n%s", stdout.String())
+	}
+}
+
 func TestShardsNeedsTheCollectedListAndAReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(context.Background(), []string{"shards", "--junit", "x.xml"}, &stdout, &stderr, noNetwork{}); code != 2 {

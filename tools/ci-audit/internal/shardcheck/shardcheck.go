@@ -17,6 +17,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -57,10 +59,16 @@ type Report struct {
 	Duplicates     []string
 	DifferingLists []string
 	EmptyShards    []string
-	Imbalance      float64
-	ShardSeconds   map[string]float64
-	Durations      map[string]float64
-	Problems       []string
+	// SkippedModules are modules that skipped themselves at collection
+	// (pytest.skip(allow_module_level=True)). They have no collected ids, and
+	// every shard reports them, so they are listed once and are not tests.
+	SkippedModules []string
+	// BrokenModules are modules whose collection failed: always a problem.
+	BrokenModules []string
+	Imbalance     float64
+	ShardSeconds  map[string]float64
+	Durations     map[string]float64
+	Problems      []string
 }
 
 // OK reports whether the check found no problem.
@@ -183,8 +191,19 @@ func Check(shards []Shard, opt Options) Report {
 		}
 	}
 	seen := map[Key]int{}
+	skipped, broken := map[string]bool{}, map[string]bool{}
 	for _, s := range shards {
 		for _, c := range s.Cases {
+			// pytest writes a module-level report with an empty classname and
+			// the module as the name; a real test always has a classname.
+			if c.Key.Class == "" {
+				if c.Outcome == "skipped" {
+					skipped[c.Key.Name] = true
+				} else {
+					broken[c.Key.Name] = true
+				}
+				continue
+			}
 			seen[c.Key]++
 			r.ShardSeconds[s.Name] += c.Seconds
 			if id, ok := expected[c.Key]; ok {
@@ -206,6 +225,8 @@ func Check(shards []Shard, opt Options) Report {
 			r.Missing = append(r.Missing, id)
 		}
 	}
+	r.SkippedModules = slices.Sorted(maps.Keys(skipped))
+	r.BrokenModules = slices.Sorted(maps.Keys(broken))
 	for _, list := range [][]string{r.Missing, r.Unexpected, r.Duplicates} {
 		sort.Strings(list)
 	}
@@ -226,6 +247,7 @@ func problems(r Report, opt Options) []string {
 	add("duplicate: executed more than once", r.Duplicates)
 	add("shards that collected a different list", r.DifferingLists)
 	add("shards that ran nothing", r.EmptyShards)
+	add("modules that failed to collect", r.BrokenModules)
 	if opt.MaxImbalance > 0 && r.Imbalance > opt.MaxImbalance {
 		out = append(out, fmt.Sprintf("the slowest shard is %.2f times the mean (limit %.2f): refresh the durations", r.Imbalance, opt.MaxImbalance))
 	}
