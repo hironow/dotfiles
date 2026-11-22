@@ -2,9 +2,9 @@
 
 - **id**: ADR-0089
 - **title**: dotfiles' own CI follows ADR-0088; the dev container tests leave pull requests
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-22
-- **decided-date**: pending
+- **decided-date**: 2026-11-23
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
@@ -12,11 +12,11 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0088](0088-ci-speed-standard-for-every-language.md), [0085](0085-slim-prek-hooks-to-check-only-guards.md)
-- **consultation-trace**: owner's instruction in Claude Code session on 2026-11-22: "dev container のテストはPRで回すのをやめよう"; this ADR waits for the owner's acceptance
+- **consultation-trace**: owner's instruction in Claude Code session on 2026-11-22: "dev container のテストはPRで回すのをやめよう"; the owner's acceptance with the amendment in D1, in the same session on 2026-11-23 (see "Decision (2026-11-23)")
 
 ## Plain summary
 
-Before this change, the slowest job of a pull request was the dev container test (about 24 minutes), and the owner ruled that it no longer runs on pull requests.
+Before this change, the slowest job of a pull request was the dev container test (about 24 minutes), and the owner ruled that it no longer runs on every pull request: it runs on the pull requests that can break it.
 That job was also the only pull request job that ran `just check`, the full lint gate, so `just check` now runs on pull requests without a container, as three parallel jobs.
 The unit suite runs as shards on Linux and on Windows, and a gate proves that the shards together ran every collected test once.
 shellcheck, actionlint and the semgrep rule tests run in one small job.
@@ -30,7 +30,7 @@ shellcheck, actionlint and the semgrep rule tests run in one small job.
 
 ## Decision
 
-- D1. `test-just.yaml` (job "Required disposable Podman devcontainer build/up/exec") triggers on `push` to main and `workflow_dispatch`. It has no `pull_request` trigger.
+- D1. `test-just.yaml` (job "Required disposable Podman devcontainer build/up/exec") triggers on `push` to main, `workflow_dispatch`, and the ready pull requests that change any file outside its `paths-ignore`: `docs/**/*.md`, `emulator/**`, `telemetry/**`, `site/**`, `tofu/**`, `tests/unit/**`, `tests/durations/**`. Every reader of an ignored directory is a leg of `just check`, which `check.yaml` runs on every pull request with the image's pinned tools; the job adds the image build and the recipes that run only in the container (`deploy`, `install`, `dump`, `clean*`, `set-host`, `install-hooks`, `add-*`, `self-check`, `doctor`, and sync in `tests/test_sync_agents.py`). An unknown input defaults to running the job. It is not a required check (it skips on most pull requests). `tests/unit/test_sandbox_snapshot_inputs.py` runs, on every pull request, the snapshot's own check of every tracked file (no symlink, junction or reserved name), which the job would otherwise do first.
 - D2. `check.yaml` runs `just check` on ready pull requests and on main, without a container, as three parallel jobs: `just check-except-go`, `just go-lint`, `just go-test`. `just check` runs the same three in a row. The gate job "just check (no container)" needs all three and fails when any is not a success. The tools come from `.devcontainer/ci-bootstrap.sh --tools-only`: the same pinned mise, verified by checksum, and the same frozen tool versions as the container image, without Podman.
 - D3. `unit-test.yaml` runs the unit suite in shards (pytest-split, `least_duration`): three on Linux (`tests/durations/unit.json`) and four on Windows (`tests/durations/unit-windows.json`), and the Windows PowerShell 5.1 tests in a job of their own. The jobs "unit tests + instruction budget" and "Unit tests on Windows, and on Windows PowerShell 5.1" keep their names and become gates: each needs its shards, reads one collected list per shard, and runs `ci-audit shards`, which fails when a collected test did not run, ran twice, was not collected, when a module failed to collect, when the shards collected different lists, when a shard ran nothing, or when the slowest shard is more than 1.5 times the mean once each runner's speed is factored out (each shard's time divided by the median of its tests' actual over committed time; on run 45039257740 the raw ratio was 1.52 from a runner 1.47 times slower, and 1.12 after). A module that skips itself at collection (POSIX-only modules on Windows) is listed in the output and is not a test.
 - D4. `small-checks.yaml` (replacing `shellcheck.yaml`) runs `just small-checks`: shellcheck over every tracked `*.sh` outside `emulator/`, actionlint 1.7.12 (release archive checked against its sha256), and `just semgrep-test`. Each checker runs to the end and the recipe lists every failure. `just semgrep-test` ran on pull requests only inside the dev container job before; it now runs on every pull request.
@@ -38,10 +38,9 @@ shellcheck, actionlint and the semgrep rule tests run in one small job.
 
 ## Exception to ADR-0088
 
-ADR-0088 rule 1 says the full suite runs before anything reaches the default branch. The dev container tests now run after the merge. The owner chose this on 2026-11-22.
+ADR-0088 rule 1 says the full suite runs before anything reaches the default branch. The dev container tests now run before the merge only on the pull requests that can break them (D1). The owner chose this on 2026-11-22 and 2026-11-23.
 What stays before the merge: `just check` (every lint leg, ty per OS, Go per GOOS, JS/TS, Quint, the GC simulation), the semgrep rule tests, the unit suite on Linux and Windows, and every other existing job.
-What moves after it: building the dev container image, its features and post-create, and the up and exec tests of the sandbox (`tests/test_just_sandbox.py`, `tests/test_devcontainer.py`).
-A break there is found on main, and the fix is a follow-up pull request.
+What moves after it, for a pull request that changes only ignored files: building the dev container image, its features and post-create, and the up and exec tests of the sandbox. That this cannot break them is a judgement (the same `just check` legs run on the host with the same pinned tools), not a proof; a break would be found on main, and the fix is a follow-up pull request.
 
 ## Measured
 
@@ -104,10 +103,10 @@ Recompute these from main's runs once there are enough of them: `just ci-audit -
 - The emulator workflow (about 5 minutes: starting services 1.5 minutes, e2e tests 2 minutes) is now the slowest pull request job and sets the result time: sharding it needs one service stack per shard.
 - `go-lint` and `go-test` start with a cold Go build cache in their own jobs (287-295 s and 109-167 s; inside one job go-test reused go-lint's cache). A Go build and golangci-lint cache, saved on main and restored on pull requests, is the next change for them. Test results must not come from that cache where a test reads files outside its module (ADR-0088's Go row), so the test job would keep the build cache only.
 - Caches seeded from main and warm runners: setup is a small bucket today (under 35 seconds in every job but one), and waiting is about 2 seconds.
-- For the owner to decide, each with its cost:
-    - Register the gates ("just check (no container)", "unit tests + instruction budget", "Unit tests on Windows, and on Windows PowerShell 5.1", "small checks (shellcheck, actionlint, semgrep rule tests)") as required checks, and require branches to be up to date (ADR-0088's fallback for a repository without a merge queue). Cost: no money (public repository, standard runners); each merge then waits for a fresh run of a branch that fell behind main.
-    - Move the repository to an organization to get a merge queue. Cost: none in money; an account change.
-    - Faster or larger runners (for example Blacksmith). Cost: a monthly bill; not needed for the measured buckets.
+- Decided by the owner on 2026-11-23 (see "Decision (2026-11-23)"):
+    - **Done**: register the gates ("just check (no container)", "unit tests + instruction budget", "Unit tests on Windows, and on Windows PowerShell 5.1", "small checks (shellcheck, actionlint, semgrep rule tests)") as required checks, and require branches to be up to date (ADR-0088's fallback for a repository without a merge queue). Cost: no money (public repository, standard runners); each merge then waits for a fresh run of a branch that fell behind main.
+    - Move the repository to an organization to get a merge queue. Cost: none in money; an account change. **Not done**: requiring up-to-date branches covers what the merge queue would.
+    - Faster or larger runners (for example Blacksmith). Cost: a monthly bill. **Not done**: the slow buckets are the emulator start and the cold Go build cache, not runner speed.
 
 ## Consequences
 
@@ -117,10 +116,17 @@ Recompute these from main's runs once there are enough of them: `just ci-audit -
 
 ## Reversal
 
-Add `pull_request` back to `test-just.yaml` and the draft guard to its job; `tests/unit/test_ci_sandbox_pause.py` and `test_podman_ci_workflows.py` say what must hold. The other changes stand on their own.
+Remove `paths-ignore` from `test-just.yaml` to run the job on every pull request; `tests/unit/test_ci_sandbox_pause.py` and `test_podman_ci_workflows.py` say what must hold. Undo the required checks by restoring the ruleset's `required_status_checks` to "Frontend CI" alone with `strict_required_status_checks_policy: false` (`PUT /repos/hironow/dotfiles/rulesets/12499479`). The other changes stand on their own.
 
 ## Consistency with other decision records
 
 - ADR-0088: follows it, with the one exception above, which the owner ruled.
 - ADR-0060 (one source for the frozen image tool versions): `--tools-only` reads the same generated config as the image; it does not add a second list of versions.
 - ADR-0085 (hooks only check): no hook changes.
+
+## Decision (2026-11-23)
+
+- [ ] Accept / [x] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-23 05:45 JST. Shown Claude's recommendations (accept ADR-0089 with the dev container tests running on the pull requests that can break them; ADR-0090 option A; register the gates as required checks with branches up to date; no organization move; no faster runners), the owner answered "では、全て推奨で進めましょう！！" (translated: then let us go with all the recommendations).
+- Changes: D1 as written above (the job runs on the pull requests that can break it, chosen with a `paths-ignore` list after three Codex reviews of the path list).
+- Action: the ruleset `protect` (12499479) requires "Frontend CI", "just check (no container)", "unit tests + instruction budget", "Unit tests on Windows, and on Windows PowerShell 5.1" and "small checks (shellcheck, actionlint, semgrep rule tests)", with branches up to date (`strict_required_status_checks_policy: true`), set by Claude on the owner's instruction on 2026-11-23 through the REST API. No organization move; no faster runners.
