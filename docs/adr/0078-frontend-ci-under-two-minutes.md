@@ -2,7 +2,7 @@
 
 - **id**: ADR-0078
 - **title**: フロントエンドの CI を 2 分未満に保つ規則を、全エージェント共通の指示に足す
-- **status**: Accepted
+- **status**: Accepted; partly superseded by [ADR-0088](0088-ci-speed-standard-for-every-language.md) (D1, D3, D5)
 - **date**: 2026-11-16
 - **decided-date**: 2026-11-16
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code（owner session）
 - **author-contact**: @hironow
 - **supersedes**: none
-- **superseded-by**: none
+- **superseded-by**: [ADR-0088](0088-ci-speed-standard-for-every-language.md) (D1, D3, D5 only)
 - **related**: [0027](0027-bun-only-retire-per-repo-pnpm-carveout.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0052](0052-renew-global-agent-instructions.md)、[0069](0069-type-check-and-lint-for-every-os.md)、[0076](0076-browser-ui-platform-first-then-ui-sdk.md)
 - **consultation-trace**: 2026-11-16 の本セッションでの所有者の指示（下の「相談の記録」）。[公開 PR #629 の所有者の裁定](https://github.com/hironow/dotfiles/pull/629#issuecomment-6914709771)
 

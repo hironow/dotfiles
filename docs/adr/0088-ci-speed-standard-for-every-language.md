@@ -2,17 +2,17 @@
 
 - **id**: ADR-0088
 - **title**: A CI speed standard for every language, with three rules that outrank speed
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-22
-- **decided-date**: —
+- **decided-date**: 2026-11-22
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
 - **author-contact**: @hironow
-- **supersedes**: part of [ADR-0078](0078-frontend-ci-under-two-minutes.md), on acceptance: its two-minute target (now p50 under 1 minute, p95 under 2), the oxlint-only lint wording (D3), and "every push to the default branch runs the whole suite" (D5, now "before anything reaches the default branch"). The rest of 0078 stands.
+- **supersedes**: part of [ADR-0078](0078-frontend-ci-under-two-minutes.md) (D1, D3, D5): its two-minute target (now p50 under 1 minute, p95 under 2), the oxlint-only lint wording (D3), and "every push to the default branch runs the whole suite" (D5, now "before anything reaches the default branch"). The rest of 0078 stands.
 - **superseded-by**: none
 - **related**: [0044](0044-python-toolchain-uv-ruff-ty.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0052](0052-renew-global-agent-instructions.md), [0069](0069-type-check-and-lint-for-every-os.md), [0078](0078-frontend-ci-under-two-minutes.md), [0079](0079-dotfiles-follows-the-frontend-ci-guide.md), [0080](0080-established-terms-not-private-ones.md), [0083](0083-git-hooks-run-no-whole-repository-check.md), [0084](0084-git-hooks-only-check.md)
-- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-22 (see "Consultation")
+- **consultation-trace**: the owner's request and ruling in a Claude Code session on 2026-11-22 (see "Consultation"); the ruling is transcribed on the public PR ([PR #669 ruling](https://github.com/hironow/dotfiles/pull/669#issuecomment-7074325756))
 
 ## Plain summary
 
@@ -48,7 +48,7 @@ Everything that goes into the spoke was run or read on 2026-11-22:
 
 ## Decision
 
-Proposed requirements (MUST), if the owner accepts option A:
+Option A is adopted as these requirements (MUST):
 
 - D1: Add the spoke `docs/agents/ci-speed.md`: target (p50 under 1 minute, p95 under 2); the three rules that outrank speed; audit first; budgets (judged over many runs at p50 and p95, with a separate limit for a single run); waiting and setup; shape (parallel jobs, one folded job for the small checks); shards (including the proof that they ran every test, at the splitter's unit); selection (the merge base, the list of inputs that rerun everything, the hidden-change proof); before the default branch; fewer tests; tools; local hooks; how to work; and one table for TypeScript, Python, Go, Rust, Lean, Quint and the small checks.
 - D2: `docs/agents/frontend-ci.md` becomes the TypeScript part: the same target; `bun lint --no-script` and `bun fmt --no-script --check` (Bun canary is the recommended way today, because stable Bun has no `bun lint` yet; each project decides, each time, between a pinned canary and stable Bun with `oxlint` and the same `.oxlintrc.json`; entering a canary stays that project's maintainer's decision, `dependency-policy.md`); the merge base for `--changed`; shard accounting; `--parallel --isolate --randomize`; Vitest and Jest suites move to `bun test` and may keep their `vitest` imports.
@@ -67,12 +67,12 @@ Proposed requirements (MUST), if the owner accepts option A:
 
 ## Options Considered
 
-| Option | Benefits | Costs and risks | Outcome (proposed) |
+| Option | Benefits | Costs and risks | Outcome |
 | ------ | -------- | --------------- | ------------------ |
-| A) A language-independent spoke plus a TypeScript spoke (this proposal) | One place for the rules that hold in every language; the TypeScript details stay with the tools that have them; the unproven or conflicting parts of the shared text are named, not silently dropped | Two spokes to keep in step | Recommended |
-| B) Put everything into `frontend-ci.md` | One file | The owner's scope is six languages; a TypeScript file would hold Go and Rust rules | Not recommended: wrong home |
-| C) Add only hub bullets | The hub stays tiny | No room for the audit, budgets, the shard proof, or the per-language table | Not recommended: rules would not fit |
-| D) Copy the author's prompt as a spoke | Nothing is lost | It is a task prompt with vendor and tool choices that conflict with ADR-0084, need accounts, and include a tool (`bun lint`) not in stable Bun | Not recommended: it cannot be followed as written |
+| A) A language-independent spoke plus a TypeScript spoke (this proposal) | One place for the rules that hold in every language; the TypeScript details stay with the tools that have them; the unproven or conflicting parts of the shared text are named, not silently dropped | Two spokes to keep in step | Accepted |
+| B) Put everything into `frontend-ci.md` | One file | The owner's scope is six languages; a TypeScript file would hold Go and Rust rules | Rejected: wrong home |
+| C) Add only hub bullets | The hub stays tiny | No room for the audit, budgets, the shard proof, or the per-language table | Rejected: rules would not fit |
+| D) Copy the author's prompt as a spoke | Nothing is lost | It is a task prompt with vendor and tool choices that conflict with ADR-0084, need accounts, and include a tool (`bun lint`) not in stable Bun | Rejected: it cannot be followed as written |
 
 ## Consequences
 
@@ -106,12 +106,10 @@ All 87 records (0001 to 0087, 0046 absent) were scanned by title and status; the
   `bun lint` and `bun fmt` run a same-named script unless `--no-script`; a file-level proof cannot show that test-level shards ran every test; the Go result cache is safe only for inputs inside the module; labels cannot justify deleting a test, and `performance.md` already makes it a spec decision; waiting time must come from the REST `created_at`, not the run's start; the hooks rule must point to ADR-0084 instead of restating it.
 - Beyond the shared text, Claude added: the script-shadowing guard for `bun lint` and `bun fmt`; the proof at the splitter's unit; the Go module boundary; the REST measure for waiting time; "labels nominate, a human decides" for deleting tests; the user-owned repository fallback; and the `merge_group` sentence in `draft-ci.md`. The owner is asked to check these.
 - 2026-11-22 13:36 JST: after seeing the side-by-side results, the owner decided that the standard recommends Bun canary (`bun lint` exists there today) and that each project decides, each time, which one to use. This replaces the first draft's "use `oxlint` until stable Bun has `bun lint`".
+- 2026-11-22 13:41 JST: shown the PR (the table of Claude's additions, the Bun canary decision, and what was not adopted), the owner answered "ADR approveします。CIが全てpassしたらmergeしてOK" (the ADR is approved; merge when all CI checks pass). Transcribed on the public PR ([PR #669 ruling](https://github.com/hironow/dotfiles/pull/669#issuecomment-7074325756)).
 
-## Decision (pending)
+## Decision (2026-11-22)
 
-- [ ] Accept A: finalize D1 to D7, record the public ruling, move the queue row to the decision log, and set 0078's status line to "Accepted; partly superseded by 0088".
-- [ ] Accept with changes: specify the changes, revise the spokes and re-run the consistency check before settlement.
-- [ ] Reject: remove the new spoke and restore `frontend-ci.md`.
-- [ ] Defer: name a revisit condition.
-
-Decision-maker: ____ (@hironow). Decision date: ____. Public ruling: ____.
+- [x] Accept A / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-22 13:41 JST. Shown the PR with Claude's additions and the Bun canary decision, the owner answered "ADR approveします。CIが全てpassしたらmergeしてOK" (translated: the ADR is approved; merge when all CI checks pass). Filled in on the owner's behalf from that ruling ([PR #669 ruling](https://github.com/hironow/dotfiles/pull/669#issuecomment-7074325756)).
+- Action: ADR-0078's status line and superseded-by line point to this record (those two lines only). Merge PR #669 when all its CI checks pass. Then `just sync-agents-preview all` and `just sync-agents all`. The follow-up work for dotfiles' own CI (listed in Consequences) is separate, one PR per change.
