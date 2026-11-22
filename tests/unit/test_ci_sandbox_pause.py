@@ -2,8 +2,10 @@
 of their own.
 
 The sandbox job ("Required disposable Podman devcontainer build/up/exec")
-runs on main pushes and on demand, not on pull requests (ADR-0089); check.yaml
-runs `just check` on ready pull requests without a container. The Go tests also
+runs on main pushes, on demand, and on the ready pull requests that change
+anything outside `paths-ignore` (ADR-0089): the directories whose every reader
+is a leg of `just check`, which check.yaml runs on every pull request with the
+image's pinned tools. The Go tests also
 run in a job of their own, for fast, independent feedback, through the same
 recipe as a local run.
 """
@@ -37,11 +39,85 @@ def _condition(job: str) -> str:
     return condition
 
 
-def test_the_sandbox_job_does_not_run_on_pull_requests() -> None:
-    # ADR-0089: pull requests get `just check` from check.yaml instead.
-    assert "pull_request" not in SANDBOX
-    assert "workflow_dispatch" in SANDBOX
-    assert "\n    if:" not in _job(SANDBOX, "test")
+# The directories a pull request may change without running the sandbox.
+IGNORED = [
+    "docs/**/*.md",
+    "emulator/**",
+    "telemetry/**",
+    "site/**",
+    "tofu/**",
+    "tests/unit/**",
+    "tests/durations/**",
+]
+
+
+def _paths_ignore() -> list[str]:
+    on = SANDBOX.split("\njobs:\n", 1)[0]
+    m = re.search(
+        r"\n  pull_request:\n    branches: \[main\]\n"
+        r"    types: \[opened, synchronize, reopened, ready_for_review\]\n"
+        r"    paths-ignore:\n((?:      - '[^']+'(?:  *#[^\n]*)?\n)+)",
+        on,
+    )
+    assert m, on
+    return re.findall(r"- '([^']+)'", m.group(1))
+
+
+def _glob(pattern: str) -> re.Pattern[str]:
+    # GitHub's filter patterns: `**/` is any number of directories (none too),
+    # `**` anything, `*` anything but `/`.
+    regex = ""
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            regex, i = regex + "(?:.*/)?", i + 3
+        elif pattern.startswith("**", i):
+            regex, i = regex + ".*", i + 2
+        elif pattern[i] == "*":
+            regex, i = regex + "[^/]*", i + 1
+        else:
+            regex, i = regex + re.escape(pattern[i]), i + 1
+    return re.compile(regex + r"\Z")
+
+
+def test_the_sandbox_job_runs_on_the_pull_requests_that_can_break_it() -> None:
+    assert _paths_ignore() == IGNORED
+    assert "\n  push:\n    branches: [main]\n" in SANDBOX
+    assert "\n  workflow_dispatch:\n" in SANDBOX
+    assert _condition(_job(SANDBOX, "test")) == DRAFT_GUARD
+    # no repository variable switches it, anywhere in the workflow
+    assert "RUN_SANDBOX_TESTS" not in SANDBOX
+
+
+@pytest.mark.parametrize(
+    ("path", "skipped"),
+    [
+        ("docs/runbook/windows-host.md", True),
+        ("docs/README.md", True),
+        # a config file under docs/ changes what markdownlint and git do there
+        ("docs/.markdownlint.json", False),
+        ("docs/.gitignore", False),
+        ("docs/notes.txt", False),
+        ("site/index.html", True),
+        ("tests/unit/test_just_groups.py", True),
+        ("tests/test_just_sandbox.py", False),
+        ("justfile", False),
+        ("README.md", False),
+        (".github/workflows/test-just.yaml", False),
+        ("tools/agent-hooks/go.mod", False),
+    ],
+)
+def test_a_change_runs_the_sandbox_unless_every_file_is_ignored(
+    path: str, skipped: bool
+) -> None:
+    assert any(_glob(p).match(path) for p in _paths_ignore()) is skipped
+
+
+def test_every_ignored_directory_exists() -> None:
+    # a renamed directory would quietly stop being ignored, or worse, a new
+    # one with the old name would be ignored without review
+    for pattern in _paths_ignore():
+        assert (ROOT / pattern.split("/**", 1)[0]).is_dir(), pattern
 
 
 CHECK_PARTS = {

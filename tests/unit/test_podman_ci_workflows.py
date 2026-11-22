@@ -25,13 +25,10 @@ def test_both_engine_jobs_use_one_rootless_native_bootstrap():
         assert "runs-on: ubuntu-26.04" in body
         assert "bash .devcontainer/ci-bootstrap.sh" in body
         assert "devcontainers/ci@" not in body
-        if name == "test-just.yaml":
-            # ADR-0089: the dev container job runs on main and on demand only.
-            assert "pull_request" not in body
-            assert "workflow_dispatch" in body
-        else:
-            assert "github.event.pull_request.draft == false" in body
-            assert "ready_for_review" in body
+        # ready pull requests only (test-just.yaml: those outside its
+        # paths-ignore, ADR-0089; tests/unit/test_ci_sandbox_pause.py)
+        assert "github.event.pull_request.draft == false" in body
+        assert "ready_for_review" in body
         for action in re.findall(r"uses:\s+(\S+)", body):
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), action
     sandbox = (ROOT / ".github/workflows/test-just.yaml").read_text(encoding="utf-8")
