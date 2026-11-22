@@ -73,7 +73,8 @@ its reason so you can apply it to cases a check does not list.
   reverts it.
 - **Never weaken a check to make it pass.** Do not edit ruff, ty, semgrep, or
   golangci config to hide a finding. Never commit with failing tests or with
-  lint or type findings. Fix the cause.
+  lint or type findings. In CI, add no retries, no wider timeouts, and no
+  skipped tests either: a check that needs a retry has a bug. Fix the cause.
 
 ## Main commands
 
@@ -201,6 +202,7 @@ Open the matching file as soon as its trigger applies:
 | choosing an embedded or in-memory database | docs/agents/go-tooling.md#database-selection |
 | measuring or changing code for speed, in any language | docs/agents/performance.md |
 | building or changing an interface in a browser page | docs/agents/web-ui.md |
+| writing, changing, or speeding up CI, in any language | docs/agents/ci-speed.md |
 | writing or changing CI for TypeScript or browser-page code | docs/agents/frontend-ci.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |

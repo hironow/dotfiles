@@ -23,7 +23,8 @@ the gates that would have reviewed it.
 
 A reusable `workflow_call` callee inherits the caller's job gate. Workflows
 that never see `pull_request` (push-only, schedule, `labeled`-only CodeQL) need
-no draft gate.
+no draft gate. A workflow that runs in a merge queue also lists `merge_group`
+(docs/agents/ci-speed.md); the draft gate does not apply to that event.
 
 Enforce the gate in CI, so a missing `draft == false` or a missing
 `ready_for_review` type fails the workflow lint instead of a later review.

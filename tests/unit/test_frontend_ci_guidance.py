@@ -57,10 +57,12 @@ def test_the_testing_guide_points_to_how_ci_runs_typescript_tests() -> None:
     assert "bun:test" in _block_with(TESTING, "docs/agents/frontend-ci.md")
 
 
-def test_the_target_is_two_minutes_and_is_measured() -> None:
-    target = _block_with(SPOKE, "under two minutes of wall-clock")
+def test_the_target_is_a_minute_at_the_median_and_is_measured() -> None:
+    target = _block_with(SPOKE, "under one minute at the median")
     assert "pull request" in target
+    assert "p95" in target
     assert "Measure" in target
+    assert "docs/agents/ci-speed.md" in _block_with(SPOKE, "Read this when")
 
 
 def test_no_rule_may_drop_a_check_to_save_time() -> None:
@@ -83,6 +85,22 @@ def test_tsc_stays_where_it_writes_files() -> None:
     assert "`tsc -b`" in emits
     stricter = _block_with(SPOKE, "behaves like TypeScript 7")
     assert "do not go back to `tsc`" in stricter
+
+
+def test_lint_and_format_cannot_be_shadowed_by_a_script() -> None:
+    shadowed = _block_with(SPOKE, "has a script with the same")
+    assert "`bun lint`" in shadowed and "`bun fmt`" in shadowed
+    assert "exits 0" in shadowed
+    assert "negative control" in shadowed
+    lint = _block_with(SPOKE, "Lint with `bun lint --no-script`")
+    assert ".oxlintrc.json" in lint
+    assert "has no `bun lint` yet" in lint
+    assert "canary" in lint
+    assert "recommended" in lint
+    assert "decides, each time" in lint
+    fmt = _block_with(SPOKE, "Check formatting with")
+    assert "`bun fmt --no-script --check`" in fmt
+    assert "formatting commit" in fmt
 
 
 def test_oxlint_turns_on_every_category_and_opts_out_by_rule() -> None:
@@ -117,13 +135,20 @@ def test_shards_are_cut_by_recorded_time_from_one_snapshot() -> None:
     assert "--timings=" in recorded and "next/" not in recorded
     publish = _block_with(SPOKE, "after every shard passed")
     assert "cache" in publish
+    assert "default branch and the merge queue" in publish
+    accounting = _block_with(SPOKE, "Prove that the shards together ran every")
+    assert "missing file" in accounting and "duplicate" in accounting
+    assert "In a full run" in accounting and "In a selected run" in accounting
+    order = _block_with(SPOKE, "bun test --parallel --isolate --randomize")
+    assert "--seed" in order
+    assert "Buy cores before shards" in _block_with(SPOKE, "Buy cores before shards")
 
 
 def test_a_pull_request_runs_the_reachable_tests_only_when_imports_cover_the_diff() -> (
     None
 ):
     default = _block_with(SPOKE, "The whole suite is the default")
-    assert "--changed=origin/<base branch>" in default
+    assert "--changed=$(git merge-base origin/<base branch> HEAD)" in default
     assert "only when imports cover the diff" in default
     assert "every changed file" in default
     assert "static `import`" in default
@@ -131,16 +156,25 @@ def test_a_pull_request_runs_the_reachable_tests_only_when_imports_cover_the_dif
     for unreached in ("fixture", "snapshot", "`package.json`", "lockfile", "workflow"):
         assert unreached in imports, unreached
     assert "run the whole suite" in imports
-    decided = _block_with(SPOKE, "one root `just` recipe decides")
-    assert "test" in decided
+    decided = _block_with(SPOKE, "root `just` recipe decides")
+    assert "Test that recipe" in decided
     assert "missing ref fails" in _block_with(SPOKE, "Fetch enough history")
-    assert "whole suite" in _block_with(SPOKE, "Every push to the default branch")
+    before_main = _block_with(SPOKE, "The full suite runs before anything reaches")
+    assert "merge queue" in before_main
+    assert "docs/agents/ci-speed.md" in before_main
+
+
+def test_the_merge_base_is_passed_never_the_tip_of_the_target() -> None:
+    rule = _block_with(SPOKE, "Pass the merge base")
+    assert "tip of the target branch" in rule
+    assert "behind its target" in rule
 
 
 def test_the_bun_flags_cover_bun_test_suites_only() -> None:
     scope = _block_with(SPOKE, "Rules 3 and 4 are for `bun:test` suites")
     assert "End-to-end suites" in scope
     assert "docs/agents/testing.md" in scope
+    assert "`vitest` imports" in scope
 
 
 def test_the_jobs_run_side_by_side() -> None:
