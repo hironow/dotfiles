@@ -25,8 +25,13 @@ def test_both_engine_jobs_use_one_rootless_native_bootstrap():
         assert "runs-on: ubuntu-26.04" in body
         assert "bash .devcontainer/ci-bootstrap.sh" in body
         assert "devcontainers/ci@" not in body
-        assert "github.event.pull_request.draft == false" in body
-        assert "ready_for_review" in body
+        if name == "test-just.yaml":
+            # ADR-0089: the dev container job runs on main and on demand only.
+            assert "pull_request" not in body
+            assert "workflow_dispatch" in body
+        else:
+            assert "github.event.pull_request.draft == false" in body
+            assert "ready_for_review" in body
         for action in re.findall(r"uses:\s+(\S+)", body):
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), action
     sandbox = (ROOT / ".github/workflows/test-just.yaml").read_text(encoding="utf-8")
@@ -84,15 +89,28 @@ def test_bootstrap_is_ci_only_and_uses_canonical_pins_and_order():
     assert "source['bootstrap']['mise']" in body
     assert "generated mise tools missing" in body
     assert "MISE_GLOBAL_CONFIG_FILE" in body
+    # bun, node and uv come first: the npm and pypi backends need them.
     assert body.index("mise install bun uv node just") < body.index(
-        "mise install npm:@devcontainers/cli pypi:podman-compose"
+        'mise install "${second_tools[@]}"'
     )
+    assert "second_tools=(npm:@devcontainers/cli pypi:podman-compose)" in body
     assert "systemctl --user start podman.socket" in body
     assert '"host"]["remoteSocket"]["path"]' in body
     assert "PODMAN_COMPOSE_PROVIDER=podman-compose" in body
     assert "sudo podman" not in body
     assert "Docker remains on PATH" in body
     assert not re.search(r"podman-compose[=@][0-9]|devcontainers/cli[=@][0-9]", body)
+
+
+def test_tools_only_mode_installs_the_check_tools_and_never_touches_podman():
+    body = (ROOT / ".devcontainer/ci-bootstrap.sh").read_text(encoding="utf-8")
+    assert "--tools-only) mode=tools-only" in body
+    assert "go vp markdownlint-cli2 aqua:golangci/golangci-lint" in body
+    # Every Podman action is indented inside the podman-mode branch.
+    for action in ('install.sh" --podman-only', "apt-get install", "systemctl --user"):
+        line = next(line for line in body.splitlines() if action in line)
+        assert line.startswith("  "), action
+    assert 'if [[ "$mode" == podman ]]; then' in body
 
 
 @pytest.mark.parametrize(

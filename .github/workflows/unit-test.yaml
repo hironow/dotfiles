@@ -20,12 +20,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit:
-    name: unit tests + instruction budget
+  # The unit suite runs as three shards. `just test-unit` runs all of it
+  # (pytest-split with tests/durations/unit.json, least-duration). The gate job
+  # `unit` proves, at the splitter's unit (one JUnit case per collected test id),
+  # that the shards together ran every collected test once.
+  unit-shard:
+    name: unit tests (shard ${{ matrix.group }} of 3)
     # Draft pull requests do not run CI; runs start when the PR is marked
     # ready for review.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,12 +67,58 @@ jobs:
           install -m 0755 "$tmp/prek-x86_64-unknown-linux-gnu/prek" "$HOME/.local/bin/prek"
           "$HOME/.local/bin/prek" --version
 
-      - name: Run unit tests
+      - name: Run this shard of the unit tests
         env:
           # The prek runtime tests fail here instead of skipping.
           DOTFILES_REQUIRE_PREK: "1"
         # The same parallel run as `just test-unit` (pytest-xdist, loadgroup).
-        run: uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
+        run: >-
+          uvx --with pytest-xdist==3.8.0 --with pytest-split==0.11.0
+          pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider
+          --splits 3 --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
+          --durations-path tests/durations/unit.json
+          --junitxml "$RUNNER_TEMP/shard-${{ matrix.group }}.xml"
+          tests/unit/
+
+      # The list of every test the suite collects, for the gate's proof. Every
+      # shard writes it, and the gate fails if two lists differ.
+      - name: List every collected test
+        if: always()
+        run: >-
+          uvx --with pytest-split==0.11.0
+          pytest --collect-only -q -p no:cacheprovider tests/unit/
+          > "$RUNNER_TEMP/collected-${{ matrix.group }}.txt"
+
+      - name: Upload the shard's report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-shard-${{ matrix.group }}
+          path: |
+            ${{ runner.temp }}/shard-${{ matrix.group }}.xml
+            ${{ runner.temp }}/collected-${{ matrix.group }}.txt
+          if-no-files-found: error
+
+  unit-extras:
+    name: unit extras (Python 3.14 corpora, real Go, instruction budget)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # CI は mise 非依存 (mise.toml はローカル開発用)。uv は公式
+      # インストーラで導入。just は recipe-propagation テスト
+      # (tests/unit/test_plugin_check_scope.py) が実行する — ubuntu の
+      # apt パッケージは 1.21 で `[group]` attribute (1.27+) を parse
+      # できないため、uv tool で最新を ~/.local/bin に入れる。
+      # jq / bash はランナーにプリインストール済み。
+      - name: Install uv and just
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/uv" tool install rust-just
 
       # The command guard corpus, its word table, and the agent-hook payload
       # and tool-hooks corpora follow Python 3.14 (Unicode 16.0). The system
@@ -102,12 +156,63 @@ jobs:
         # --frozen: install from the committed root uv.lock, never rewrite it.
         run: uv run --frozen scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
 
+  # The gate keeps the name this job always had. It passes only when every shard
+  # and the extras passed, and the shards together ran every collected test once.
+  unit:
+    name: unit tests + instruction budget
+    needs: [unit-shard, unit-extras]
+    # always(): a skipped or failed need must fail this job, not skip it. A draft
+    # pull request skips the needs, and then this job skips too.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard and the extras passed
+        env:
+          RESULTS: ${{ needs.unit-shard.result }} ${{ needs.unit-extras.result }}
+        run: |
+          echo "results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/ci-audit/go.mod
+          cache-dependency-path: tools/ci-audit/go.sum
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: unit-shard-*
+          path: ${{ runner.temp }}/shards
+          merge-multiple: true
+      # Each shard's list is compared by its ids: pytest ends the list with a
+      # summary line that holds the collection time, so the bytes differ.
+      # --durations-in: the balance divides each shard's time by its runner's
+      # speed, so a slow runner does not read as stale durations (ADR-0089).
+      - name: Prove that the shards collected one list and ran every test in it once
+        working-directory: tools/ci-audit
+        run: >-
+          go run . shards
+          --collected "$RUNNER_TEMP/shards/collected-1.txt"
+          --collected "$RUNNER_TEMP/shards/collected-2.txt"
+          --collected "$RUNNER_TEMP/shards/collected-3.txt"
+          --junit "$RUNNER_TEMP/shards/shard-1.xml"
+          --junit "$RUNNER_TEMP/shards/shard-2.xml"
+          --junit "$RUNNER_TEMP/shards/shard-3.xml"
+          --max-imbalance 1.5
+          --durations-in ../../tests/durations/unit.json
+          --durations-out "$RUNNER_TEMP/unit-durations.json"
+      # always(): a run that fails on imbalance is the one whose times a
+      # refresh needs. Uploading does not change this job's result.
+      - name: Upload the measured durations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-durations
+          path: ${{ runner.temp }}/unit-durations.json
+
   go:
     name: Go tests (tools/)
     # The Go modules under tools/, the agent-hook binary's parity and
-    # conformance tests among them. The dev container job also runs them
-    # through `just check` (test-just.yaml); this job gives fast, independent
-    # feedback.
+    # conformance tests among them. `just check` (check.yaml) also runs them;
+    # this job gives fast, independent feedback.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
@@ -198,15 +303,21 @@ jobs:
         run: uvx pytest -q -ra tests/unit/test_ollama_host.py
 
   # tests/unit/ must pass on native Windows. The jobs above run parts of it
-  # there; this one runs all of it, on a checkout made with Git for Windows'
-  # defaults (core.autocrlf=true, as on a new machine), and then the tests of
-  # the scripts that run on Windows PowerShell 5.1 in production.
-  windows-unit:
-    name: Unit tests on Windows, and on Windows PowerShell 5.1
+  # there; these run all of it, in four shards, on a checkout made with Git for
+  # Windows' defaults (core.autocrlf=true, as on a new machine), and the tests
+  # of the scripts that run on Windows PowerShell 5.1 in production. The gate
+  # `windows-unit` proves that the shards ran every collected test once.
+  windows-unit-shard:
+    name: Unit tests on Windows (shard ${{ matrix.group }} of 4)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
-    # about twice the 9m47s it took on 2026-11-10
-    timeout-minutes: 20
+    # The whole suite took 4m58s in one job on 2026-11-22; a quarter of it
+    # plus setup is about 1m30s. Set to about twice the measured time.
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
     # GitHub runs bash with -eo pipefail, and Git's /usr/bin (gpg, sh,
     # cygpath) is on PATH, as in the Git Bash a Windows host tests from.
     defaults:
@@ -228,10 +339,107 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           uv tool install rust-just
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
-      - name: Unit tests
-        run: just test-unit
+      # cygpath -m: `just` hands its arguments to sh unquoted, and the
+      # backslashes of D:\a\_temp would be read as escapes.
+      - name: Unit tests, this shard
+        run: |
+          out="$(cygpath -m "$RUNNER_TEMP")"
+          just test-unit --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration --durations-path tests/durations/unit-windows.json --junitxml "$out/windows-shard-${{ matrix.group }}.xml"
+      # The list of every test the suite collects here, for the gate's proof.
+      # PYTHONUTF8 makes the list UTF-8 like the JUnit report; the test run
+      # above keeps Windows' default encoding, which the suite must pass under.
+      - name: List every collected test
+        if: always()
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          out="$(cygpath -m "$RUNNER_TEMP")"
+          uvx --with pytest-split==0.11.0 pytest --collect-only -q -p no:cacheprovider tests/unit/ > "$out/windows-collected-${{ matrix.group }}.txt"
+      - name: Upload the shard's report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-unit-shard-${{ matrix.group }}
+          path: |
+            ${{ runner.temp }}/windows-shard-${{ matrix.group }}.xml
+            ${{ runner.temp }}/windows-collected-${{ matrix.group }}.txt
+          if-no-files-found: error
+
+  windows-powershell:
+    name: Tests on Windows PowerShell 5.1
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    # The step took 1m29s on 2026-11-22.
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install just
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          uv tool install rust-just
+          (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: PowerShell tests on Windows PowerShell 5.1
         run: just test-windows-powershell
+
+  # The gate keeps the name the single Windows job had. It passes only when
+  # every shard and the 5.1 tests passed, and the shards together ran every
+  # collected test once. The proof reads files, so it runs on Linux.
+  windows-unit:
+    name: Unit tests on Windows, and on Windows PowerShell 5.1
+    needs: [windows-unit-shard, windows-powershell]
+    # always(): a skipped or failed need must fail this job, not skip it. A draft
+    # pull request skips the needs, and then this job skips too.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every shard and the 5.1 tests passed
+        env:
+          RESULTS: ${{ needs.windows-unit-shard.result }} ${{ needs.windows-powershell.result }}
+        run: |
+          echo "results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/ci-audit/go.mod
+          cache-dependency-path: tools/ci-audit/go.sum
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: windows-unit-shard-*
+          path: ${{ runner.temp }}/shards
+          merge-multiple: true
+      - name: Prove that the shards collected one list and ran every test in it once
+        working-directory: tools/ci-audit
+        run: >-
+          go run . shards
+          --collected "$RUNNER_TEMP/shards/windows-collected-1.txt"
+          --collected "$RUNNER_TEMP/shards/windows-collected-2.txt"
+          --collected "$RUNNER_TEMP/shards/windows-collected-3.txt"
+          --collected "$RUNNER_TEMP/shards/windows-collected-4.txt"
+          --junit "$RUNNER_TEMP/shards/windows-shard-1.xml"
+          --junit "$RUNNER_TEMP/shards/windows-shard-2.xml"
+          --junit "$RUNNER_TEMP/shards/windows-shard-3.xml"
+          --junit "$RUNNER_TEMP/shards/windows-shard-4.xml"
+          --max-imbalance 1.5
+          --durations-in ../../tests/durations/unit-windows.json
+          --durations-out "$RUNNER_TEMP/unit-windows-durations.json"
+      # always(): a run that fails on imbalance is the one whose times a
+      # refresh needs. Uploading does not change this job's result.
+      - name: Upload the measured durations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-windows-durations
+          path: ${{ runner.temp }}/unit-windows-durations.json
 
   # The Go modules' tests on Windows: agent-hook and the doctors have code of
   # their own there, and the go job above runs on Linux.

@@ -284,11 +284,13 @@ def test_the_workflow_wakes_up_when_a_draft_becomes_ready() -> None:
 
 
 def test_the_local_gate_runs_the_same_recipes() -> None:
-    for recipe in ("lint", "check"):
+    # `check` runs these through check-except-go (CI runs it as its own job).
+    assert "just check-except-go" in _recipe("check")
+    for recipe in ("lint", "check-except-go"):
         body = _recipe(recipe)
         assert "just js-lint" in body, recipe
         assert "just js-typecheck" in body, recipe
         assert "just pi-jev-test" in body, recipe
-    assert "vp -C site fmt --check" in _recipe("check")
+    assert "vp -C site fmt --check" in _recipe("check-except-go")
     assert "vp -C site lint" not in JUSTFILE
     assert "vp -C site check" not in JUSTFILE

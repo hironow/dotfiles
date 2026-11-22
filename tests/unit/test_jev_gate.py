@@ -24,7 +24,8 @@ def test_pi_extension_is_built_and_tested_with_bun() -> None:
     # vp only formats, and only in site/ (test_justfile_js_files.py). oxlint and
     # bun check read the Pi extension (test_frontend_ci_conformance.py); bun
     # builds and tests it.
-    assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check")
+    assert "just check-except-go" in _recipe_body(JUSTFILE, "check")
+    assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check-except-go")
     assert "vp -C site fmt" in _recipe_body(JUSTFILE, "fmt")
     assert "just pi-jev-test" in _recipe_body(JUSTFILE, "lint")
     assert "build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE

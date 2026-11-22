@@ -54,7 +54,9 @@ def test_rttm_tasks_are_reached_by_root_gates() -> None:
     for root_task, nested_task in (
         ("fmt", "rttm-fmt"),
         ("lint", "rttm-lint"),
-        ("check", "rttm-check"),
+        # `check` reaches rttm-check through check-except-go (ADR-0089)
+        ("check", "check-except-go"),
+        ("check-except-go", "rttm-check"),
     ):
         block = text.split(f"\n{root_task}:\n", 1)[1].split("\n\n", 1)[0]
         assert f"just {nested_task}" in block

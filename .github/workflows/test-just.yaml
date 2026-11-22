@@ -1,11 +1,11 @@
 name: Just Sandbox Tests
 
+# Not on pull requests (ADR-0089): `check.yaml` runs `just check` there without a
+# container. This job proves the dev container on main and on demand.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,9 +14,6 @@ concurrency:
 jobs:
   test:
     name: Required disposable Podman devcontainer build/up/exec
-    # Draft pull requests do not run CI; runs start when the PR is marked
-    # ready for review.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:

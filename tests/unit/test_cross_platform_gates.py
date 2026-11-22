@@ -59,8 +59,17 @@ def _recipe(name: str, source: str | None = None) -> str:
     return "\n".join(body)
 
 
+def test_check_runs_its_parts_and_go_last():
+    # CI runs these three as parallel jobs (check.yaml); `check` runs them in
+    # a row, and every other leg lives in check-except-go.
+    commands = [
+        line.strip().lstrip("@") for line in _recipe("check").splitlines() if line
+    ]
+    assert commands == ["just check-except-go", "just go-lint", "just go-test"]
+
+
 def test_check_runs_ty_once_per_platform():
-    check = _recipe("check")
+    check = _recipe("check-except-go")
     assert re.search(r"(?m)^\s+@?just check-ty\s*$", check)
     assert "ty check" not in check, "check runs ty only through check-ty"
     platforms = re.findall(r"ty check --python-platform (\S+)", _recipe("check-ty"))
@@ -79,19 +88,56 @@ def _runs_on_windows_when_ready(job: str) -> None:
         assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), action
 
 
-def test_windows_ci_runs_every_unit_test_then_the_5_1_tests():
-    jobs = _unit_jobs()
-    # last, so the tests that cut this file at "\n  windows-" keep working
-    assert list(jobs)[-2:] == ["windows-unit", "windows-go"]
-    job = jobs["windows-unit"]
+def _windows_test_job(job: str) -> list[str]:
+    """Checks every Windows test job shares, and returns its run commands."""
     _runs_on_windows_when_ready(job)
     # bash: GitHub runs it with -eo pipefail, and Git's /usr/bin (gpg) is on
     # PATH as it is in the Git Bash that runs the tests on a Windows host
     assert "    defaults:\n      run:\n        shell: bash\n" in job
-    runs = [c for step in _workflow.steps(job) for c in _workflow.run_commands(step)]
-    assert runs.index("just test-unit") < runs.index("just test-windows-powershell")
     # the checkout keeps Git for Windows' line endings, as a new machine's does
     assert "autocrlf" not in job.replace("--get-all core.autocrlf", "")
+    return [c for step in _workflow.steps(job) for c in _workflow.run_commands(step)]
+
+
+def test_windows_ci_runs_every_unit_test_in_shards_and_the_5_1_tests():
+    jobs = _unit_jobs()
+    # last, so the tests that cut this file at "\n  windows-" keep working
+    assert list(jobs)[-4:] == [
+        "windows-unit-shard",
+        "windows-powershell",
+        "windows-unit",
+        "windows-go",
+    ]
+    shard = jobs["windows-unit-shard"]
+    runs = _windows_test_job(shard)
+    (groups,) = re.findall(r"group: \[([\d, ]+)\]", shard)
+    count = len(groups.split(","))
+    (unit,) = [c for c in runs if c.startswith("just test-unit ")]
+    assert f"--splits {count} --group ${{{{ matrix.group }}}}" in unit
+    assert "--durations-path tests/durations/unit-windows.json" in unit
+    # through cygpath -m: `just` hands its arguments to sh unquoted, and the
+    # backslashes of D:\a\_temp would be read as escapes
+    assert '--junitxml "$out/' in unit
+    assert 'out="$(cygpath -m "$RUNNER_TEMP")"' in shard
+    # the list is UTF-8 like the JUnit report; the test run keeps Windows'
+    # default encoding, which the suite must pass under
+    (collect,) = [s for s in _workflow.steps(shard) if "--collect-only" in s]
+    assert 'PYTHONUTF8: "1"' in collect
+    assert "PYTHONUTF8:" not in shard.replace(collect, "")
+    assert _windows_test_job(jobs["windows-powershell"])[-1] == (
+        "just test-windows-powershell"
+    )
+    # The gate keeps the job's old name, needs both, and proves that the shards
+    # ran every collected test once.
+    gate = jobs["windows-unit"]
+    assert "    name: Unit tests on Windows, and on Windows PowerShell 5.1\n" in gate
+    assert "    needs: [windows-unit-shard, windows-powershell]\n" in gate
+    assert "always()" in gate
+    assert '"success success"' in gate
+    assert "go run . shards" in gate
+    assert len(re.findall(r"--junit ", gate)) == count
+    assert len(re.findall(r"--collected ", gate)) == count
+    assert "--durations-in ../../tests/durations/unit-windows.json" in gate
 
 
 def test_windows_ci_runs_the_go_tests():

@@ -163,6 +163,28 @@ agent-baseline-test:
 [group('Validation')]
 validate: semgrep-test meta-semgrep
 
+# The small checks in one job (docs/agents/ci-speed.md, "Shape"; ADR-0089):
+# shellcheck over every tracked *.sh outside emulator/ (the list `just check`
+# uses), actionlint over every workflow, and the semgrep rules' own tests.
+# Each checker runs to the end; the recipe lists every failure, then fails.
+# shellcheck, actionlint and the semgrep rule tests, every failure listed
+[group('Validation')]
+small-checks:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    failed=()
+    echo '🔎 shellcheck (every tracked *.sh outside emulator/)'
+    git ls-files -z '*.sh' ':!emulator' | xargs -0 -r shellcheck || failed+=(shellcheck)
+    echo '🔎 actionlint (every workflow)'
+    actionlint || failed+=(actionlint)
+    echo '🔎 semgrep rules against their own fixtures'
+    just semgrep-test || failed+=(semgrep-test)
+    if [ "${#failed[@]}" -gt 0 ]; then
+      echo "❌ small checks failed: ${failed[*]}" >&2
+      exit 1
+    fi
+    echo '✅ small checks passed'
+
 # Gate the always-loaded instruction budget. Counts Markdown list items
 # (code fences / HTML comments excluded) in the base + overlay as a proxy
 # for instruction count. Cap = 40: measured 31 at introduction (2026-06)
@@ -271,6 +293,55 @@ deploy:
 # Restore declared Pi packages, install the dotfiles Pi extensions (Jev, rtk), remove retired ones.
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
+
+# CI audit (docs/agents/ci-speed.md): where each CI job's time goes, as p50/p95
+# seconds over the last completed runs (every attempt) of the named workflow
+# files, and per push when the pull request had its result and how many runner
+# seconds it used. Waiting is a job's started time minus its created time, so a
+# job that `needs` another is not charged for the wait. The report names the
+# step it counted as running; --recipe-step "JOB=STEP" names it where the
+# longest step is not the recipe. Reads GitHub through the `gh` CLI (log in
+# first). Without a workflow file it reads every workflow that checks code
+# (tests/unit/test_ci_audit_recipe.py keeps that list whole).
+#   just ci-audit                                        # last 150 runs of each
+#   just ci-audit --runs 50 unit-test.yaml               # one workflow
+#   just ci-audit --event pull_request --branch feat/x   # one branch's pull requests
+# Where CI time goes, per job and per push, at p50 and p95
+[group('Test')]
+[positional-arguments]
+ci-audit *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=("$@")
+    named=0 steps=0
+    for a in "${args[@]}"; do
+      case "$a" in *.yaml) named=1 ;; --recipe-step) steps=1 ;; esac
+    done
+    # The unit extras job runs three recipe steps: running is their span.
+    # In front: Go's flag package stops at the first workflow name.
+    if [ "$steps" -eq 0 ]; then
+      args=(
+        --recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Command guard, payload, and tool-hooks corpora on Python 3.14"
+        --recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Instruction budget"
+        "${args[@]}"
+      )
+    fi
+    if [ "$named" -eq 0 ]; then
+      args+=(unit-test.yaml check.yaml small-checks.yaml frontend-ci.yaml claude-lint.yaml iac-test.yaml test-emulators.yaml test-podman-gc-compat.yaml test-just.yaml)
+    fi
+    repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+    mise exec -- go -C tools/ci-audit run . jobs --repo "$repo" "${args[@]}"
+
+# CI audit: prove that the shards of a split test run together ran every test once
+# (docs/agents/ci-speed.md "Shards"). Pass the collected list of the whole suite
+# and one JUnit report per shard; add --durations-out FILE to write the balance
+# data for the next split. Fails on a missing, unexpected or doubled test, on a
+# shard that ran nothing, and when the slowest shard is over 1.5 times the mean.
+#   just ci-shard-check --collected all.txt --junit 1.xml --junit 2.xml --junit 3.xml
+# Prove that test shards ran every collected test once
+[group('Test')]
+ci-shard-check *args:
+    @mise exec -- go -C tools/ci-audit run . shards {{ args }}
 
 # Without arguments: every declared Claude plugin marketplace, EGM, Pi package
 # and skill with its newest version. With a name: move that one (newest, or the
@@ -745,9 +816,9 @@ test:
 # No .pytest_cache: workers writing it create a temporary directory in the
 # checkout that a test's own pytest run could see appear and vanish.
 [group('Test')]
-test-unit:
+test-unit *args:
     @echo '🧪 Running unit tests (host, no containers)...'
-    uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
+    uvx --with pytest-xdist==3.8.0 --with pytest-split==0.11.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider {{ args }} tests/unit/
     @echo '✅ Unit tests finished.'
 
 # Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
@@ -899,11 +970,22 @@ spec-check:
     done
     {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 
-# check: strict gate, never writes. `just ci`, `just check-all`, and CI's dev
-# container job run it. The Go legs run last: golangci for three GOOS is the
-# slowest leg, so a cheaper leg that fails ends the run before it.
+# check: strict gate, never writes. `just ci`, `just check-all`, and CI's
+# check.yaml run it; CI runs its three parts (check-except-go, go-lint,
+# go-test) as parallel jobs (ADR-0089). The Go legs run last: golangci for three
+# GOOS is the slowest leg, so a cheaper leg that fails ends the run before it.
 [group('Lint')]
 check:
+    @just check-except-go
+    @echo '🔎 Go (golangci-lint per GOOS)...'
+    just go-lint
+    @echo '🔎 Go tests (tools/ modules)...'
+    just go-test
+    @echo '✅ All checks passed.'
+
+# Every leg of `check` except the two Go legs, in the same order.
+[group('Lint')]
+check-except-go:
     @echo '🔎 Python (ruff format --check)...'
     {{UV_RUN}} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
@@ -934,11 +1016,6 @@ check:
     @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
     @mise exec -- go run tools/text-hygiene/main.go
-    @echo '🔎 Go (golangci-lint per GOOS)...'
-    just go-lint
-    @echo '🔎 Go tests (tools/ modules)...'
-    just go-test
-    @echo '✅ All checks passed.'
 
 # ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
 # fix through the 7-day hold with an absolute cutoff that never expires on its

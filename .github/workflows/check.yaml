@@ -1,0 +1,86 @@
+name: Check
+
+# `just check` is the full lint gate: check-except-go, go-lint, go-test. It used
+# to run on pull requests only inside the dev container job; that job now runs
+# on main (test-just.yaml, ADR-0089). These jobs run the three parts in
+# parallel, without a container, on every ready pull request and on main. The
+# gate `check` keeps the name the single job had.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-except-go:
+    name: just check-except-go
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-26.04
+    # The job took 114 s and 144 s on 2026-11-22 (ty per OS and the GC
+    # simulation with its 183 tests are most of it); about twice that.
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the frozen tool set
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      - name: Run just check-except-go
+        run: just check-except-go
+
+  go-lint:
+    name: just go-lint (golangci-lint per GOOS)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-26.04
+    # The job took 287 s and 295 s on 2026-11-22 (a cold Go build cache in
+    # its own job); about twice that.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the frozen tool set
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      - name: Run just go-lint
+        run: just go-lint
+
+  go-test:
+    name: just go-test
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-26.04
+    # The job took 109 s and 167 s on 2026-11-22 (a cold Go build cache in
+    # its own job); about twice that.
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the frozen tool set
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      - name: Run just go-test
+        run: just go-test
+
+  check:
+    name: just check (no container)
+    needs: [check-except-go, go-lint, go-test]
+    # always(): a skipped or failed part must fail this job, not skip it. A draft pull request skips the parts, and then this job skips too.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every part of just check passed
+        env:
+          RESULTS: ${{ needs.check-except-go.result }} ${{ needs.go-lint.result }} ${{ needs.go-test.result }}
+        run: |
+          echo "results: $RESULTS"
+          [ "$RESULTS" = "success success success" ]
