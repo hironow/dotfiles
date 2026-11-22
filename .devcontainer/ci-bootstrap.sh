@@ -1,26 +1,41 @@
 #!/usr/bin/env bash
-# Thin glue for these two ephemeral CI jobs, not a host installer.
+# Thin glue for ephemeral CI jobs, not a host installer.
+#   ci-bootstrap.sh              native Podman + the container job's tools
+#   ci-bootstrap.sh --tools-only the tools `just check` needs, no Podman
 set -euo pipefail
+mode=podman
+case "${1:-}" in
+  "") ;;
+  --tools-only) mode=tools-only ;;
+  *) echo "usage: ci-bootstrap.sh [--tools-only]" >&2; exit 2 ;;
+esac
 if [[ "${GITHUB_ACTIONS:-}" != true || "${RUNNER_ENVIRONMENT:-}" != github-hosted || "$(uname -s)" != Linux || "$(id -u)" -eq 0 ]]; then
   echo 'ci-bootstrap requires an ephemeral non-root GitHub Actions Linux runner' >&2
   exit 1
 fi
 : "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_PATH:?}"
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bash "$repo/install.sh" --podman-only
-# Service/runtime dependencies only, from this Ubuntu release's native packages.
-sudo -n apt-get update -y
-sudo -n apt-get install -y --no-install-recommends uidmap slirp4netns fuse-overlayfs curl ca-certificates
-# Ubuntu 26.04's AppArmor profile for pasta refuses podman's SIGTERM, so
-# rootless Podman cannot tear down its network namespace. The guard probes
-# that, and adds the one rule GitHub's image fix adds only when the probe
-# fails with exactly that denial (see the script).
-bash "$repo/.devcontainer/allow-podman-stop-pasta.sh" /etc/apparmor.d/usr.bin.pasta
+if [[ "$mode" == podman ]]; then
+  bash "$repo/install.sh" --podman-only
+  # Service/runtime dependencies only, from this Ubuntu release's native packages.
+  sudo -n apt-get update -y
+  sudo -n apt-get install -y --no-install-recommends uidmap slirp4netns fuse-overlayfs curl ca-certificates
+  # Ubuntu 26.04's AppArmor profile for pasta refuses podman's SIGTERM, so
+  # rootless Podman cannot tear down its network namespace. The guard probes
+  # that, and adds the one rule GitHub's image fix adds only when the probe
+  # fails with exactly that denial (see the script).
+  bash "$repo/.devcontainer/allow-podman-stop-pasta.sh" /etc/apparmor.d/usr.bin.pasta
+fi
 
 bootstrap="$RUNNER_TEMP/dotfiles-podman-bootstrap"
 mkdir -p "$bootstrap/bin"
 # Both the bootstrap pin and mise declarations have existing canonical sources.
-python3 - "$repo" "$bootstrap" <<'PY'
+if [[ "$mode" == podman ]]; then
+  required_tools='bun node uv just npm:@devcontainers/cli pypi:podman-compose'
+else
+  required_tools='bun node uv just go vp markdownlint-cli2 aqua:golangci/golangci-lint npm:@informalsystems/quint'
+fi
+REQUIRED_TOOLS="$required_tools" python3 - "$repo" "$bootstrap" <<'PY'
 import pathlib
 import re
 import sys
@@ -31,7 +46,8 @@ source = tomllib.loads((repo / 'config/mise/image-tools.toml').read_text(encodin
 feature = (repo / '.devcontainer/features/dotfiles-tools/install.sh').read_text(encoding='utf-8')
 body = feature.split("cat > /etc/mise/config.toml <<'EOF'\n", 1)[1].split('\nEOF\n', 1)[0]
 canonical = tomllib.loads(body)
-required = {'bun', 'node', 'uv', 'just', 'npm:@devcontainers/cli', 'pypi:podman-compose'}
+import os
+required = set(os.environ['REQUIRED_TOOLS'].split())
 missing = required - canonical['tools'].keys()
 if missing:
     raise SystemExit(f'canonical generated mise tools missing: {sorted(missing)}')
@@ -134,27 +150,36 @@ for tool in bun uv node just; do
   publish_bin_paths "$tool"
 done
 # uv is now available to the pypi backend; bun/node precede npm tools.
-mise install npm:@devcontainers/cli pypi:podman-compose
-for tool in npm:@devcontainers/cli pypi:podman-compose; do
+if [[ "$mode" == podman ]]; then
+  second_tools=(npm:@devcontainers/cli pypi:podman-compose)
+else
+  second_tools=(go vp markdownlint-cli2 aqua:golangci/golangci-lint npm:@informalsystems/quint)
+fi
+mise install "${second_tools[@]}"
+for tool in "${second_tools[@]}"; do
   publish_bin_paths "$tool"
 done
 printf '%s\n' "$bootstrap/bin" >> "$GITHUB_PATH"
 {
   printf 'MISE_GLOBAL_CONFIG_FILE=%s\nMISE_DATA_DIR=%s\nMISE_TRUSTED_CONFIG_PATHS=%s\n' "$MISE_GLOBAL_CONFIG_FILE" "$MISE_DATA_DIR" "$MISE_TRUSTED_CONFIG_PATHS"
-  echo 'PODMAN_COMPOSE_PROVIDER=podman-compose'
 } >> "$GITHUB_ENV"
-# Only this explicit ephemeral CI bootstrap starts the user's API service.
-systemctl --user start podman.socket
-socket="$(podman info --format json | python3 -c 'import json,sys; i=json.load(sys.stdin); assert i["host"]["security"]["rootless"] is True, "CI must use rootless Podman"; p=i["host"]["remoteSocket"]["path"]; print(p.removeprefix("unix://"))')"
-DOTFILES_PODMAN_ENGINE_SOCKET="$socket" bash "$repo/.devcontainer/require-podman-socket.sh"
-printf 'DOTFILES_PODMAN_ENGINE_SOCKET=%s\n' "$socket" >> "$GITHUB_ENV"
-# Required engine/SDK jobs must work with NO Docker executable on PATH.
-# Renaming is confined to the throwaway GitHub-hosted runner, never operator hosts.
-if command -v docker >/dev/null 2>&1; then
-  docker_binary="$(command -v docker)"
-  sudo -n mv "$docker_binary" "${docker_binary}.disabled-for-podman-ci"
+if [[ "$mode" == podman ]]; then
+  echo 'PODMAN_COMPOSE_PROVIDER=podman-compose' >> "$GITHUB_ENV"
 fi
-if command -v docker >/dev/null 2>&1; then
-  echo 'Docker remains on PATH; refusing to claim Podman-only acceptance' >&2
-  exit 1
+if [[ "$mode" == podman ]]; then
+  # Only this explicit ephemeral CI bootstrap starts the user's API service.
+  systemctl --user start podman.socket
+  socket="$(podman info --format json | python3 -c 'import json,sys; i=json.load(sys.stdin); assert i["host"]["security"]["rootless"] is True, "CI must use rootless Podman"; p=i["host"]["remoteSocket"]["path"]; print(p.removeprefix("unix://"))')"
+  DOTFILES_PODMAN_ENGINE_SOCKET="$socket" bash "$repo/.devcontainer/require-podman-socket.sh"
+  printf 'DOTFILES_PODMAN_ENGINE_SOCKET=%s\n' "$socket" >> "$GITHUB_ENV"
+  # Required engine/SDK jobs must work with NO Docker executable on PATH.
+  # Renaming is confined to the throwaway GitHub-hosted runner, never operator hosts.
+  if command -v docker >/dev/null 2>&1; then
+    docker_binary="$(command -v docker)"
+    sudo -n mv "$docker_binary" "${docker_binary}.disabled-for-podman-ci"
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    echo 'Docker remains on PATH; refusing to claim Podman-only acceptance' >&2
+    exit 1
+  fi
 fi

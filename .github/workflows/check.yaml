@@ -1,0 +1,33 @@
+name: Check
+
+# `just check` is the full lint gate. It used to run on pull requests only
+# inside the dev container job; that job now runs on main (test-just.yaml), so
+# this job keeps `just check` on every ready pull request, without a container.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: just check (no container)
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the frozen tool set
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      - name: Run just check
+        run: just check

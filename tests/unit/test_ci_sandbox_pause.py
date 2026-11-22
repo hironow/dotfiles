@@ -2,10 +2,10 @@
 of their own.
 
 The sandbox job ("Required disposable Podman devcontainer build/up/exec")
-runs on ready pull requests and main pushes, with the same draft guard as the
-other jobs and no repository-variable switch. The Go tests it runs through
-`just check` also run in a job of their own, for fast, independent feedback,
-through the same recipe as a local run.
+runs on main pushes and on demand, not on pull requests (ADR-0089); check.yaml
+runs `just check` on ready pull requests without a container. The Go tests also
+run in a job of their own, for fast, independent feedback, through the same
+recipe as a local run.
 """
 
 import re
@@ -37,8 +37,19 @@ def _condition(job: str) -> str:
     return condition
 
 
-def test_the_sandbox_job_uses_only_the_draft_guard() -> None:
-    assert _condition(_job(SANDBOX, "test")) == DRAFT_GUARD
+def test_the_sandbox_job_does_not_run_on_pull_requests() -> None:
+    # ADR-0089: pull requests get `just check` from check.yaml instead.
+    assert "pull_request" not in SANDBOX
+    assert "workflow_dispatch" in SANDBOX
+    assert "\n    if:" not in _job(SANDBOX, "test")
+
+
+def test_just_check_runs_on_ready_pull_requests_without_a_container() -> None:
+    check = (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8")
+    assert _condition(_job(check, "check")) == DRAFT_GUARD
+    assert "run: just check" in check
+    assert "ci-bootstrap.sh --tools-only" in check
+    assert "podman" not in check.lower()
     # no repository variable switches it, anywhere in the workflow
     assert "RUN_SANDBOX_TESTS" not in SANDBOX
 
