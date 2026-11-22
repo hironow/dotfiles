@@ -48,7 +48,7 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/uv" tool install rust-just
+          "$HOME/.local/bin/uv" tool install rust-just==1.59.0
 
       # prek runs the repo template's hooks in tests/unit/test_template_prek_hooks.py
       # (ADR 0084). The version is config/mise/image-tools.toml's pin; the
@@ -118,7 +118,7 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/uv" tool install rust-just
+          "$HOME/.local/bin/uv" tool install rust-just==1.59.0
 
       # The command guard corpus, its word table, and the agent-hook payload
       # and tool-hooks corpora follow Python 3.14 (Unicode 16.0). The system
@@ -227,7 +227,7 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/uv" tool install rust-just
+          "$HOME/.local/bin/uv" tool install rust-just==1.59.0
       - name: Go tests
         # setup-go writes GOTOOLCHAIN=local for the steps after it; auto lets a
         # module that asks for a newer Go fetch it.
@@ -273,7 +273,7 @@ jobs:
       - name: Install just
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          uv tool install rust-just
+          uv tool install rust-just==1.59.0
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check PowerShell launchers and HOME-less justfile
@@ -337,7 +337,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          uv tool install rust-just
+          uv tool install rust-just==1.59.0
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       # cygpath -m: `just` hands its arguments to sh unquoted, and the
       # backslashes of D:\a\_temp would be read as escapes.
@@ -384,7 +384,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          uv tool install rust-just
+          uv tool install rust-just==1.59.0
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: PowerShell tests on Windows PowerShell 5.1
         run: just test-windows-powershell
@@ -459,7 +459,7 @@ jobs:
       - name: Install just
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          uv tool install rust-just
+          uv tool install rust-just==1.59.0
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       - name: Go tests
         # Git Bash: go-test is a shebang recipe, which needs Git's cygpath.

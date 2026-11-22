@@ -285,7 +285,10 @@ def test_ci_emu_contract_rejects_unknown_just_interpolation(tmp_path: Path) -> N
     # UV exists, but is not an approved frozen dev runner. Never discard it.
     start = text.index("ci-emu:\n")
     end = text.index("\n# CI-equivalent gate: prek", start)
-    text = text[:start] + text[start:end].replace("{{UV_RUN}}", "{{UV}}") + text[end:]
+    body = text[start:end]
+    # a mutation that changes nothing would let the test pass for nothing
+    assert "{{ UV_RUN }}" in body
+    text = text[:start] + body.replace("{{ UV_RUN }}", "{{ UV }}") + text[end:]
     justfile.write_text(text, encoding="utf-8")
     with pytest.raises(AssertionError, match="unsupported just interpolation"):
         _local_ci_emu(justfile)

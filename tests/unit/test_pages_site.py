@@ -174,8 +174,10 @@ def test_local_servers_bind_loopback_and_never_serve_the_checkout() -> None:
             assert re.search(r"(?:-b|--bind)\s+127\.0\.0\.1", line), line
         host = re.search(r"-host\s+(\S+)", line)
         assert host is None or host.group(1) in ("127.0.0.1", "localhost"), line
-        directory = re.search(r"-dir\s+(\S+)", line)
-        assert directory is None or directory.group(1) not in (
+        # a just interpolation holds spaces (`{{ justfile_directory() }}`):
+        # read it whole, and compare without whitespace
+        directory = re.search(r"-dir\s+(\{\{.*?\}\}|\S+)", line)
+        assert directory is None or re.sub(r"\s", "", directory.group(1)) not in (
             ".",
             "./",
             "{{justfile_directory()}}",

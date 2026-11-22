@@ -3,7 +3,7 @@
 On Windows a bare ``bash`` resolves to the System32 WSL bash before Git Bash
 (documented hazard in repo CLAUDE.md), so hook commands render as
 ``sh "<posix path>"`` there — the same strategy as the justfile's
-``set windows-shell := ["sh", ...]``. mac/linux output stays byte-identical to
+the ``[windows]`` ``set shell := ["sh", ...]``. mac/linux output stays byte-identical to
 the historical form. Managed-block detection normalizes ``\\`` to ``/`` so
 legacy backslash-rendered blocks are replaced, not duplicated (ADR 0037).
 """

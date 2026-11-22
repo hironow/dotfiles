@@ -1,4 +1,4 @@
-"""`set windows-shell` must force /usr/bin-first PATH inside plain recipes.
+"""The Windows `set shell` must force /usr/bin-first PATH inside plain recipes.
 
 Why this guard exists
 ---------------------
@@ -37,15 +37,15 @@ WINDOWS_SH = Path("C:/Program Files/Git/usr/bin/sh.exe")
 
 
 def _windows_shell_argv() -> list[str]:
-    """Parse the `set windows-shell := [...]` array from the justfile."""
+    """Parse the `[windows]` `set shell := [...]` array from the justfile."""
     text = JUSTFILE.read_text(encoding="utf-8")
-    m = re.search(r"^set windows-shell := \[(.+)\]\s*$", text, flags=re.MULTILINE)
-    assert m, "justfile must have a single-line `set windows-shell := [...]`"
+    m = re.search(r"^\[windows\]\nset shell := \[(.+)\]\s*$", text, flags=re.MULTILINE)
+    assert m, "justfile must have a single-line `[windows]` `set shell := [...]`"
     # just string literals: '...' is raw, "..." is escaped; neither kind is
     # nested inside the other in this line, so a simple alternation works.
     parts = re.findall(r"'([^']*)'|\"([^\"]*)\"", m.group(1))
     argv = [raw or cooked for raw, cooked in parts]
-    assert argv, "could not parse windows-shell array elements"
+    assert argv, "could not parse the Windows shell array elements"
     return argv
 
 
@@ -85,7 +85,7 @@ def _host_bash() -> str:
 
 
 def _run_mechanism(recipe: str) -> subprocess.CompletedProcess[str]:
-    """Run the windows-shell argv against a recipe body, portably.
+    """Run the Windows shell argv against a recipe body, portably.
 
     On non-Windows hosts /usr/bin/sh is dash (no pipefail) and there is no
     msys sh, so the interpreter is substituted with bash; the *mechanism*
