@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-json"
@@ -116,7 +117,7 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "  %-60s %6.0fs\n", s.Name, report.ShardSeconds[s.Name])
 	}
 	if *durationsOut != "" {
-		data, err := json.MarshalIndent(report.Durations, "", "  ")
+		data, err := json.MarshalIndent(withoutSecretShapes(report.Durations), "", "  ")
 		if err != nil {
 			fmt.Fprintln(stderr, "ci-audit:", err)
 			return 1
@@ -134,4 +135,22 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, "OK: every collected test ran once")
 	return 0
+}
+
+// secretShape matches text that looks like a credential. The cases of a
+// secret scanner's own tests carry such text in their ids.
+var secretShape = regexp.MustCompile(`(?i)(sk-|sk_live|ghp_|github_pat_|xox[bp]-|AKIA|AIza|-----BEGIN)`)
+
+// withoutSecretShapes drops the ids that hold credential-shaped text. The
+// durations file is committed, and GitHub's push protection and the repo's
+// private-key hook both reject such text. pytest-split gives a test it has no
+// duration for the mean of the others, so leaving a few out costs nothing.
+func withoutSecretShapes(durations map[string]float64) map[string]float64 {
+	kept := make(map[string]float64, len(durations))
+	for id, seconds := range durations {
+		if !secretShape.MatchString(id) {
+			kept[id] = seconds
+		}
+	}
+	return kept
 }

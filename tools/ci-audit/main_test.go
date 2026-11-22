@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/goccy/go-json"
 )
 
 type noNetwork struct{}
@@ -80,5 +82,35 @@ func TestUnknownCommandIsAUsageError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(context.Background(), []string{"frobnicate"}, &stdout, &stderr, noNetwork{}); code != 2 {
 		t.Fatalf("exit %d, want 2", code)
+	}
+}
+
+// The cases of a secret scanner's own tests carry credential-shaped text in
+// their ids. The durations file is committed, and GitHub's push protection and
+// the repo's private-key hook reject such text, so those ids are left out.
+func TestDurationsFileLeavesOutIDsThatHoldCredentialShapedText(t *testing.T) {
+	dir := t.TempDir()
+	token := "gh" + "p_" + strings.Repeat("a", 36)
+	list := write(t, dir, "all.txt", "tests/unit/test_a.py::test_one\ntests/unit/test_s.py::test_shape["+token+"]\n")
+	one := write(t, dir, "1.xml", junit(tc("tests.unit.test_a", "test_one", "1"), tc("tests.unit.test_s", "test_shape["+token+"]", "1")))
+	out := filepath.Join(dir, "durations.json")
+	var stdout, stderr bytes.Buffer
+	args := []string{"shards", "--collected", list, "--junit", one, "--max-imbalance", "0", "--durations-out", out}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]float64
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want only the plain test, got %v", got)
+	}
+	if _, ok := got["tests/unit/test_a.py::test_one"]; !ok {
+		t.Fatalf("the plain test is missing: %v", got)
 	}
 }
