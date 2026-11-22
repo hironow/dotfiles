@@ -23,9 +23,9 @@ jobs:
     # ready for review.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-26.04
-    # About twice the 101 s these legs took on 2026-11-22 (ty per OS and the
-    # GC simulation with its 183 tests are most of it).
-    timeout-minutes: 6
+    # The job took 114 s and 144 s on 2026-11-22 (ty per OS and the GC
+    # simulation with its 183 tests are most of it); about twice that.
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,8 +40,9 @@ jobs:
     name: just go-lint (golangci-lint per GOOS)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-26.04
-    # About twice the 210 s it took on 2026-11-22.
-    timeout-minutes: 8
+    # The job took 287 s and 295 s on 2026-11-22 (a cold Go build cache in
+    # its own job); about twice that.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,8 +57,9 @@ jobs:
     name: just go-test
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-26.04
-    # About twice the 78 s it took on 2026-11-22.
-    timeout-minutes: 4
+    # The job took 109 s and 167 s on 2026-11-22 (a cold Go build cache in
+    # its own job); about twice that.
+    timeout-minutes: 6
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
