@@ -872,8 +872,12 @@ def _open_tracked_file(root: Path, parts: tuple[str, ...], expected: os.stat_res
         yield stream
 
 
-def _copy_tracked_into(src: str, snapshot: str) -> None:
-    """Validate ALL tracked names before copying working-tree (not index) bytes."""
+def _tracked_files(src: str) -> dict[tuple[str, ...], os.stat_result]:
+    """Validate ALL tracked names; return the files to copy with their stat.
+
+    Separate from the copy so that tests/unit/test_sandbox_snapshot_inputs.py
+    runs the same validation on every pull request, without a container.
+    """
     root = Path(src).absolute()
     for ancestor in (root, *root.parents):
         if (
@@ -920,6 +924,13 @@ def _copy_tracked_into(src: str, snapshot: str) -> None:
         metadata = _tracked_file_stat(root, parts)
         if metadata is not None:
             files[parts] = metadata
+    return files
+
+
+def _copy_tracked_into(src: str, snapshot: str) -> None:
+    """Validate ALL tracked names before copying working-tree (not index) bytes."""
+    root = Path(src).absolute()
+    files = _tracked_files(src)
     for parts, metadata in files.items():
         dest = Path(snapshot).joinpath(*parts)
         dest.parent.mkdir(parents=True, exist_ok=True)

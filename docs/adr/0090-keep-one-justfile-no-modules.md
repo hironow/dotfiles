@@ -2,9 +2,9 @@
 
 - **id**: ADR-0090
 - **title**: Keep one justfile; do not split it into just modules now
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-23
-- **decided-date**: pending
+- **decided-date**: 2026-11-23
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
@@ -61,3 +61,9 @@ Accepting option B later is a new record that supersedes this one.
 ## Consistency with other decision records
 
 - No record decides on `mod`; ROOT_AGENTS.md's one-justfile rule is unchanged by this record.
+
+## Decision (2026-11-23)
+
+- [x] Accept A / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-23 05:45 JST. Shown Claude's recommendations (accept ADR-0089 with the dev container tests running on the pull requests that can break them; ADR-0090 option A; register the gates as required checks with branches up to date; no organization move; no faster runners), the owner answered "では、全て推奨で進めましょう！！" (translated: then let us go with all the recommendations).
+- Action: none beyond this record; the root justfile stays the only one.
