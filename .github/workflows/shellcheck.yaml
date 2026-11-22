@@ -23,4 +23,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # shellcheck は ubuntu-latest ランナーにプリインストール済み。
       # CI は mise 非依存 (mise.toml はローカル開発用)。
-      - run: shellcheck *.sh
+      # Every tracked shell script, as `just check` does (emulator/ has its own gate).
+      - run: git ls-files -z '*.sh' ':!emulator' | xargs -0 -r shellcheck
