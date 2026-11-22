@@ -34,6 +34,9 @@ just sync-agents-preview …  # dry-run
 
 ## Task runner (only one justfile at root)
 
+The justfile follows the justfile rules of `docs/agents/project-structure.md` (spoke), checked by `tests/unit/test_just_canonical.py` and `tests/unit/test_just_groups.py`. Every public recipe is in one of these groups, by purpose:
+`gate` (whole gates: `check`, `ci`, `lint`, `fmt`, ...), `lint` (one checker each), `test`, `setup` (install, deploy, dump, update, clean), `doctor` (host diagnosis and the `check-*` probes), `agents`, `runner` (disk GC and the Windows runner service), `emulator`, `telemetry`, `tailnet`, `cloud`, `dns`, `site`, `debug`, `meta` (`help`).
+
 | recipe | Description |
 |---|---|
 | `just` / `just help` | List recipes |
