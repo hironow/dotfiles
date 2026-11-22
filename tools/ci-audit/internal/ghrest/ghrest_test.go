@@ -36,7 +36,7 @@ const jobsBody = `{"jobs":[
  {"name":"Frontend CI","run_attempt":1,"conclusion":"success",
   "created_at":"2026-11-22T10:00:12Z","started_at":"2026-11-22T10:00:14Z","completed_at":"2026-11-22T10:00:18Z","steps":[]}]}`
 
-const runsPath = "repos/o/r/actions/workflows/frontend-ci.yaml/runs?per_page=100&status=completed"
+const runsPath = "repos/o/r/actions/workflows/frontend-ci.yaml/runs?per_page=100"
 
 func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 	api := &fakeRuns{bodies: map[string]string{
@@ -143,6 +143,28 @@ func TestFetchSaysWhereItsWindowStartsOnlyWhenTheLimitCutTheList(t *testing.T) {
 	}
 	if !whole.WindowStart.IsZero() {
 		t.Errorf("window start = %v, want none: every run was read", whole.WindowStart)
+	}
+}
+
+// A run still in progress has no jobs to measure, and its push would look
+// finished and fast: Fetch names that commit, and does not count the run
+// toward the limit.
+func TestFetchNamesTheCommitsWithARunStillInProgress(t *testing.T) {
+	api := &fakeRuns{bodies: map[string]string{
+		runsPath + "&page=1": `{"workflow_runs":[
+			{"id":9,"status":"in_progress","conclusion":null,"head_sha":"new","event":"pull_request"},
+			{"id":8,"status":"completed","conclusion":"success","head_sha":"old","event":"pull_request"}]}`,
+		"repos/o/r/actions/runs/8/jobs?per_page=100&filter=all&page=1": `{"jobs":[` + oneJob(1, "success") + `]}`,
+	}}
+	w, err := ghrest.FetchWindow(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Jobs) != 1 || w.Jobs[0].HeadSHA != "old" {
+		t.Fatalf("jobs = %+v, want the completed run's job: an unfinished run does not use up the limit", w.Jobs)
+	}
+	if len(w.Unfinished) != 1 || w.Unfinished[0] != (jobaudit.Commit{HeadSHA: "new", Event: "pull_request"}) {
+		t.Fatalf("unfinished = %+v, want commit new", w.Unfinished)
 	}
 }
 

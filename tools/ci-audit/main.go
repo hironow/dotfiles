@@ -74,6 +74,7 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 	var all []jobaudit.Job
 	// The pushes are measured only where every workflow's window reaches.
 	var windowStart time.Time
+	var unfinished []jobaudit.Commit
 	for _, workflow := range flags.Args() {
 		w, err := ghrest.FetchWindow(ctx, api, *repo, workflow, filter)
 		if err != nil {
@@ -81,6 +82,7 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 			return 1
 		}
 		all = append(all, w.Jobs...)
+		unfinished = append(unfinished, w.Unfinished...)
 		if w.WindowStart.After(windowStart) {
 			windowStart = w.WindowStart
 		}
@@ -94,7 +96,7 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 		"waiting = started minus created; setup = steps before the recipe; running = the recipe step;\n"+
 		"after = steps behind it; total = completed minus started.\n\n%s", jobaudit.Render(rows))
 	fmt.Fprintf(stdout, "\nPer push: result = first run created to the last job of the first attempts done;\n"+
-		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all, windowStart)))
+		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all, windowStart, unfinished...)))
 	return 0
 }
 

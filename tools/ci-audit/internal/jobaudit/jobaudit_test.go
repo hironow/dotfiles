@@ -303,6 +303,16 @@ func TestPushesLeaveOutACommitThatOneWorkflowRanTwice(t *testing.T) {
 	}
 }
 
+func TestPushesLeaveOutACommitWithARunStillInProgress(t *testing.T) {
+	p := jobaudit.Pushes([]jobaudit.Job{
+		pushJob("a.yaml", "one", 1, 0),
+		pushJob("a.yaml", "two", 2, 100), // b.yaml is still running for two
+	}, time.Time{}, jobaudit.Commit{HeadSHA: "two", Event: "pull_request"})
+	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "one" || p.Unfinished != 1 {
+		t.Fatalf("pushes = %+v, unfinished = %d, want push one only and 1 unfinished", p.Pushes, p.Unfinished)
+	}
+}
+
 func TestRenderPushesSaysWhenNoPushCouldBeMeasured(t *testing.T) {
 	out := jobaudit.RenderPushes(jobaudit.Pushes(nil, time.Time{}))
 	if !strings.Contains(out, "no push could be measured") || strings.Contains(out, "result 0/0s") {

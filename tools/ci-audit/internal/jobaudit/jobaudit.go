@@ -286,6 +286,12 @@ func Render(rows []Row) string {
 	return b.String()
 }
 
+// Commit is one commit tested for one event: what a push is keyed by.
+type Commit struct {
+	HeadSHA string
+	Event   string
+}
+
 // Push is every run one commit started for one event.
 type Push struct {
 	HeadSHA string
@@ -305,7 +311,10 @@ type PushSummary struct {
 	OutsideWindow int
 	// Ambiguous counts pushes where one workflow ran twice (attempt 1 of two
 	// runs), such as a pull request closed and reopened on the same commit.
-	Ambiguous     int
+	Ambiguous int
+	// Unfinished counts pushes with a run still in progress: its jobs are
+	// not read yet, so the push would look finished and fast.
+	Unfinished    int
 	Result        [2]float64 // p50, p95
 	RunnerSeconds [2]float64 // p50, p95 per push
 }
@@ -315,7 +324,11 @@ type PushSummary struct {
 // cut by the run limit (zero when none was): before it, a push may be missing
 // a run. A workflow that did not run for a push (a paths filter) is not
 // missing.
-func Pushes(jobs []Job, windowStart time.Time) PushSummary {
+func Pushes(jobs []Job, windowStart time.Time, unfinished ...Commit) PushSummary {
+	running := map[Commit]bool{}
+	for _, c := range unfinished {
+		running[c] = true
+	}
 	type key struct{ sha, event string }
 	type group struct {
 		firstRuns map[string]map[int64]bool // workflow -> run ids with an attempt 1
@@ -355,6 +368,10 @@ func Pushes(jobs []Job, windowStart time.Time) PushSummary {
 	var results, runner []float64
 	for _, k := range order {
 		g := groups[k]
+		if running[Commit{k.sha, k.event}] {
+			out.Unfinished++
+			continue
+		}
 		if !windowStart.IsZero() && g.first.Before(windowStart) {
 			out.OutsideWindow++
 			continue
@@ -376,7 +393,8 @@ func Pushes(jobs []Job, windowStart time.Time) PushSummary {
 // RenderPushes prints the push summary and the commits it counted.
 func RenderPushes(s PushSummary) string {
 	var b strings.Builder
-	left := fmt.Sprintf("left out: %d before the window, %d with a workflow that ran twice", s.OutsideWindow, s.Ambiguous)
+	left := fmt.Sprintf("left out: %d before the window, %d with a workflow that ran twice, %d with a run still in progress",
+		s.OutsideWindow, s.Ambiguous, s.Unfinished)
 	if len(s.Pushes) == 0 {
 		fmt.Fprintf(&b, "no push could be measured (%s)\n", left)
 		return b.String()

@@ -43,6 +43,9 @@ type Window struct {
 	// limit cut the list (older runs exist and were not read); zero when every
 	// run was read.
 	WindowStart time.Time
+	// Unfinished are the commits with a run of this workflow still in
+	// progress. Their runs do not count toward the limit.
+	Unfinished []jobaudit.Commit
 }
 
 // Fetch returns the jobs of the last f.Limit completed runs of one workflow,
@@ -70,9 +73,11 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 	}
 	var jobs []jobaudit.Job
 	var oldest time.Time
+	var unfinished []jobaudit.Commit
 	read, cut := 0, false
 	for page := 1; read < f.Limit; page++ {
-		listPath := fmt.Sprintf("repos/%s/actions/workflows/%s/runs?per_page=%d&status=completed%s&page=%d", repo, workflow, perPage, extra, page)
+		// Every status: an unfinished run must be seen to leave its push out.
+		listPath := fmt.Sprintf("repos/%s/actions/workflows/%s/runs?per_page=%d%s&page=%d", repo, workflow, perPage, extra, page)
 		body, err := api.Get(ctx, listPath)
 		if err != nil {
 			return Window{}, fmt.Errorf("list runs of %s: %w", workflow, err)
@@ -84,6 +89,10 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 			return Window{}, fmt.Errorf("read runs of %s: %w", workflow, err)
 		}
 		for _, run := range runs.WorkflowRuns {
+			if run.Status != "" && run.Status != "completed" {
+				unfinished = append(unfinished, jobaudit.Commit{HeadSHA: run.HeadSHA, Event: run.Event})
+				continue
+			}
 			if read >= f.Limit {
 				cut = true // a run past the limit is in this page
 				break
@@ -116,7 +125,7 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 			cut = true // a full page at the limit: a next page may hold more
 		}
 	}
-	w := Window{Jobs: jobs}
+	w := Window{Jobs: jobs, Unfinished: unfinished}
 	if cut {
 		w.WindowStart = oldest
 	}
@@ -125,6 +134,7 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 
 type runJSON struct {
 	ID         int64  `json:"id"`
+	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
 	HeadSHA    string `json:"head_sha"`
 	Event      string `json:"event"`
