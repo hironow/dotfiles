@@ -44,14 +44,37 @@ def test_the_sandbox_job_does_not_run_on_pull_requests() -> None:
     assert "\n    if:" not in _job(SANDBOX, "test")
 
 
+CHECK_PARTS = {
+    "check-except-go": "just check-except-go",
+    "go-lint": "just go-lint",
+    "go-test": "just go-test",
+}
+
+
 def test_just_check_runs_on_ready_pull_requests_without_a_container() -> None:
     check = (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8")
-    assert _condition(_job(check, "check")) == DRAFT_GUARD
-    assert "run: just check" in check
-    assert "ci-bootstrap.sh --tools-only" in check
+    # `just check` is check-except-go, go-lint and go-test; CI runs the three
+    # as parallel jobs, so the slowest sets the time, not their sum.
+    for job_id, command in CHECK_PARTS.items():
+        job = _job(check, job_id)
+        assert _condition(job) == DRAFT_GUARD, job_id
+        assert f"run: {command}\n" in job, job_id
+        assert "ci-bootstrap.sh --tools-only" in job, job_id
+        assert re.search(r"\n    timeout-minutes: \d+\n", job), job_id
     assert "podman" not in check.lower()
     # no repository variable switches it, anywhere in the workflow
     assert "RUN_SANDBOX_TESTS" not in SANDBOX
+
+
+def test_the_check_gate_keeps_its_name_and_needs_every_part() -> None:
+    check = (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8")
+    gate = _job(check, "check")
+    assert "    name: just check (no container)\n" in gate
+    assert f"    needs: [{', '.join(CHECK_PARTS)}]\n" in gate
+    # a skipped or failed part must fail the gate, not skip it
+    assert "always()" in _condition(gate)
+    assert DRAFT_GUARD in _condition(gate)
+    assert '"success success success"' in gate
 
 
 def test_the_go_tests_run_in_a_job_of_their_own() -> None:
