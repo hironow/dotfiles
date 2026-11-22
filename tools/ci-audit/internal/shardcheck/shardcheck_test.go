@@ -53,6 +53,20 @@ func TestParseCollectedKeepsNodeIDsAndDropsPytestChatter(t *testing.T) {
 	}
 }
 
+// A Windows shard writes its list with CRLF line ends, and the gate that reads
+// it runs on Linux.
+func TestParseCollectedReadsAWindowsListWithCRLF(t *testing.T) {
+	data := "tests/unit/test_a.py::test_one\r\n" +
+		"tests/unit/test_c.py::test_cmd[Help: lists targets]\r\n" +
+		"\r\n" +
+		"2 tests collected in 3.10s\r\n"
+	got := shardcheck.ParseCollected([]byte(data))
+	want := []string{"tests/unit/test_a.py::test_one", "tests/unit/test_c.py::test_cmd[Help: lists targets]"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("ParseCollected = %q, want %q", got, want)
+	}
+}
+
 func TestParseJUnitReadsEveryOutcome(t *testing.T) {
 	data := `<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest">
 <testcase classname="tests.unit.test_a" name="test_one" time="0.5"/>
