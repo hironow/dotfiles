@@ -131,7 +131,7 @@ def test_the_strict_gate_never_writes() -> None:
 
 def test_install_hooks_runs_prek_install() -> None:
     text = JUSTFILE.read_text(encoding="utf-8")
-    assert "install-hooks:\n    #!/usr/bin/env bash\n" in text
+    assert "[script]\ninstall-hooks:\n    set -euo pipefail\n" in text
     _, body = _recipe("install-hooks")
     assert body[-1] == "prek install"
     assert "git config --show-scope --get-all core.hooksPath" in "\n".join(body)

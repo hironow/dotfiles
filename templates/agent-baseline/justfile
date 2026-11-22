@@ -8,6 +8,16 @@ set minimum-version := "1.59.0"
 # A bare `just` lists the recipes.
 set default-list
 
+# Script recipes (`[script]`) run as one bash process, through this
+# interpreter instead of a `#!` line. No shell flags: each recipe keeps its
+# own `set` line. On native Windows, a bare `bash` is WSL's (System32 comes
+# before PATH), so Git's /usr/bin goes first and Git's bash runs.
+[unix]
+set script-interpreter := ["bash"]
+
+[windows]
+set script-interpreter := ["sh", "-c", 'PATH="/usr/bin:$PATH"; exec /usr/bin/bash "$0" "$@"']
+
 # List the recipes
 [group('meta')]
 help:
@@ -50,16 +60,16 @@ fmt:
 # (ignored files excluded). The Semgrep fixtures in .semgrep/tests/ are not tests.
 [doc('List the e2e test files')]
 [group('test')]
+[script]
 e2e-tests:
-    #!/usr/bin/env bash
     set -euo pipefail
     files="$(git ls-files --cached --others --exclude-standard -- '*e2e*.py' ':(exclude).semgrep/**')"
     printf '%s\n' "$files" | grep -E '(^|/)(test_[^/]*|[^/]*_test)\.py$' | sort -u || true
 
 # Run the e2e tests (real dependencies only; no mocks)
 [group('test')]
+[script]
 test-e2e:
-    #!/usr/bin/env bash
     set -euo pipefail
     files="$(just e2e-tests)"
     if [ -z "$files" ]; then echo "no e2e tests"; exit 0; fi
@@ -69,8 +79,8 @@ test-e2e:
 # absent; a finding or a semgrep error fails the recipe.
 [doc('Run the project Semgrep rules; a finding fails')]
 [group('lint')]
+[script]
 semgrep:
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -d .semgrep/rules ]; then echo "no .semgrep/rules — skipping"; exit 0; fi
     semgrep --config .semgrep/rules/ --error
@@ -83,8 +93,8 @@ semgrep:
 # this template set. Claude Code hooks live in .claude/settings.json.
 [doc('Install the prek git hooks, once per clone')]
 [group('setup')]
+[script]
 install-hooks:
-    #!/usr/bin/env bash
     set -euo pipefail
     rc=0
     paths="$(git config --show-scope --get-all core.hooksPath)" || rc=$?

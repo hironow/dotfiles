@@ -49,6 +49,10 @@ rule below.
 - Give every public recipe a one-line doc. `just --list` shows only the
   comment line right above the recipe, so under a block of explanation, give
   the summary with `[doc('...')]` and keep the block.
+- Run a multi-line Bash body as a `[script]` recipe, not with a `#!` line,
+  and set `script-interpreter` once for each OS (`[unix]`: `bash`; `[windows]`:
+  Git's bash with `/usr/bin` first on PATH, as the agent-baseline `justfile`
+  does). Give it no shell flags; each recipe keeps its own `set` line.
 - Start a helper's name with `_` so that `just --list` hides it.
 
 ## Container image layout
