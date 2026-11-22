@@ -6,7 +6,7 @@
 //	    over the last N completed runs of each workflow file, every attempt; and
 //	    per push, when the pull request had its result and the runner seconds.
 //
-//	ci-audit shards --junit FILE... --collected FILE... [--max-imbalance X] [--durations-out FILE]
+//	ci-audit shards --junit FILE... --collected FILE... [--max-imbalance X] [--durations-in FILE] [--durations-out FILE]
 //	    proves that the shards together ran every collected test once. Give
 //	    --collected once, or once per shard in --junit order; each shard's list
 //	    is compared with the first by its ids.
@@ -119,6 +119,7 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 	flags.Var(&collected, "collected", "the `pytest --collect-only -q` list of the whole suite (once, or once per shard in --junit order)")
 	maxImbalance := flags.Float64("max-imbalance", 1.5, "the largest allowed ratio of the slowest shard to the mean (0 turns it off)")
 	durationsOut := flags.String("durations-out", "", "write per-test seconds, keyed by node id, to this file")
+	durationsIn := flags.String("durations-in", "", "the committed durations the split used: factors each runner's speed out of the balance")
 	err := flags.Parse(args)
 	if err != nil || len(junit) == 0 || (len(collected) != 1 && len(collected) != len(junit)) {
 		fmt.Fprintln(stderr, "usage: ci-audit shards --collected FILE [--collected FILE...] --junit FILE [--junit FILE...] [--max-imbalance X] [--durations-out FILE]\n"+
@@ -154,11 +155,31 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 		}
 		shards = append(shards, shardcheck.Shard{Name: fmt.Sprintf("shard-%d (%s)", i+1, path), Collected: ids, Cases: cases})
 	}
-	report := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: *maxImbalance})
-	fmt.Fprintf(stdout, "collected %d tests; %d executed by %d shards; slowest shard is %.2f times the mean\n",
+	opt := shardcheck.Options{MaxImbalance: *maxImbalance}
+	if *durationsIn != "" {
+		data, err := os.ReadFile(*durationsIn)
+		if err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+		if err := json.Unmarshal(data, &opt.Baseline); err != nil {
+			fmt.Fprintf(stderr, "ci-audit: %s: %v\n", *durationsIn, err)
+			return 1
+		}
+	}
+	report := shardcheck.Check(shards, opt)
+	fmt.Fprintf(stdout, "collected %d tests; %d executed by %d shards; slowest shard is %.2f times the mean",
 		report.Expected, report.Executed, len(shards), report.Imbalance)
+	if report.Speeds != nil {
+		fmt.Fprintf(stdout, " once each runner's speed is factored out (%.2f before)", report.RawImbalance)
+	}
+	fmt.Fprintln(stdout)
 	for _, s := range shards {
-		fmt.Fprintf(stdout, "  %-60s %6.0fs\n", s.Name, report.ShardSeconds[s.Name])
+		fmt.Fprintf(stdout, "  %-60s %6.0fs", s.Name, report.ShardSeconds[s.Name])
+		if report.Speeds != nil {
+			fmt.Fprintf(stdout, "  runner speed %.2f", report.Speeds[s.Name])
+		}
+		fmt.Fprintln(stdout)
 	}
 	if n := len(report.SkippedModules); n > 0 {
 		noun := "modules"

@@ -48,6 +48,12 @@ type Options struct {
 	// MaxImbalance is the largest allowed ratio of the slowest shard to the
 	// mean shard. 0 turns the check off.
 	MaxImbalance float64
+	// Baseline is the committed durations the split used, keyed by node id.
+	// With it, each shard's time is divided by its runner's speed (the
+	// median of actual over committed time for its tests), so a slow runner
+	// does not count as an unbalanced split; a test the baseline does not
+	// know, or that got slower, still does.
+	Baseline map[string]float64
 }
 
 // Report is the outcome of Check.
@@ -66,9 +72,14 @@ type Report struct {
 	// BrokenModules are modules whose collection failed: always a problem.
 	BrokenModules []string
 	Imbalance     float64
-	ShardSeconds  map[string]float64
-	Durations     map[string]float64
-	Problems      []string
+	// RawImbalance is the slowest shard's time over the mean, before the
+	// runner speeds are factored out; Speeds is each shard's runner speed
+	// (1 = as fast as when the baseline was measured).
+	RawImbalance float64
+	Speeds       map[string]float64
+	ShardSeconds map[string]float64
+	Durations    map[string]float64
+	Problems     []string
 }
 
 // OK reports whether the check found no problem.
@@ -234,7 +245,16 @@ func Check(shards []Shard, opt Options) Report {
 	for _, list := range [][]string{r.Missing, r.Unexpected, r.Duplicates} {
 		sort.Strings(list)
 	}
-	r.Imbalance = imbalance(r.ShardSeconds)
+	r.RawImbalance = imbalance(r.ShardSeconds)
+	r.Imbalance = r.RawImbalance
+	if opt.Baseline != nil {
+		r.Speeds = runnerSpeeds(shards, expected, opt.Baseline)
+		normalized := map[string]float64{}
+		for name, seconds := range r.ShardSeconds {
+			normalized[name] = seconds / r.Speeds[name]
+		}
+		r.Imbalance = imbalance(normalized)
+	}
 	r.Problems = problems(r, opt)
 	return r
 }
@@ -280,6 +300,35 @@ func sameSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// minSpeedSample is the shortest committed time a test needs to tell a
+// runner's speed: shorter ones are mostly start-up noise.
+const minSpeedSample = 0.3
+
+// runnerSpeeds returns, per shard, the median of actual over committed time of
+// its tests that the baseline times at minSpeedSample or more; 1 when a shard
+// has fewer than five such tests.
+func runnerSpeeds(shards []Shard, expected map[Key]string, baseline map[string]float64) map[string]float64 {
+	speeds := map[string]float64{}
+	for _, s := range shards {
+		var ratios []float64
+		for _, c := range s.Cases {
+			id, ok := expected[c.Key]
+			if !ok {
+				continue
+			}
+			if b := baseline[id]; b >= minSpeedSample && c.Seconds > 0 {
+				ratios = append(ratios, c.Seconds/b)
+			}
+		}
+		speeds[s.Name] = 1
+		if len(ratios) >= 5 {
+			slices.Sort(ratios)
+			speeds[s.Name] = ratios[len(ratios)/2]
+		}
+	}
+	return speeds
 }
 
 func imbalance(seconds map[string]float64) float64 {

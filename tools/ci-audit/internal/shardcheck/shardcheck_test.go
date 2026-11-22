@@ -245,6 +245,64 @@ func TestCheckFailsOnAModuleThatFailedToCollect(t *testing.T) {
 	}
 }
 
+// evenShards gives each of n shards the same work: per shard, `tests` tests of
+// one second each in the committed durations, run at that shard's speed.
+func evenShards(speeds []float64, tests int) ([]shardcheck.Shard, map[string]float64) {
+	baseline := map[string]float64{}
+	var ids []string
+	for s := range speeds {
+		for i := range tests {
+			id := fmt.Sprintf("tests/unit/test_s%d.py::test_%d", s, i)
+			ids = append(ids, id)
+			baseline[id] = 1
+		}
+	}
+	shards := make([]shardcheck.Shard, len(speeds))
+	for s, speed := range speeds {
+		shards[s].Name = fmt.Sprintf("shard-%d", s+1)
+		shards[s].Collected = ids
+		for i := range tests {
+			k := shardcheck.KeyOf(fmt.Sprintf("tests/unit/test_s%d.py::test_%d", s, i))
+			shards[s].Cases = append(shards[s].Cases, shardcheck.Case{Key: k, Seconds: speed, Outcome: "passed"})
+		}
+	}
+	return shards, baseline
+}
+
+// One runner ran 2.5 times slower than the others (raw max/mean 2.5/1.5 =
+// 1.67). The split was even, so the check must stay green: a slow runner is
+// not stale durations.
+func TestCheckIgnoresAShardWhoseRunnerWasSlower(t *testing.T) {
+	shards, baseline := evenShards([]float64{2.5, 1, 1}, 20)
+	raw := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 1.5})
+	if raw.OK() {
+		t.Fatalf("without the committed durations the raw imbalance %.2f should exceed 1.5", raw.Imbalance)
+	}
+	r := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 1.5, Baseline: baseline})
+	if !r.OK() {
+		t.Fatalf("a slower runner failed the check: %v (imbalance %.2f)", r.Problems, r.Imbalance)
+	}
+	if r.Imbalance > 1.01 {
+		t.Errorf("imbalance = %.2f, want about 1.00 once each shard's speed is factored out", r.Imbalance)
+	}
+}
+
+// A slow test that the committed durations do not know (a new test) lands in
+// one shard: that is stale durations, and the check must turn red even when
+// the runners ran at the same speed.
+func TestCheckFailsOnASlowTestTheDurationsDoNotKnow(t *testing.T) {
+	shards, baseline := evenShards([]float64{1, 1, 1}, 20)
+	k := shardcheck.KeyOf("tests/unit/test_new.py::test_slow")
+	for i := range shards {
+		shards[i].Collected = append(append([]string(nil), shards[i].Collected...), "tests/unit/test_new.py::test_slow")
+	}
+	shards[0].Cases = append(shards[0].Cases, shardcheck.Case{Key: k, Seconds: 30, Outcome: "passed"})
+	r := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 1.5, Baseline: baseline})
+	if r.OK() {
+		t.Fatalf("a 30 s test unknown to the durations must fail the balance (imbalance %.2f)", r.Imbalance)
+	}
+}
+
 func TestCheckWritesDurationsKeyedByNodeID(t *testing.T) {
 	r := shardcheck.Check(shardsOf(3), shardcheck.Options{MaxImbalance: 10})
 	if len(r.Durations) != len(allIDs) {
