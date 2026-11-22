@@ -216,6 +216,23 @@ func TestCheckReportsAModuleSkippedAtCollectionAndDoesNotCountIt(t *testing.T) {
 	}
 }
 
+// A shard whose report holds only a module that skipped itself ran no test:
+// it is empty, and its time still counts toward the imbalance.
+func TestCheckFailsOnAShardThatOnlySkippedAModule(t *testing.T) {
+	shards := shardsOf(3)
+	shards = append(shards, shardcheck.Shard{
+		Name: "shard-4", Collected: allIDs,
+		Cases: []shardcheck.Case{moduleCase("tests.unit.test_posix_only", "skipped")},
+	})
+	r := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: 10})
+	if r.OK() || len(r.EmptyShards) != 1 || r.EmptyShards[0] != "shard-4" {
+		t.Fatalf("want shard-4 empty, got ok=%v empty=%v", r.OK(), r.EmptyShards)
+	}
+	if _, ok := r.ShardSeconds["shard-4"]; !ok {
+		t.Fatalf("shard-4 is missing from the shard times: %v", r.ShardSeconds)
+	}
+}
+
 func TestCheckFailsOnAModuleThatFailedToCollect(t *testing.T) {
 	shards := shardsOf(3)
 	shards[1].Cases = append(shards[1].Cases, moduleCase("tests.unit.test_broken", "error"))

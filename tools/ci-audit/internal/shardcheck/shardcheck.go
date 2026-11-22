@@ -186,7 +186,11 @@ func Check(shards []Shard, opt Options) Report {
 		if !sameSet(reference, s.Collected) {
 			r.DifferingLists = append(r.DifferingLists, s.Name)
 		}
-		if len(s.Cases) == 0 {
+		// Every shard has a time, so one that ran nothing still counts toward
+		// the imbalance.
+		r.ShardSeconds[s.Name] = 0
+		// A module report is not a test: a shard that holds only those ran none.
+		if !slices.ContainsFunc(s.Cases, func(c Case) bool { return c.Key.Class != "" }) {
 			r.EmptyShards = append(r.EmptyShards, s.Name)
 		}
 	}
