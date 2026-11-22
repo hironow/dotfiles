@@ -1,21 +1,27 @@
 # justfile — the ONLY task runner for this repo (no make, no npm scripts).
-# Exactly one justfile, at the root. `just` with no args prints this list.
+# Exactly one justfile, at the root. Write it as `just --fmt` does; every
+# public recipe has a group and a one-line doc, as `just --list` shows them.
 
 # The oldest just this file is written for.
 set minimum-version := "1.59.0"
 
-# Show available tasks (default)
-default: help
+# A bare `just` lists the recipes.
+set default-list
 
+# List the recipes
+[group('meta')]
 help:
     @just --list
 
 # The full local gate. CI runs it; run it before you commit. It never writes:
 # `lint` checks formatting, and `just fmt` is what you run to fix it.
 # Keep this as the single source of truth for "is the tree green?".
+[doc('The full local gate: lint, Semgrep, and the tests; never writes')]
+[group('gate')]
 check: lint semgrep test
 
 # Run all tests
+[group('test')]
 test:
     uv run pytest
 
@@ -25,6 +31,8 @@ test:
 # ty runs once per OS the code runs on: it narrows sys.platform, so a branch
 # for another OS is checked only for that OS. Remove a line only for an OS the
 # code never runs on, never to hide a finding.
+[doc('Lint, check formatting, and type-check once per OS')]
+[group('lint')]
 lint:
     uv run --locked --only-group lint ruff check --no-fix --no-fix-only .
     uv run --locked --only-group lint ruff format --check .
@@ -33,12 +41,15 @@ lint:
     uv run --locked --group lint ty check --python-platform darwin
 
 # Format code
+[group('lint')]
 fmt:
     uv run --locked --only-group lint ruff format .
 
 # List the e2e test files: test files whose path contains `e2e` (a directory
 # such as tests/e2e/, or a file such as test_checkout_e2e.py), tracked or not
 # (ignored files excluded). The Semgrep fixtures in .semgrep/tests/ are not tests.
+[doc('List the e2e test files')]
+[group('test')]
 e2e-tests:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -46,6 +57,7 @@ e2e-tests:
     printf '%s\n' "$files" | grep -E '(^|/)(test_[^/]*|[^/]*_test)\.py$' | sort -u || true
 
 # Run the e2e tests (real dependencies only; no mocks)
+[group('test')]
 test-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -55,6 +67,8 @@ test-e2e:
 
 # Run semgrep (project-specific rules). Skips only when .semgrep/rules/ is
 # absent; a finding or a semgrep error fails the recipe.
+[doc('Run the project Semgrep rules; a finding fails')]
+[group('lint')]
 semgrep:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -67,6 +81,8 @@ semgrep:
 # pre-commit.legacy and runs it too, so an old hook would live on. The one
 # value it removes is the local core.hooksPath=.githooks an older version of
 # this template set. Claude Code hooks live in .claude/settings.json.
+[doc('Install the prek git hooks, once per clone')]
+[group('setup')]
 install-hooks:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -97,14 +113,17 @@ install-hooks:
     prek install
 
 # Start local observability stack (Jaeger)
+[group('telemetry')]
 trace-up:
     PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false -f compose.yaml up -d jaeger
 
 # Stop local observability stack
+[group('telemetry')]
 trace-down:
     PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false -f compose.yaml stop jaeger
 
 # Open Jaeger UI in browser
+[group('telemetry')]
 trace-view:
     @echo "Jaeger UI: http://localhost:16686"
     @command -v open >/dev/null 2>&1 && open http://localhost:16686 || \
