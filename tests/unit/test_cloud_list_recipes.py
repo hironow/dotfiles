@@ -81,7 +81,7 @@ def test_aws_uses_checkout_mise_on_posix_and_preserves_standalone_windows() -> N
         in text
     )
     assert (
-        "[group('Cloud')]\naws-list:\n    {{ AWS_CLI }} configure list-profiles\n"
+        "[group('cloud')]\naws-list:\n    {{ AWS_CLI }} configure list-profiles\n"
         in text
     )
 

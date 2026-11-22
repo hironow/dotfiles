@@ -153,7 +153,7 @@ def test_windows_ci_runs_the_go_tests():
 
 def test_the_5_1_recipe_checks_the_runtime_then_runs_the_scripts_tests():
     text = JUSTFILE.read_text(encoding="utf-8")
-    assert "[group('Test')]\n[windows]\ntest-windows-powershell:\n" in text
+    assert "[group('test')]\n[windows]\ntest-windows-powershell:\n" in text
     body = _recipe("test-windows-powershell")
     assert '"5.1."*" Desktop")' in body
     run = body.index(

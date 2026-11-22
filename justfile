@@ -3,6 +3,9 @@
 # The oldest just this file is written for (the image and CI pin 1.59.0).
 set minimum-version := "1.59.0"
 
+# A bare `just` lists the recipes (the manual's `default-list` setting).
+set default-list
+
 [unix]
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
@@ -70,21 +73,18 @@ JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!ve
 # tests/unit/test_gcloud_installed.py runs both recipes against a stub gcloud.
 GCLOUD_INSTALLED := "gcloud components list --filter='state.name=\"Installed\" OR state.name=\"Update Available\"' --format='value(id)'"
 
-# Default: show help
-[group('Meta')]
-default: help
-
 # Help: list available recipes
-[group('Meta')]
+[group('meta')]
 help:
     @just --list --unsorted
 
 # Lint markdown files
-[group('Check')]
+[group('lint')]
 lint-md:
     @{{ MARKDOWNLINT }} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
 
-[group('Check')]
+# Serve a Python package's API docs with pdoc
+[group('site')]
 pdoc port="8888" pkg=".":
     {{ PDOC }} --port {{ port }} {{ pkg }}
 
@@ -93,14 +93,15 @@ pdoc port="8888" pkg=".":
 # ------------------------------
 
 # Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
-[group('Validation')]
+[group('lint')]
 meta-semgrep:
     {{ SEMGREP }} --config .semgrep/rules/meta/ --error .
 
 # Unit-test ALL semgrep rules against their co-located test fixtures
 # (.semgrep/rules/**/<rule>.{py,md,...}). `semgrep --test` needs the rules dir
 # passed as BOTH the config and the target.
-[group('Validation')]
+[doc('Test: run every semgrep rule against its co-located fixtures')]
+[group('test')]
 semgrep-test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -124,7 +125,8 @@ semgrep-test:
 # fails on a finding and passes without one; `just e2e-tests` lists e2e test
 # files, untracked ones too; `just test-e2e` runs them and fails when one fails.
 # `semgrep --test` alone cannot show the scope: it ignores a rule's `paths`.
-[group('Validation')]
+[doc('Test: the agent-baseline scaffold in a throwaway repo')]
+[group('test')]
 agent-baseline-test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -169,7 +171,7 @@ agent-baseline-test:
     echo "✅ agent-baseline: rules, e2e scope, semgrep gate, e2e selection, and test-e2e OK"
 
 # Full validation of rule files
-[group('Validation')]
+[group('gate')]
 validate: semgrep-test meta-semgrep
 
 # The small checks in one job (docs/agents/ci-speed.md, "Shape"; ADR-0089):
@@ -177,7 +179,8 @@ validate: semgrep-test meta-semgrep
 # uses), actionlint over every workflow, and the semgrep rules' own tests.
 # Each checker runs to the end; the recipe lists every failure, then fails.
 # shellcheck, actionlint and the semgrep rule tests, every failure listed
-[group('Validation')]
+[doc('Check: shellcheck, actionlint and semgrep rule tests, all failures listed')]
+[group('gate')]
 small-checks:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -199,12 +202,13 @@ small-checks:
 # for instruction count. Cap = 40: measured 31 at introduction (2026-06)
 # + ~30% headroom, so the gate only catches unnoticed growth — raising it
 # is a conscious, reviewable edit of this line.
-[group('Validation')]
+[doc('Check: the always-loaded instruction budget (cap 40 list items)')]
+[group('lint')]
 instruction-budget:
     @{{ UV_RUN }} scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
 
 # Install: setup tools via mise
-[group('Setup')]
+[group('setup')]
 install:
     # Install tools via mise (versions are managed in config/mise/config.toml)
     mise install
@@ -216,7 +220,8 @@ CLI_TOOLS_MISE := "env MISE_GLOBAL_CONFIG_FILE=" + quote(justfile_directory() / 
 # mq publishes no Intel macOS binary; keep the other tools installable there.
 CLI_TOOLS_MQ := if os() + "-" + arch() == "macos-x86_64" { "" } else { "github:harehare/mq" }
 
-[group('Setup')]
+# Install the CLI tools the agent instructions use (hunk, rg, fd, sd, mq, witr, jq, yq, fq) and print their versions
+[group('setup')]
 cli-tools-install:
     {{ CLI_TOOLS_MISE }} install hunk ripgrep fd sd {{ CLI_TOOLS_MQ }} witr aqua:jqlang/jq aqua:mikefarah/yq aqua:wader/fq
     {{ CLI_TOOLS_MISE }} exec hunk -- hunk --version
@@ -231,7 +236,8 @@ cli-tools-install:
 
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
 # exclude-newer, go proxy). Idempotent; not tracked.
-[group('Setup')]
+[doc('Harden: write machine-local supply-chain guards (npm, uv, go proxy)')]
+[group('setup')]
 harden-env:
     bash scripts/harden_env.sh
 
@@ -239,7 +245,8 @@ harden-env:
 # against config/wsl/wsl.conf, and prints the sudo apply + `wsl --shutdown`
 # reload steps. Advisory only — /etc/wsl.conf is root-owned and its reload
 # needs a Windows-side restart, so this never self-applies.
-[group('Setup')]
+[doc('WSL: advise on /etc/wsl.conf; advisory only, never self-applies')]
+[group('setup')]
 [linux]
 wsl-conf:
     #!/usr/bin/env bash
@@ -285,7 +292,7 @@ wsl-conf:
 # sparseVhd / vmIdleTimeout are deliberately absent from the template; the
 # template's header says why.
 [doc('Advise on the Windows-side .wslconfig (preview + apply steps, never self-applies)')]
-[group('Setup')]
+[group('setup')]
 [windows]
 wslconfig:
     bash scripts/wslconfig_conf.sh
@@ -297,11 +304,13 @@ wslconfig:
 # Linewise wrapper (NOT a shebang recipe): shebang recipes bypass
 # `set windows-shell` and resolve `env bash` to WSL's System32 bash from
 # PowerShell (tests/unit/test_deploy_clean_linewise.py guards this).
-[group('Setup')]
+[doc('Deploy: symlink dotfiles to home and install plugins')]
+[group('setup')]
 deploy:
     @bash scripts/deploy.sh
 
 # Restore declared Pi packages, install the dotfiles Pi extensions (Jev, rtk), remove retired ones.
+[group('agents')]
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
@@ -318,7 +327,8 @@ pi-extensions-install:
 #   just ci-audit --runs 50 unit-test.yaml               # one workflow
 #   just ci-audit --event pull_request --branch feat/x   # one branch's pull requests
 # Where CI time goes, per job and per push, at p50 and p95
-[group('Test')]
+[doc('Where CI time goes, per job and per push, at p50 and p95')]
+[group('test')]
 [positional-arguments]
 ci-audit *args:
     #!/usr/bin/env bash
@@ -350,7 +360,8 @@ ci-audit *args:
 # shard that ran nothing, and when the slowest shard is over 1.5 times the mean.
 #   just ci-shard-check --collected all.txt --junit 1.xml --junit 2.xml --junit 3.xml
 # Prove that test shards ran every collected test once
-[group('Test')]
+[doc('Prove that test shards ran every collected test once')]
+[group('test')]
 ci-shard-check *args:
     @mise exec -- go -C tools/ci-audit run . shards {{ args }}
 
@@ -359,13 +370,16 @@ ci-shard-check *args:
 # given version) and install it here. Declared items skip the 7-day wait; new
 # ones are added by hand. Commit and PR stay manual (ADR 0074).
 # Show or move the versions of declared agent plugins and skills
-[group('Agents')]
+[doc('Show or move the versions of declared agent plugins and skills')]
+[group('agents')]
 agent-bump *args:
     @mise exec -- go -C tools/agent-bump run . --root "{{ justfile_directory() }}" {{ args }}
 
 # Install the Claude Code plugins every Claude home shares
 # (dump/harness/claude-plugins.json; ADR 0048, ADR 0056).
 # `just deploy` already runs this. --check: report only.
+[doc('Install the Claude Code plugins every Claude home shares')]
+[group('agents')]
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
 
@@ -374,7 +388,8 @@ claude-plugins-install *args:
 # Pi bundle) and skips a CLI that is not installed. `just deploy` runs it after
 # the Pi step. --check: report what Codex lacks.
 # Install the plugins dotfiles gives Codex and Antigravity (EGM)
-[group('Agents')]
+[doc('Install the plugins dotfiles gives Codex and Antigravity (EGM)')]
+[group('agents')]
 codex-agy-plugins-install *args:
     @{{ UV_RUN }} scripts/codex_agy_plugins.py {{ args }}
 
@@ -382,7 +397,8 @@ codex-agy-plugins-install *args:
 # every Claude home, with its egress switches pinned on the server itself.
 # Through `claude mcp add --scope user`, so Claude Code owns its own
 # .claude.json. `just deploy` already runs this. --check: report only.
-[group('Agents')]
+[doc('Register the headroom MCP server in every Claude home')]
+[group('agents')]
 headroom-mcp-register *args:
     @{{ UV_RUN }} scripts/headroom_mcp.py {{ args }}
 
@@ -391,14 +407,16 @@ headroom-mcp-register *args:
 # in Codex one that needs a sign-in. `just deploy` already runs this.
 # --check: report only.
 # Register the declared MCP servers with Claude, Codex, Pi and Antigravity
-[group('Agents')]
+[doc('Register the declared MCP servers with Claude, Codex, Pi and Antigravity')]
+[group('agents')]
 agent-mcp-install *args:
     @{{ UV_RUN }} scripts/agent_mcp.py {{ args }}
 
 # After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
 # Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
 # Re-vendor config/pi/extensions/rtk.ts from the installed rtk
-[group('Agents')]
+[doc('Re-vendor the rtk Pi extension from the installed rtk')]
+[group('agents')]
 rtk-pi-refresh:
     @{{ UV_RUN }} scripts/rtk_pi_refresh.py
 
@@ -411,6 +429,8 @@ BUN := env("DOTFILES_BUN", "mise x -- bun")
 
 # Install the gate's pinned dev dependencies (oxlint, and the types bun check
 # reads). The lockfile decides every version; no package script runs.
+[doc('Install the pinned JS/TS dev dependencies the gate needs')]
+[group('setup')]
 js-install:
     @{{ BUN }} install --frozen-lockfile --ignore-scripts
 
@@ -422,37 +442,50 @@ JS_TRACKED := replace(JS_FILES, " ':!vendor/**'", "")
 
 # Lint every tracked JS/TS file that is ours with oxlint: all seven categories
 # are errors (.oxlintrc.json names what it ignores and why).
+[doc('Lint: every tracked JS/TS file of ours with oxlint')]
+[group('lint')]
 js-lint: js-install
     git ls-files -z -- {{ JS_TRACKED }} | xargs -0 -r {{ BUN }}x --no-install oxlint
 
 # Type check the files tsconfig.json includes. --no-script: a package.json
 # `check` script would otherwise run instead of the type checker.
+[doc('Type check the files tsconfig.json includes')]
+[group('lint')]
 js-typecheck: js-install
     {{ BUN }} check --no-script
 
 # Build the Pi extensions the way Pi loads them (output is thrown away). The
 # output must not name Pi's package: an extension imports it for types only.
+[doc('Build the Pi extensions the way Pi loads them (output thrown away)')]
+[group('setup')]
 js-build:
     @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; {{ BUN }} build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && if grep -rq '@earendil-works/' "$tmp"; then echo 'js-build: the build output imports @earendil-works/ at run time' >&2; exit 1; fi
 
 # Run every bun:test suite. One shard and no --changed: the suite takes under a
 # second. Add shards (bun test --shard, --timings) when it no longer fits the
 # two-minute target.
+[doc('Run every bun:test suite')]
+[group('test')]
 js-test: js-install
     {{ BUN }} test ./tests/unit/
 
 # The Pi extension gate: build, then test.
+[group('test')]
 pi-jev-test: js-build js-test
 
 # Live check of the Claude worker hook. Run after the Claude usage limit resets.
 # Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
 # 3 partial (works, but the effort could not be confirmed).
+[doc('Live check of the Claude worker hook; run after the usage limit resets')]
+[group('agents')]
 jev-claude-verify:
     {{ UV_RUN }} scripts/jev_claude_verify.py
 
 # Live check of Jev's per-worker effort in Pi (j-pi): one print-mode session
 # launches a worker; the verdict comes from pi-subagents' worker meta.
 # Exit 0 pass, 1 fail, 2 blocked (no key / extension / usage limit), 3 partial.
+[doc('Live check of the Jev per-worker effort in Pi')]
+[group('agents')]
 jev-pi-verify:
     {{ UV_RUN }} scripts/jev_pi_verify.py
 
@@ -461,6 +494,8 @@ jev-pi-verify:
 # (claude), the Codex worker runner runs (codex), and one session's Bash goes
 # through rtk as well (rtk). Targets: claude codex rtk (default: all).
 # Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
+[doc('Live check that j-cc sessions and workers go through headroom')]
+[group('agents')]
 jev-headroom-verify *target:
     {{ UV_RUN }} scripts/jev_headroom_verify.py {{ target }}
 
@@ -469,11 +504,15 @@ jev-headroom-verify *target:
 # the headroom spoke, so re-run it after a headroom bump and update that table
 # if a ratio moved. Deliberately not in `just ci` (it starts a live server);
 # `tests/unit/test_headroom_compress_measure.py` pins the payloads instead.
+[doc('Measure what the headroom compressor does, via a live server')]
+[group('agents')]
 headroom-compress-measure *executable:
     {{ UV_RUN }} scripts/headroom_compress_measure.py {{ executable }}
 
 # Open the savings dashboard of the headroom proxy j-cc started (plain
 # `headroom dashboard` opens port 8787, where j-cc never runs it).
+[doc('Open the savings dashboard of the headroom proxy j-cc started')]
+[group('agents')]
 headroom-dashboard:
     {{ UV_RUN }} scripts/jev_headroom.py dashboard
 
@@ -496,7 +535,8 @@ headroom-dashboard:
 # which made "sync completed" lie. Inspect with sync-agents-preview first;
 # full replace incl. orphan removal is the explicit sync-agents-override.
 # Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
-[group('Agents')]
+[doc('Sync (apply, no prompts): dotfiles to agent homes; preview first')]
+[group('agents')]
 sync-agents *args:
     @{{ UV_RUN }} scripts/sync_agents.py --yes {{ args }}
 
@@ -504,7 +544,8 @@ sync-agents *args:
 # gate, check-only prek hooks, quality-gate CI, agentcore semgrep rules) into a
 # target repo, then enable its git hooks (`just install-hooks` there). NOT applied to this repo (dotfiles
 # uses prek + its own CI/.semgrep). See templates/agent-baseline/README-agents-setup.md.
-[group('Agents')]
+[doc('Scaffold: copy the agent-baseline template into a target repo')]
+[group('agents')]
 scaffold-agent-baseline dir:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -516,18 +557,19 @@ scaffold-agent-baseline dir:
     echo "✅ Scaffold copied. Next: cd '$dest' && just install-hooks"
 
 # Sync (preview): show what would be synced without making changes
-[group('Agents')]
+[group('agents')]
 sync-agents-preview *args:
     @{{ UV_RUN }} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
-[group('Agents')]
+[group('agents')]
 sync-agents-override *args:
     @{{ UV_RUN }} scripts/sync_agents.py --override {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
-[group('Agents')]
+[doc('Check: deployed agent instruction files have no dead file references')]
+[group('agents')]
 check-agent-refs *homes:
     @{{ UV_RUN }} scripts/check_agent_home_refs.py {{ homes }}
 
@@ -537,12 +579,13 @@ check-agent-refs *homes:
 #   just import-agents              -> from ~/.claude only
 #   just import-agents a b          -> from ~/.claude-work-a + b
 # just import-agents all          -> from every defined agent
-[group('Agents')]
+[doc('Import only: agent home to dotfiles, no forward sync or orphan removal')]
+[group('agents')]
 import-agents *args:
     @{{ UV_RUN }} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
-[group('Agents')]
+[group('agents')]
 import-agents-preview *args:
     @{{ UV_RUN }} scripts/sync_agents.py --import-only --preview {{ args }}
 
@@ -550,7 +593,8 @@ import-agents-preview *args:
 # each auto-loop plugin. The per-plugin copies are what the marketplace
 # distributes; always edit the canonical, then run this.
 # tests/unit/test_plugin_check_scope.py gates drift in `ci`.
-[group('Agents')]
+[doc('Sync the canonical check-scope hook into each auto-loop plugin')]
+[group('agents')]
 sync-plugin-scope-hook:
     @for p in autoresearch autodesign autoreview; do \
         cp plugins/_shared/check-scope.sh "plugins/$p/hooks/scripts/check-scope.sh"; \
@@ -562,12 +606,13 @@ sync-plugin-scope-hook:
 # (starship.toml + git ignore); Unix-only artifacts are not touched. See ADR 0018.
 # Linewise wrapper (NOT a shebang recipe): see deploy above / ADR 0018 guard
 # in tests/unit/test_deploy_clean_linewise.py.
-[group('Setup')]
+[doc('Clean: remove deployed dotfiles from home')]
+[group('setup')]
 clean:
     @bash scripts/clean.sh
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
-[group('Setup')]
+[group('setup')]
 [unix]
 clean-cache:
     @echo "==> Remove zsh caches..."
@@ -577,7 +622,7 @@ clean-cache:
     rm -vrf ~/.local/share/fzf-tab/
 
 # Clean all: remove both dotfiles and caches (Windows path: `just clean`, ADR 0018 subset)
-[group('Setup')]
+[group('setup')]
 [unix]
 clean-all: clean clean-cache
 
@@ -590,7 +635,7 @@ clean-all: clean clean-cache
 # runner will accept, and whether it was rejected in recent jobs. Read-only
 # (ADR 0035). Runner hosts only, hence [windows, linux].
 [doc('Is the disk GC actually collecting? Both runner legs, read-only')]
-[group('Disk')]
+[group('runner')]
 [linux]
 [windows]
 status:
@@ -600,7 +645,7 @@ status:
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
 [doc('Report host cache sizes + free space (measures only, never deletes)')]
-[group('Disk')]
+[group('runner')]
 disk-report:
     bash scripts/disk_gc.sh report
 
@@ -608,7 +653,7 @@ disk-report:
 # npm). Toolchains and project data are out of scope. Each leg stops before
 # any deletion while its runner has a job (the caches are shared with CI).
 [doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — skips while a runner job is executing')]
-[group('Disk')]
+[group('runner')]
 disk-gc:
     bash scripts/disk_gc.sh clean
 
@@ -617,7 +662,7 @@ disk-gc:
 # Skips itself while a job is executing.
 # On Windows this dispatches into the WSL distro; needs `runner-gc-install`.
 [doc('Collect the self-hosted runner disks now (2h retention, job-safe)')]
-[group('Disk')]
+[group('runner')]
 [linux]
 [windows]
 runner-gc:
@@ -630,7 +675,7 @@ runner-gc:
 # scripts/runner_gc.sh to re-copy the payload. Root-owned, so it runs via
 # `wsl -u root` on Windows.
 [doc('Install runner GC (timer + job hook) and the WSL logon autostart')]
-[group('Disk')]
+[group('runner')]
 [linux]
 [windows]
 runner-gc-install: run-hidden-build
@@ -642,7 +687,7 @@ runner-gc-install: run-hidden-build
 # launcher would open the very window it avoids. Elsewhere there is nothing
 # to build. docs/runbook/windows-host.md.
 [doc('Build run-hidden (Windows: the windowless launcher the scheduled tasks start)')]
-[group('Disk')]
+[group('runner')]
 run-hidden-build:
     @if [ "{{ os() }}" = windows ]; then cd tools/run-hidden && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -ldflags=-H=windowsgui -o ../../output/run-hidden/run-hidden.exe . ; fi
 
@@ -652,7 +697,7 @@ run-hidden-build:
 # -NonInteractive here - it would break the UAC/console interaction.
 # Root override: RUNNER_WIN_ROOT (default %USERPROFILE%ctions-runner-win).
 [doc('Install/repair the native Windows runner service (UAC self-elevating)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-svc-install:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install_runner_svc_win.ps1
@@ -662,7 +707,7 @@ runner-svc-install:
 # a LocalSystem service runs in Session 0 where WebView2 cannot draw.
 # Stops + Disables the service; UAC self-elevating; refuses mid-job.
 [doc('Run the native runner interactively at logon (GUI-capable; disables the service)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-mode-interactive: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode interactive
@@ -670,7 +715,7 @@ runner-mode-interactive: run-hidden-build
 # Runner: switch back to SERVICE mode (delayed-auto; headless boxes only -
 # Session 0 cannot run GUI e2e). Removes the logon task.
 [doc('Run the native runner as a service again (headless; removes the logon task)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-mode-service:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode service
@@ -680,7 +725,7 @@ runner-mode-service:
 # (lived 2026-09-03: listener died silently, box offline until the next
 # logon). Unelevated; `runner-mode-interactive` installs it too. ADR 0042.
 [doc('Install the interactive-runner watchdog task (re-fires the logon task when the listener dies)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-watchdog-install: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_watchdog_win.ps1 -Install
@@ -688,7 +733,7 @@ runner-watchdog-install: run-hidden-build
 # Runner: restart the native Windows runner service (self-elevates via UAC;
 # refuses while a job is executing - Runner.Worker guard).
 [doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-svc-restart:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1
@@ -698,7 +743,7 @@ runner-svc-restart:
 # exactly what a hung, cancellation-ignoring job looks like. This KILLS that
 # in-flight job — use it only after deciding the job is lost anyway.
 [doc('Force-restart the native Windows runner service (KILLS an in-flight job)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 runner-svc-restart-force:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1 -Force
@@ -706,7 +751,8 @@ runner-svc-restart-force:
 # Disk: diagnose a WSL distro stuck on the read-only overlay fallback (ext4
 # corruption) and print the exact e2fsck repair runbook. Advisory only —
 # repair needs Administrator + `wsl --shutdown` (runner goes offline).
-[group('Disk')]
+[doc('Disk: diagnose a WSL distro stuck read-only and print the repair runbook')]
+[group('runner')]
 [windows]
 wsl-fsck:
     bash scripts/wsl_fsck.sh
@@ -715,14 +761,15 @@ wsl-fsck:
 # compaction needs Administrator + a full `wsl --shutdown` (runner goes
 # offline), so it is never self-applied. See ADR 0035.
 [doc('Report WSL vhdx slack + compaction steps (advisory, never self-applied)')]
-[group('Disk')]
+[group('runner')]
 [windows]
 wsl-compact:
     bash scripts/wsl_compact.sh
 
 # Clean work env: reset a claude-work-X directory (remove synced skills/commands/agents, empty CLAUDE.md)
 # Usage: just clean-work-env d
-[group('Agents')]
+[doc('Clean: reset a claude-work-X directory (synced files and CLAUDE.md)')]
+[group('agents')]
 clean-work-env target:
     #!/usr/bin/env bash
     set -eu -o pipefail
@@ -758,7 +805,8 @@ clean-work-env target:
 # Host alias comes from DOTFILES_HOST or dump/.host (see: just set-host).
 # Mac/Linux: brew bundle + gcloud components (per-host) + gitignore-global (shared).
 # Windows native (MSYS/MINGW/CYGWIN): scoop export (record-only, see ADR 0019).
-[group('Setup')]
+[doc('Dump: write per-host package manifests into dump/<host>/')]
+[group('setup')]
 dump:
     #!/usr/bin/env bash
     set -eu
@@ -812,18 +860,19 @@ dump:
     echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
 
 # Provision only the native Podman 5+ CLI; never initialize or start a machine.
-[group('Setup')]
+[group('setup')]
 [unix]
 podman-install:
     bash install.sh --podman-only
 
-[group('Setup')]
+# Provision only the native Podman 5+ CLI; never initialize or start a machine.
+[group('setup')]
 [windows]
 podman-install:
     powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File bootstrap.ps1 -PodmanOnly
 
 # Setup: record this machine's dump host alias in dump/.host (untracked, ADR 0030).
-[group('Setup')]
+[group('setup')]
 set-host alias:
     bash scripts/dump_host.sh set {{ quote(alias) }}
 
@@ -833,7 +882,8 @@ set-host alias:
 
 # Test: require a selected Podman engine; fixtures build the shared JSON graph
 # freshly, then exercise actual devcontainer up/exec in a disposable snapshot.
-[group('Test')]
+[doc('Test: devcontainer up/exec in a disposable snapshot (needs Podman)')]
+[group('test')]
 test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -851,7 +901,8 @@ test:
 # worker so a module-scoped batch runs once. `-n 0` serializes when debugging.
 # No .pytest_cache: workers writing it create a temporary directory in the
 # checkout that a test's own pytest run could see appear and vanish.
-[group('Test')]
+[doc('Test (unit): fast host-side unit tests, no containers')]
+[group('test')]
 test-unit *args:
     @echo '🧪 Running unit tests (host, no containers)...'
     uvx --with pytest-xdist==3.8.0 --with pytest-split==0.11.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider {{ args }} tests/unit/
@@ -860,7 +911,8 @@ test-unit *args:
 # Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
 # and bootstrap.ps1 on a new machine run on 5.1, which reads some input
 # differently from the pwsh 7 that test-unit uses. Run their tests on 5.1.
-[group('Test')]
+[doc('Test: the GC and bootstrap scripts on Windows PowerShell 5.1')]
+[group('test')]
 [windows]
 test-windows-powershell:
     #!/usr/bin/env bash
@@ -876,12 +928,12 @@ test-windows-powershell:
     uvx pytest -q -ra tests/unit/test_runner_gc.py tests/unit/test_bootstrap_ps1.py tests/unit/test_podman_provisioning_ps1.py
 
 # Test (install): mandatory owned-image build from a tracked-only context.
-[group('Test')]
+[group('test')]
 test-install:
     {{ UV_RUN }} --group dev pytest -q tests/test_install.py
 
 # Self-check: quick, safe health checks with summary
-[group('Setup')]
+[group('doctor')]
 self-check with_tests="":
     #!/usr/bin/env bash
     set -u
@@ -923,7 +975,7 @@ self-check with_tests="":
     :
 
 # Test (by marker): run tests filtered by -m MARKER
-[group('Test')]
+[group('test')]
 test-mark marker="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -953,7 +1005,8 @@ test-mark marker="":
 #   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
 #   - ruff/ty versions live in [dependency-groups].lint (root/emulator/RTTM) and
 # uv.lock; `just bump-tool` moves them. `--frozen` keeps sandbox == CI.
-[group('Lint')]
+[doc('fmt: write formatting fixes in place (Python, Markdown, justfiles, JS/TS)')]
+[group('gate')]
 fmt:
     @echo '🔧 Python (ruff format)...'
     {{ UV_RUN }} --only-group lint ruff format .
@@ -972,7 +1025,8 @@ fmt:
 #   - Shell   : shellcheck (no auto-fix)
 #   - Markdown: markdownlint-cli2 --fix
 # - JS/TS   : vp lint
-[group('Lint')]
+[doc('lint: report violations, auto-fixing where possible')]
+[group('gate')]
 lint:
     @echo '🔍 Python (ruff check --fix)...'
     {{ UV_RUN }} --only-group lint ruff check . --fix
@@ -997,7 +1051,7 @@ lint:
     @echo '✅ lint done.'
 
 # Formal GC safety: bounded seeded model traces plus real-script fake-I/O replay.
-[group('Lint')]
+[group('lint')]
 spec-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1013,7 +1067,8 @@ spec-check:
 # check.yaml run it; CI runs its three parts (check-except-go, go-lint,
 # go-test) as parallel jobs (ADR-0089). The Go legs run last: golangci for three
 # GOOS is the slowest leg, so a cheaper leg that fails ends the run before it.
-[group('Lint')]
+[doc('check: strict gate, never writes')]
+[group('gate')]
 check:
     @just check-except-go
     @echo '🔎 Go (golangci-lint per GOOS)...'
@@ -1023,7 +1078,7 @@ check:
     @echo '✅ All checks passed.'
 
 # Every leg of `check` except the two Go legs, in the same order.
-[group('Lint')]
+[group('lint')]
 check-except-go:
     @echo '🔎 Python (ruff format --check)...'
     {{ UV_RUN }} --only-group lint ruff format --check .
@@ -1068,30 +1123,34 @@ check-except-go:
 # --group lint (not --only-group): ty resolves project imports.
 # Once per platform the tooling runs on: ty narrows `sys.platform`, so a
 # branch for another OS is checked only when ty checks for that OS.
-[group('Lint')]
+[doc('Check: ty type check of the root tooling, once per OS')]
+[group('lint')]
 check-ty:
     @{{ UV_RUN }} --group lint ty check --python-platform win32
     @{{ UV_RUN }} --group lint ty check --python-platform linux
     @{{ UV_RUN }} --group lint ty check --python-platform darwin
 
 # RTTM is a separate uv project; its ty scope and dependencies must be local.
-[group('Lint')]
+[group('lint')]
 [working-directory('tools/rttm')]
 rttm-fmt:
     @{{ UV_RUN }} --only-group lint ruff format .
 
-[group('Lint')]
+# RTTM: ruff check and ruff format --check
+[group('lint')]
 [working-directory('tools/rttm')]
 rttm-lint:
     @{{ UV_RUN }} --only-group lint ruff check .
     @{{ UV_RUN }} --only-group lint ruff format --check .
 
-[group('Lint')]
+# RTTM: ty check
+[group('lint')]
 [working-directory('tools/rttm')]
 rttm-typecheck:
     @{{ UV_RUN }} --group lint ty check
 
-[group('Lint')]
+# RTTM: lint, type check, and the tests
+[group('lint')]
 rttm-check: rttm-lint rttm-typecheck
     @cd tools/rttm && MPLBACKEND=Agg {{ UV_RUN }} --group lint python -m pytest -q tests
 
@@ -1113,7 +1172,8 @@ rttm-check: rttm-lint rttm-typecheck
 #
 # `go` is the Go command: mise's by default; CI, which installs Go with
 # actions/setup-go, runs `just go-test go` (a positional argument).
-[group('Test')]
+[doc('Go: go test -short for every tools/ module and the health probe')]
+[group('test')]
 go-test go="mise x -- go":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1124,7 +1184,7 @@ go-test go="mise x -- go":
     done
 
 # Compile the image-local TCP probe for each supported device (not runtime proof).
-[group('Test')]
+[group('test')]
 healthcheck-build go="mise x -- go":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1143,7 +1203,8 @@ healthcheck-build go="mise x -- go":
 # Python 3.14 (Unicode 16.0). Run this after changing the Python guard or its tests
 # (tests/unit/test_command_guard_corpus.py fails until you do).
 # Rewrite the Go command guard's test corpus from the Python guard (the reference).
-[group('Test')]
+[doc('Rewrite the Go command guard test corpus from the Python guard')]
+[group('test')]
 command-guard-corpus:
     @{{ UV_RUN }} --python 3.14 scripts/command_guard_corpus.py
 
@@ -1151,7 +1212,8 @@ command-guard-corpus:
 # file and secrets guards are tested against. Run this after changing either shell
 # guard or its tests (tests/unit/test_file_guards_corpus.py fails until you do).
 # Rewrite the Go file and secrets guards' test corpora by running the shell guards.
-[group('Test')]
+[doc('Rewrite the Go file and secrets guard corpora from the shell guards')]
+[group('test')]
 file-guards-corpus:
     @{{ UV_RUN }} scripts/file_guards_corpus.py
 
@@ -1161,7 +1223,8 @@ file-guards-corpus:
 # basename(1) flavors (on macOS, gbasename). Run this after changing a guard, its
 # tests, or guard-codex.sh (tests/unit/test_hook_payload_corpus.py fails until you do).
 # Rewrite the agent-hook binary's payload corpus by running the old hook scripts.
-[group('Test')]
+[doc('Rewrite the agent-hook payload corpus by running the old hook scripts')]
+[group('test')]
 hook-payload-corpus:
     @{{ UV_RUN }} --python 3.14 scripts/hook_payload_corpus.py
 
@@ -1171,44 +1234,50 @@ hook-payload-corpus:
 # Needs Python 3.14 and bash 5. Run this after changing those scripts or their tests
 # (tests/unit/test_tool_hooks_corpus.py fails until you do).
 # Rewrite the agent-hook binary's rtk and formatter corpora by running the old scripts.
-[group('Test')]
+[doc('Rewrite the agent-hook rtk and formatter corpora from the old scripts')]
+[group('test')]
 tool-hooks-corpus:
     @{{ UV_RUN }} --python 3.14 scripts/tool_hooks_corpus.py
 
 # tools/agent-hooks/internal/pipath/corpus.jsonl records Pi 1.4.0's POSIX path
 # resolution. Run this after changing the path cases. Needs node and Pi 1.4.0.
 # Rewrite the Go Pi path corpus by running Pi's own resolveToCwd.
-[group('Test')]
+[doc('Rewrite the Go Pi path corpus by running the Pi resolveToCwd')]
+[group('test')]
 pi-paths-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/pipath/writecorpus
 
 # Record the vendored rtk extension with Pi 1.4.0's execCommand and fake rtk.
 # Needs node, Pi 1.4.0 and /bin/sh; the header pins the extension's SHA-256.
-[group('Test')]
+[doc('Record the vendored rtk extension with the Pi execCommand and fake rtk')]
+[group('test')]
 pi-rtk-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/toolhookcorpus/writepirtk
 
 # Record registration fragments and refusals for Go and sync's ownership tests.
-[group('Test')]
+[group('test')]
 agent-hooks-render-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/rendercorpus/writerender
 
 # One line per hook run; `--days N` prints the last N UTC days, not only today.
 # Print the agent-hook binary's recent log lines as a table.
-[group('Agents')]
+[doc('Print the recent agent-hook log lines as a table')]
+[group('agents')]
 agent-hooks-log *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/agent-hook log {{ args }}
 
 # Times today's hook scripts against the binary (p50/p95 per hook); slow (N=200 by default).
 # Measure the agent-hook binary's latency against today's hook scripts.
-[group('Agents')]
+[doc('Measure the agent-hook binary against the hook scripts (p50/p95, slow)')]
+[group('agents')]
 agent-hooks-latency *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{ args }}
 
 # Build the agent-hook binary as a release, reproducibly, into the data directory.
 # Each argument reaches hookrelease as given (positional arguments).
 # Build a host release; also: id [--goos OS --goarch ARCH], check PATH, switch --home KEY [--root DIR] PATH.
-[group('Agents')]
+[doc('Build a host release; also: id [--goos OS --goarch ARCH], check PATH, switch --home KEY [--root DIR] PATH.')]
+[group('agents')]
 [positional-arguments]
 [unix]
 agent-hooks-build *args:
@@ -1218,27 +1287,28 @@ agent-hooks-build *args:
 # contract), so the arguments are pasted into the line. `id` and a `check` path
 # with no space or quote pass through (docs/plan/agent-hooks-windows.md, B5).
 # Windows: id [--goos OS --goarch ARCH] and check PATH (build and switch wait for the Windows PR).
-[group('Agents')]
+[doc('Windows: id [--goos OS --goarch ARCH] and check PATH (build and switch wait for the Windows PR).')]
+[group('agents')]
 [windows]
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
 
 # Wire named Claude homes, or Codex (x), to the checked release.
-[group('Agents')]
+[group('agents')]
 [positional-arguments]
 [unix]
 agent-hooks-install *targets:
     {{ UV_RUN }} scripts/agent_hook_sync.py install "$@"
 
 # Restore the scripts and keep each home's link for running sessions.
-[group('Agents')]
+[group('agents')]
 [positional-arguments]
 [unix]
 agent-hooks-uninstall *targets:
     {{ UV_RUN }} scripts/agent_hook_sync.py uninstall "$@"
 
 # List unreferenced releases; delete only with --delete.
-[group('Agents')]
+[group('agents')]
 [positional-arguments]
 [unix]
 agent-hooks-gc *args:
@@ -1248,7 +1318,8 @@ agent-hooks-gc *args:
 # link names, after `hookrelease check` passes on it. KEY is sync's target key;
 # GO runs Go (tests/unit/test_agent_hooks_test_installed.py passes the module's).
 # Run agent-hook's own process tests against the release a home's link names (KEY: claude, work-a, ...).
-[group('Agents')]
+[doc('Run the agent-hook process tests against a home installed release')]
+[group('agents')]
 [positional-arguments]
 [unix]
 agent-hooks-test-installed key="claude" go="mise x -- go":
@@ -1273,7 +1344,8 @@ agent-hooks-test-installed key="claude" go="mise x -- go":
 _agent-hooks-test-binary binary id go="mise x -- go" *args:
     cd tools/agent-hooks && AGENT_HOOK_UNDER_TEST="$1" AGENT_HOOK_EXPECT_RELEASE="$2" {{ go }} test -count=1 ./cmd/agent-hook/ "${@:4}"
 
-[group('Lint')]
+# Go: golangci-lint for each module and each GOOS it ships to, and the formatter's diff
+[group('lint')]
 go-lint:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1290,7 +1362,8 @@ go-lint:
       (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" --diff ./...)
     done
 
-[group('Lint')]
+# Go: format every module with golangci-lint fmt
+[group('lint')]
 go-fmt:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1300,14 +1373,16 @@ go-fmt:
       (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" ./...)
     done
 
-[group('Lint')]
+# Check the uv exclude-newer-package overrides (ADR 0028 quarantine)
+[group('lint')]
 check-uv-exclude-newer:
     @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
 # command guard + Bash(npx:*) deny never see them -- this is the only wall.
-[group('Lint')]
+[doc('Check: no MCP client config launches Node via a banned runner')]
+[group('lint')]
 check-mcp-node-runner:
     @{{ UV_RUN }} scripts/check_mcp_node_runner.py
 
@@ -1318,13 +1393,15 @@ check-mcp-node-runner:
 # source whose tools are not declared on the host or whose exact pins disagree.
 # ADR 0006 §3 promised this check; ADR 0060/0061 record the layout. Wired into
 # `lint` and `check`, plus the dedicated read-only commit hook (ADR 0085).
-[group('Lint')]
+[doc('Check: drift between the image tool source and the install.sh regions')]
+[group('lint')]
 mise-versions-check:
     @mise exec -- go run tools/mise-versions/main.go check
 
 # Regenerate those regions from that one source (the single writer). Idempotent.
 # A tool version bump is: edit config/mise/image-tools.toml, run this, commit.
-[group('Setup')]
+[doc('Regenerate the install.sh tool regions from the one image tool source')]
+[group('setup')]
 mise-versions-sync:
     @mise exec -- go run tools/mise-versions/main.go sync
 
@@ -1336,7 +1413,8 @@ mise-versions-sync:
 # single-maintainer non-Anthropic tool parsing every distributed artifact
 # (ADR 0041). The GitHub `Claude Config Lint` workflow runs the same official
 # validate via pinned bunx so PRs are actually gated (CI never runs `just ci`).
-[group('Lint')]
+[doc('Lint: the distributed Claude config with the official validate --strict')]
+[group('lint')]
 lint-claude:
     @echo '🔎 effective settings (profiles x OS, ADR 0037; stdlib validator per ADR 0041)...'
     {{ UV_RUN }} scripts/check_effective_settings.py
@@ -1364,12 +1442,13 @@ lint-claude:
 # in `default_install_hook_types`, so a bare `prek install` agrees with this.
 # --force overwrites an existing shim so an older install (e.g. one made
 # before commit-msg existed) is actually replaced instead of skipped.
-[group('Lint')]
+[doc('Install the prek git hooks once per clone (pre-commit and commit-msg)')]
+[group('setup')]
 install-hooks:
     mise exec -- prek install --force --hook-type pre-commit --hook-type commit-msg
 
 # Run every prek hook against all files (matches what git invokes pre-commit)
-[group('Lint')]
+[group('gate')]
 pre-commit:
     mise exec -- prek run --all-files
 
@@ -1400,7 +1479,7 @@ pre-commit:
 FORBIDDEN_TOKEN_GATE := "--require-list --min-tokens 11"
 
 # Scan the staged diff, staged paths and unreviewable blobs (what pre-commit runs)
-[group('Lint')]
+[group('lint')]
 check-forbidden-tokens:
     python3 scripts/check_forbidden_tokens.py staged {{ FORBIDDEN_TOKEN_GATE }}
 
@@ -1408,7 +1487,8 @@ check-forbidden-tokens:
 # there. Squashing or amending cannot hide a token from this; the per-commit
 # hook only ever saw one message at a time. Base defaults to the origin/main
 # merge base; override with `just check-forbidden-tokens-branch --base REF`.
-[group('Lint')]
+[doc('Scan the whole branch: added lines and every commit message')]
+[group('lint')]
 check-forbidden-tokens-branch *args:
     python3 scripts/check_forbidden_tokens.py branch {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
 
@@ -1416,29 +1496,31 @@ check-forbidden-tokens-branch *args:
 # already committed -- this is the leg that keeps the tracked tree clean once it
 # has been cleaned.
 # Scan EVERY tracked blob and pathname at HEAD (about a second on this repo)
-[group('Lint')]
+[doc('Scan every tracked blob and pathname at HEAD')]
+[group('lint')]
 check-forbidden-tokens-tree *args:
     python3 scripts/check_forbidden_tokens.py tree {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
 
 # Scan a PR body (or any file) in full before `gh pr create --body-file`
-[group('Lint')]
+[group('lint')]
 check-pr-body file:
     python3 scripts/check_forbidden_tokens.py file {{ file }}
 
 # Fast gate (no live container engine / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
-[group('CI')]
+[group('gate')]
 ci: check lint-claude test-unit semgrep-test test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + fresh Podman lifecycle + install verification
-[group('CI')]
+[group('gate')]
 ci-all: ci test test-install
     @echo "✅ ci-all passed"
 
 # Isolated emulator workflow parity: lint, four services + telemetry, all three test selections.
 # Needs existing Podman + podman-compose and emulator uv dependencies; no host bootstrap.
 # Retains .pi/tasks/ci-emu.*/run.json for serial recovery after interruption (tests/README.md).
-[group('CI')]
+[doc('Isolated emulator workflow parity: lint, services, all test selections')]
+[group('gate')]
 ci-emu:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1490,7 +1572,7 @@ ci-emu:
     {{ UV_RUN }} --group dev pytest tests/test_postgres18_features.py tests/test_postgres18_emulator.py -v
 
 # CI-equivalent gate: prek hooks plus the full non-emulator suite (= pre-commit + ci-all)
-[group('CI')]
+[group('gate')]
 check-all: pre-commit ci-all
     @echo "✅ all checks passed"
 
@@ -1510,7 +1592,8 @@ check-all: pre-commit ci-all
 # OpenTofu reuses a cached provider only when it matches the hashes in the
 # stack's .terraform.lock.hcl; the recipe unsets the one variable that would
 # let a cached package bypass them.
-[group('Check')]
+[doc('Run the offline tofu test suites of every stack under tofu/')]
+[group('test')]
 test-iac:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1542,14 +1625,15 @@ test-iac:
 # Add (all): install gcloud/brew sets
 # Windows restore path is `just add-scoop` (ADR 0032).
 # Add (all): restore gcloud/brew from dump/<host>/ (host optional; see add-brew).
-[group('Add')]
+[doc('Add (all): restore gcloud and brew from dump/<host>/')]
+[group('setup')]
 [unix]
 add-all host="":
     just add-gcloud {{ quote(host) }}
     just add-brew {{ quote(host) }}
 
 # Add: install Homebrew bundle from dump/<host>/Brewfile; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
-[group('Add')]
+[group('setup')]
 [unix]
 add-brew host="":
     #!/usr/bin/env bash
@@ -1562,7 +1646,7 @@ add-brew host="":
     (cd "./dump/$host" && brew bundle)
 
 # Add: install gcloud components from dump/<host>/gcloud; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
-[group('Add')]
+[group('setup')]
 [unix]
 add-gcloud host="":
     #!/usr/bin/env bash
@@ -1591,7 +1675,8 @@ add-gcloud host="":
 # dir (ADR 0030 per-host layout). `scoop import` adds missing buckets + installs
 # missing apps natively (no jq — jq is itself a recorded app). See ADR 0032
 # (supersedes ADR 0019's record-only stance; `just dump` still writes the record).
-[group('Add')]
+[doc('Add: restore scoop apps from the host dump (Windows, idempotent)')]
+[group('setup')]
 [windows]
 add-scoop host="":
     #!/usr/bin/env bash
@@ -1625,7 +1710,7 @@ add-scoop host="":
 # --checkout overrides `update = none`, which .gitmodules sets on every
 # submodule so Dependabot's clone skips them all.
 [doc('Update all submodules to upstream tips, cleanly (no garbage diff)')]
-[group('Update')]
+[group('setup')]
 update-all-submodules:
     @echo "◆ Updating ALL submodules to upstream tips (clean)..."
     git submodule foreach --quiet 'git fetch --tags --force origin 2>/dev/null || true'
@@ -1635,7 +1720,7 @@ update-all-submodules:
     @git status --short
 
 # Update (all): update gcloud/brew and tools (bun-only Node policy per ADR 0027)
-[group('Update')]
+[group('setup')]
 update-all:
     just update-gcloud
     just update-brew
@@ -1653,7 +1738,7 @@ update-all:
     @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update (all, safe): same as update-all (kept as alias for muscle memory)
-[group('Update')]
+[group('setup')]
 update-all-safe:
     just update-gcloud
     just update-brew
@@ -1671,7 +1756,7 @@ update-all-safe:
     @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update: update and cleanup Homebrew
-[group('Update')]
+[group('setup')]
 update-brew:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1682,7 +1767,7 @@ update-brew:
     brew update && brew upgrade && brew cleanup
 
 # Update: update gcloud components
-[group('Update')]
+[group('setup')]
 update-gcloud:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1695,7 +1780,7 @@ update-gcloud:
     gcloud components update --quiet
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
-[group('Setup')]
+[group('setup')]
 [unix]
 brew-repair:
     @echo '🔧 brew update-reset + doctor'
@@ -1708,20 +1793,20 @@ brew-repair:
 # ------------------------------
 
 # Check: print PATH entries
-[group('Check')]
+[group('doctor')]
 check-path:
     # Check PATH
     @printf '%s\n' "$PATH" | tr ':' '\n'
 
 # Check: show local IP addresses
-[group('Check')]
+[group('doctor')]
 [unix]
 check-myip:
     # Check my ip address
     @ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
 
 # Check: list the selected Podman engine's container ports
-[group('Check')]
+[group('doctor')]
 check-podmanport:
     @ids=$(podman ps -q); \
     if [ -z "$ids" ]; then \
@@ -1735,29 +1820,29 @@ check-podmanport:
 alias check-dockerport := check-podmanport
 
 # Check: list installed Homebrew packages
-[group('Check')]
+[group('doctor')]
 [unix]
 check-brew:
     brew list
 
 # Check: list gcloud components
-[group('Check')]
+[group('doctor')]
 check-gcloud:
     gcloud components list
 
 # Check: list bun global packages
-[group('Check')]
+[group('doctor')]
 check-bun-g:
     @if [ -f "${BUN_INSTALL:-$HOME/.bun}/install/global/package.json" ]; then bun pm ls -g; else echo 'no bun globals'; fi
 
 # Check: list bunx packages (record-only; not auto-installed)
-[group('Check')]
+[group('doctor')]
 check-pnpm-dlx:
     @echo "📋 bunx packages (record-only, run with: bunx <package>)"
     @grep -v '^#' dump/npm-dlx | grep -v '^$' || true
 
 # Check: print rustc cfg
-[group('Check')]
+[group('doctor')]
 check-rust:
     rustc --print cfg
 # ------------------------------
@@ -1767,7 +1852,8 @@ check-rust:
 # Validate: detect duplicate command names in PATH (order matters)
 # Structural duplicates (brew-vs-system, mise-install-vs-shim, etc.) are ignored
 # by design; only user-actionable duplicates are flagged.
-[group('Validation')]
+[doc('Validate: detect duplicate command names in PATH')]
+[group('lint')]
 validate-path-duplicates:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1907,7 +1993,8 @@ validate-path-duplicates:
 # /mnt/wsl and other non-drive mounts are legitimate WSL internals and are
 # NOT flagged. On non-WSL hosts no such entry exists, so this passes trivially
 # (cross-platform safe). VALIDATE_PATH overrides the scan target (for tests).
-[group('Validation')]
+[doc('Validate: detect Windows drive dirs leaking into a WSL PATH')]
+[group('lint')]
 validate-path-windows:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1930,17 +2017,20 @@ validate-path-windows:
 # Deliberately a linewise plain-bash wrapper, NOT a shebang recipe: on native
 # Windows, shebang recipes need cygpath (absent from a stock PowerShell PATH),
 # and the doctor must start in exactly that broken state to teach the fix.
-[group('Setup')]
+[doc('Doctor: environment diagnostics and guardrails')]
+[group('doctor')]
 doctor:
     @bash scripts/doctor.sh
 
 # Explicit builds only: doctor itself must not install or download a compiler.
 # Linewise recipes also start from PowerShell without shebang/cygpath setup.
-[group('Setup')]
+[doc('Build the CA doctor tool (doctor never installs a compiler)')]
+[group('doctor')]
 ca-doctor-build:
     @cd tools/ca-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -o ../../output/ca-doctor/ .
 
-[group('Test')]
+# Run the built CA doctor (build it first with ca-doctor-build)
+[group('doctor')]
 ca-doctor *args:
     @bash -c 'bin=output/ca-doctor/ca-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN ca-build - run just ca-doctor-build first"; exit 1; fi; exec "$bin" --source tools/ca-doctor "$@"' -- {{ args }}
 
@@ -1949,7 +2039,8 @@ ca-doctor *args:
 # output/ca-os-bundle/; no root needed. Review it, then run ca-os-bundle-apply
 # with the two hashes it prints (docs/runbook/ca-doctor.md).
 # Write a candidate OS CA bundle without an incident's untrusted roots
-[group('Setup')]
+[doc('Write a candidate OS CA bundle without the untrusted roots of an incident')]
+[group('doctor')]
 [macos]
 ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
     @mkdir -p output/ca-os-bundle
@@ -1959,43 +2050,49 @@ ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
 # macOS, sudo: replace /private/etc/ssl/cert.pem with the candidate, only if
 # both hashes are the candidate run's; the old bundle is kept beside it.
 # Install the candidate OS CA bundle after a backup
-[group('Setup')]
+[doc('Install the candidate OS CA bundle after a backup (macOS, sudo)')]
+[group('doctor')]
 [macos]
 ca-os-bundle-apply input_sha candidate_sha incident="emudhra-2026":
     sudo output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{ incident }} --in /private/etc/ssl/cert.pem --apply --expect-sha256 {{ input_sha }} --expect-out-sha256 {{ candidate_sha }} --backup "/private/etc/ssl/cert.pem.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
 
 # Static native binaries for each supported OS/CPU; no C toolchain required.
-[group('Setup')]
+[group('doctor')]
 ca-doctor-build-all:
     @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/ca-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/ca-doctor/ca-doctor-$os-$arch$suffix" .); done'
 
 # Opt-in binary evidence inventory; never called implicitly by doctor.
-[group('Setup')]
+[group('doctor')]
 brotli-doctor-build:
     @cd tools/brotli-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -o ../../output/brotli-doctor/ .
 
-[group('Test')]
+# Run the built Brotli doctor (build it first with brotli-doctor-build)
+[group('doctor')]
 [positional-arguments]
 brotli-doctor *args:
     @bash -c 'bin=output/brotli-doctor/brotli-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN brotli-build - run just brotli-doctor-build first"; exit 1; fi; exec "$bin" "$@"' -- "$@"
 
-[group('Setup')]
+# Build the Brotli doctor for every OS and CPU it ships to
+[group('doctor')]
 brotli-doctor-build-all:
     @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/brotli-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/brotli-doctor/brotli-doctor-$os-$arch$suffix" .); done'
 
 # Opt-in Linux kernel CVE evidence. Compares the kernel version a host
 # reports against reviewed, source-cited fix floors; never a verdict, and it
 # patches nothing. doctor treats its output as advisory only (ADR-0065).
-[group('Setup')]
+[doc('Build the Linux kernel CVE evidence tool (advisory, patches nothing)')]
+[group('doctor')]
 kernel-doctor-build:
     @cd tools/kernel-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -o ../../output/kernel-doctor/ .
 
-[group('Test')]
+# Run the built kernel doctor (build it first with kernel-doctor-build)
+[group('doctor')]
 [positional-arguments]
 kernel-doctor *args:
     @bash -c 'bin=output/kernel-doctor/kernel-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN kernel-build - run just kernel-doctor-build first"; exit 1; fi; exec "$bin" --source tools/kernel-doctor "$@"' -- "$@"
 
-[group('Setup')]
+# Build the kernel doctor for every OS and CPU it ships to
+[group('doctor')]
 kernel-doctor-build-all:
     @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/kernel-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/kernel-doctor/kernel-doctor-$os-$arch$suffix" .); done'
 
@@ -2006,7 +2103,8 @@ kernel-doctor-build-all:
 # Windows for a running exe). Removes them across every node version and
 # reshims. Linewise plain-bash wrapper (no shebang) so it runs from
 # PowerShell without cygpath, same as `doctor`. Idempotent.
-[group('Setup')]
+[doc('Prune rogue global npm installs of the mise-managed AI CLIs')]
+[group('setup')]
 prune-rogue-npm-globals:
     @bash scripts/rogue_npm_globals.sh prune
 
@@ -2017,7 +2115,8 @@ prune-rogue-npm-globals:
 # "command not found". Removes only symlinks whose target is gone, and only
 # these five names, so a real binary someone put there is never touched.
 # Idempotent; prints nothing to do when there is nothing.
-[group('Setup')]
+[doc('Remove the retired Coder dangling symlinks in ~/.local/bin')]
+[group('setup')]
 prune-retired-cdr-symlinks:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2040,7 +2139,8 @@ prune-retired-cdr-symlinks:
 # Homebrew ruff / pyright, mise ruff / ty versions the config no longer pins.
 # `just doctor` lists them under `python-retired`; the mypy VS Code extension is
 # reported but left to the editor. Plain-bash wrapper like the recipe above.
-[group('Setup')]
+[doc('Remove the Python tools the uv + ruff + ty trio retired')]
+[group('setup')]
 prune-retired-python-tools:
     @bash scripts/retired_python_tools.sh prune
 
@@ -2048,7 +2148,8 @@ prune-retired-python-tools:
 # gates use lint-group pins + locks), re-lock all three uv projects,
 # and print the hironow/skills follow-up. Dependabot ignores both tools, so this
 # is the path a pin moves through. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
-[group('Setup')]
+[doc('Move the ruff or ty pin everywhere and re-lock the uv projects')]
+[group('setup')]
 bump-tool tool version:
     @{{ UV_RUN }} scripts/bump_tool.py {{ tool }} {{ version }}
 
@@ -2057,7 +2158,7 @@ bump-tool tool version:
 # ------------------------------
 
 # Connect: tunnel to Cloud SQL (cloud-sql-proxy v2)
-[group('Connect')]
+[group('cloud')]
 connect-gcloud-sql:
     # Requires env: GCLOUD_SQL_INSTANCE, LOCAL_SQL_PORT
     [[ -n "${GCLOUD_SQL_INSTANCE:-}" ]] || { echo 'ERROR: environment variable GCLOUD_SQL_INSTANCE not set'; exit 1; }
@@ -2065,7 +2166,7 @@ connect-gcloud-sql:
     cloud-sql-proxy --port ${LOCAL_SQL_PORT} --private-ip ${GCLOUD_SQL_INSTANCE}
 
 # Connect: start Azurite locally
-[group('Connect')]
+[group('cloud')]
 connect-azurite:
     azurite --silent --location .azurite --debug .azurite/debug.log
 
@@ -2074,7 +2175,7 @@ connect-azurite:
 # ------------------------------
 
 # List: gcloud configurations
-[group('Cloud')]
+[group('cloud')]
 gcloud-list:
     gcloud config configurations list
 
@@ -2095,12 +2196,13 @@ gcloud-list:
 # OK: pass BOTH flags for a run that checks everything.
 # Exit 1 when something has no bound or a check could not be verified.
 # docs/agents/gcp-cost-guardrails.md.
-[group('Cloud')]
+[doc('Audit a GCP project for unbounded cost; read-only, project is an argument')]
+[group('cloud')]
 gcp-cost-audit project *args:
     @{{ UV_RUN }} scripts/gcp_cost_audit.py {{ project }} {{ args }}
 
 # List: Azure accounts
-[group('Cloud')]
+[group('cloud')]
 azure-list:
     az account list --output table
 
@@ -2108,22 +2210,23 @@ azure-list:
 # Windows retains its standalone AWS installation (the HTTP backend excludes it).
 AWS_CLI := if os() == "windows" { "aws" } else { CLI_TOOLS_MISE + " exec http:aws -- aws" }
 
-[group('Cloud')]
+# List: AWS profiles (local configuration only)
+[group('cloud')]
 aws-list:
     {{ AWS_CLI }} configure list-profiles
 
 # List: Alibaba Cloud profiles (local configuration only)
-[group('Cloud')]
+[group('cloud')]
 alibaba-list:
     aliyun configure list
 
 # List: Akamai Cloud (Linode) users (local configuration only)
-[group('Cloud')]
+[group('cloud')]
 akamai-list:
     linode-cli show-users
 
 # List: Dataform (BigQuery) tables, ELT (Extract, Load, Transform) not ETL (Extract, Transform, Load)
-[group('Cloud')]
+[group('cloud')]
 elt-list:
     dataform listtables bigquery
 
@@ -2132,7 +2235,7 @@ elt-list:
 # ------------------------------
 
 # Version check: verify NVCC version (CUDA hosts only — no CUDA on macOS)
-[group('Check')]
+[group('doctor')]
 [linux]
 [windows]
 check-version-nvcc expected:
@@ -2140,7 +2243,7 @@ check-version-nvcc expected:
     version=$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n1); if [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected NVCC version {{ expected }}, but found ${version}"; exit 1; fi
 
 # Version check: verify PyTorch version
-[group('Check')]
+[group('doctor')]
 check-version-torch expected:
     # Usage: just check-version-torch <EXPECTED_TORCH_VERSION>
     version=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || true); if [ -z "${version}" ]; then echo "ERROR: PyTorch is not installed"; exit 1; elif [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected PyTorch version {{ expected }}, but found ${version}"; exit 1; fi
@@ -2153,7 +2256,8 @@ check-version-torch expected:
 # bun installs it in a temp folder and checks the registry's integrity; min_age
 # is the seven-day wait (docs/agents/web-ui.md). Writes a SHA-256 for every file
 # and PROVENANCE.json, which tests/unit/test_site_vendor.py checks.
-[group('Site')]
+[doc('Site: vendor the browser build of the ui-sdk web package')]
+[group('site')]
 [unix]
 site-vendor-ui-sdk version min_age="7d":
     #!/usr/bin/env bash
@@ -2180,7 +2284,8 @@ site-vendor-ui-sdk version min_age="7d":
 
 # Site: compare the vendored copy with the registry. Installs the recorded
 # version again in a temp folder (no wait: it is already adopted) and diffs it.
-[group('Site')]
+[doc('Site: compare the vendored ui-sdk copy with the registry')]
+[group('site')]
 [unix]
 site-vendor-ui-sdk-check:
     #!/usr/bin/env bash
@@ -2203,7 +2308,8 @@ site-vendor-ui-sdk-check:
 # Site: serve the page on http://127.0.0.1:<port>/ to look at it. Copies only
 # index.html and site/ into a temp folder, because the checkout also holds
 # private/ (keys and certificates). Port 4173: 8080 is the Firestore emulator.
-[group('Site')]
+[doc('Site: serve the page on 127.0.0.1 to look at it')]
+[group('site')]
 [unix]
 site-serve port="4173":
     #!/usr/bin/env bash
@@ -2222,12 +2328,14 @@ site-serve port="4173":
 # Access via https://localhost.hironow.dev/ (no port suffix required).
 # Requires sudo for privileged port binding and to read the root-owned
 # Let's Encrypt certificate files under private/certificates/live/.
-[group('Check')]
+[doc('Check: run the local HTTPS server on port 443 (needs sudo)')]
+[group('doctor')]
 [unix]
 check-localhost-tls port="443":
     sudo go run tools/simple-server/main.go -port {{ port }} -cert ./private/certificates/live/localhost.hironow.dev/fullchain.pem -key ./private/certificates/live/localhost.hironow.dev/privkey.pem -dir ./docs
 
-[group('Validation')]
+# Run Semgrep's auto config over the repository
+[group('lint')]
 semgrep:
     {{ UV_RUN }} semgrep --config=auto .
 
@@ -2240,7 +2348,8 @@ semgrep:
 #        just env=a skills ls -g     (env: p=personal, a/b/c=work)
 env := ""
 
-[group('Agents')]
+# Run the bunx skills CLI, for a Claude home when env=p|a|b|c|d
+[group('agents')]
 skills *args:
     #!/usr/bin/env bash
     set -eu -o pipefail
@@ -2268,28 +2377,32 @@ skills *args:
 # Refuses to drop a hironow/skills record silently (--allow-self-drop).
 # Run after `bunx skills add/update/remove`.
 # Normalize ~/.agents/.skill-lock.json into dump/harness/skill-lock.json
-[group('Agents')]
+[doc('Normalize the CLI skill lock into dump/harness/skill-lock.json')]
+[group('agents')]
 dump-skills-lock *args:
     @{{ UV_RUN }} scripts/skills_lock.py dump {{ args }}
 
 # Best-effort (upstream HEAD); hironow/skills installed last so ours wins a
 # name collision; ends with skills-place.
 # New machine: install every declared skill into the CLI store, then place homes
-[group('Agents')]
+[doc('New machine: install every declared skill, then place the homes')]
+[group('agents')]
 restore-skills-lock *args:
     @{{ UV_RUN }} scripts/skills_lock.py restore {{ args }}
 
 # Idempotent; copies where symlinks are unavailable; a differing real
 # directory is kept and reported (--force replaces it).
 # Link every declared skill from the store into each agent home
-[group('Agents')]
+[doc('Link every declared skill from the store into each agent home')]
+[group('agents')]
 skills-place *args:
     @{{ UV_RUN }} scripts/skills_lock.py place {{ args }}
 
 # Run after a hironow/skills merge or any upstream change. `--only <name>` moves
 # one declared skill and records its new hash (`just agent-bump` uses it).
 # Refresh the CLI store (pinned `skills update -g -y`), then re-place the homes
-[group('Agents')]
+[doc('Refresh the skill store, then re-place the homes')]
+[group('agents')]
 skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
 
@@ -2298,7 +2411,8 @@ skills-update *args:
 # and agent-hook's guards as the home's stable link renders them.
 # --check: report only.
 # Trust the Codex hooks dotfiles placed (through Codex's app-server)
-[group('Agents')]
+[doc('Trust the Codex hooks dotfiles placed')]
+[group('agents')]
 codex-hooks-trust *args:
     @{{ UV_RUN }} scripts/codex_hooks_trust.py {{ args }}
 
@@ -2306,27 +2420,29 @@ codex-hooks-trust *args:
 # a mise data dir that does not inherit leaves rtk and every mise tool "access
 # denied" in it. `just sync-agents x` already runs this. --check: report only.
 # Let Codex's Windows sandbox run the mise tools (grants it read on mise's dir)
-[group('Agents')]
+[doc('Let the Codex Windows sandbox run the mise tools')]
+[group('agents')]
 codex-sandbox-tools *args:
     @{{ UV_RUN }} scripts/codex_sandbox_tools.py {{ args }}
 
 # hironow/skills wins name collisions (ADR 0043).
 # CI barrier: no third-party skill in the declaration shadows a hironow/skills name
-[group('Validation')]
+[doc('CI barrier: no third-party skill shadows a hironow/skills name')]
+[group('lint')]
 skills-lock-check:
     @{{ UV_RUN }} scripts/skills_lock.py check
 
 # CDP
 
 # Start Chrome Dev with remote debugging
-[group('CDP')]
+[group('debug')]
 [macos]
 start-cdp:
     @echo "Starting Chrome Dev with remote debugging on port 9222..."
     "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
 
 # Start Chrome Dev for debugging
-[group('CDP')]
+[group('debug')]
 [macos]
 debug-cdp:
     @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
@@ -2337,39 +2453,39 @@ debug-cdp:
 # ------------------------------
 
 # DNS: lookup all records for a domain
-[group('DNS')]
+[group('dns')]
 dns-lookup domain:
     @tools/dig-all.sh {{ domain }}
 
 # DNS: compare records across public DNS servers (Google, Cloudflare, Quad9)
-[group('DNS')]
+[group('dns')]
 dns-compare domain:
     @tools/dig-all.sh --compare {{ domain }}
 
 # DNS: check migration readiness (compare live vs target nameserver)
-[group('DNS')]
+[group('dns')]
 dns-migrate-check domain target_ns:
     @tools/dns-migration-check.sh {{ domain }} {{ target_ns }}
 
 # DNS: check propagation status across global DNS servers
-[group('DNS')]
+[group('dns')]
 dns-propagation domain:
     @tools/dns-migration-check.sh --propagation {{ domain }}
 
 # DNS: scan for subdomain takeover vulnerabilities
-[group('DNS')]
+[group('dns')]
 scan domain:
     subfinder -d {{ domain }} | httpx -silent | nuclei -tags takeover
     @echo "if you want check own subdomains, run: subfinder -d {{ domain }}"
 
 # Check free before access network
-[group('Check')]
+[group('doctor')]
 [unix]
 check-free:
     @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
 
 # Open docs in mo viewer (live-reload)
-[group('Docs')]
+[group('site')]
 docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md'
@@ -2422,12 +2538,13 @@ _tailnet-tofu *args:
 
 # Initialise the backend. Bucket and prefix are spelled out in main.tf: both
 # are public values, and a partial config could start a second, empty state.
-[group('Tailnet')]
+[doc('Initialise the tailnet stack backend')]
+[group('tailnet')]
 tailnet-init *args:
     @just _tailnet-tofu init -input=false {{ args }}
 
 # Offline invariant tests (plan + a mock provider, no credentials, no network).
-[group('Tailnet')]
+[group('tailnet')]
 tailnet-test *args:
     cd {{ _TAILNET_DIR }} && mise x -- tofu test {{ args }}
 
@@ -2435,7 +2552,8 @@ tailnet-test *args:
 # (TAILSCALE_OAUTH_CLIENT_ID and _SECRET), the old personal project's ADC for
 # the state bucket, and ~/.config/tofu/tailnet.passphrase.
 # Plan against the live tailnet, saved for review.
-[group('Tailnet')]
+[doc('Plan against the live tailnet, saved for review')]
+[group('tailnet')]
 tailnet-plan *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2449,12 +2567,13 @@ tailnet-plan *args:
 # `--expect-changes FILE` (relative to the stack directory) holds the plan to
 # a reviewed change list.
 # Summarise the saved plan by address.
-[group('Tailnet')]
+[doc('Summarise the saved tailnet plan by address')]
+[group('tailnet')]
 tailnet-plan-summary *args:
     @just _tailnet-tofu show -json tailnet.tfplan | (cd {{ _TAILNET_DIR }} && {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }})
 
 # OPERATOR ONLY. Applies the saved plan.
-[group('Tailnet')]
+[group('tailnet')]
 tailnet-apply:
     @just _tailnet-tofu apply -input=false tailnet.tfplan
 
@@ -2466,7 +2585,8 @@ tailnet-apply:
 # nobuild=yes skips image build. More: emu-up-group/-only/-full. COMPOSE_PROFILES
 # is cleared so a stray shell env can't drag in heavy services.
 # Start the lite profile: firebase + spanner + pgadapter + postgres (GCP core)
-[group('Emulator')]
+[doc('Start the lite profile: firebase + spanner + pgadapter + postgres')]
+[group('emulator')]
 emu-up nobuild='no':
     cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES= bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES= bash scripts/start-services.sh; fi
 
@@ -2476,24 +2596,26 @@ alias emu-up-lite := emu-up
 # Bypasses profile gating; consumers reuse this (e.g. runops on :9399).
 # e.g. `just emu-up-only firebase-emulator` brings up only Firebase.
 # Start exactly the named service(s) (+ their depends_on)
-[group('Emulator')]
+[doc('Start exactly the named services and their depends_on')]
+[group('emulator')]
 emu-up-only +services:
     cd emulator && COMPOSE_PROFILES= bash scripts/start-services.sh {{ services }}
 
 # Groups: bigtable search graph vector ml inspect full.
 # e.g. `just emu-up-group search` = lite + Elasticsearch.
 # Start lite + a capability group
-[group('Emulator')]
+[doc('Start lite + a capability group')]
+[group('emulator')]
 emu-up-group group nobuild='no':
     cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES='{{ group }}' bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES='{{ group }}' bash scripts/start-services.sh; fi
 
 # Start the whole heavy stack (every data service; excludes interactive *-cli).
-[group('Emulator')]
+[group('emulator')]
 emu-up-full nobuild='no':
     cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES=full bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES=full bash scripts/start-services.sh; fi
 
 # One-shot LITE: clean volumes -> prebuild lite images -> up lite -> wait
-[group('Emulator')]
+[group('emulator')]
 emu-start:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2508,7 +2630,7 @@ emu-start:
     bash scripts/wait-for-services.sh --default 30 --postgres 60
 
 # One-shot FULL: clean volumes -> prebuild heavy images -> up everything -> wait
-[group('Emulator')]
+[group('emulator')]
 emu-start-full:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2522,22 +2644,22 @@ emu-start-full:
     bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
 
 # Stop emulators (with Firebase export)
-[group('Emulator')]
+[group('emulator')]
 emu-stop:
     cd emulator && bash scripts/stop-services.sh
 
 # Show emulator status (containers + endpoints)
-[group('Emulator')]
+[group('emulator')]
 emu-check:
     cd emulator && bash scripts/check-status.sh
 
 # Wait for emulator services to be ready
-[group('Emulator')]
+[group('emulator')]
 emu-wait default='30' a2a='60' mcp='60' postgres='60':
     cd emulator && bash scripts/wait-for-services.sh --default {{ default }} --a2a {{ a2a }} --mcp {{ mcp }} --postgres {{ postgres }}
 
 # Pre-build selected emulator images
-[group('Emulator')]
+[group('emulator')]
 emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated builds; refusing shared resources' >&2; exit 2; fi
     cd emulator && bash scripts/prebuild-images.sh {{ images }}
@@ -2545,13 +2667,14 @@ emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
 # Clean up emulator volumes (deletes all data)
 # COMPOSE_PROFILES=full,cli so the profile-gated `down` removes every service
 # (lite + heavy + cli), not just the default-profile ones.
-[group('Emulator')]
+[doc('Clean up emulator volumes (deletes all data)')]
+[group('emulator')]
 emu-clean:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation cleanup for isolated runs; refusing shared resources' >&2; exit 2; fi
     cd emulator && COMPOSE_PROFILES=full,cli {{ PODMAN_COMPOSE }} down -v --remove-orphans
 
 # Check emulator port usage before starting
-[group('Emulator')]
+[group('emulator')]
 emu-port-check:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -2565,37 +2688,37 @@ emu-port-check:
     echo '✅ Port check finished.'
 
 # Verify PostgreSQL 18 basics (version, uuidv7)
-[group('Emulator')]
+[group('emulator')]
 emu-pg-verify:
     cd emulator && bash scripts/verify-postgres18.sh
 
 # Check gcloud auth (detailed + strict) for emulator usage
-[group('Emulator')]
+[group('emulator')]
 emu-gcloud-auth-check:
     cd emulator && bash scripts/check-gcloud-auth.sh --details --strict --verbose
 
 # Update emulator deps (uv lock --upgrade + sync)
-[group('Emulator')]
+[group('emulator')]
 emu-update:
     cd emulator && {{ UV }} lock --upgrade && {{ UV }} sync
 
 # Run emulator tests (uv/pytest, vendored self-contained)
-[group('Emulator')]
+[group('emulator')]
 emu-test path='tests/' opts='-v':
     cd emulator && {{ UV_RUN }} pytest '{{ path }}' '{{ opts }}'
 
 # Run emulator fast tests (exclude e2e)
-[group('Emulator')]
+[group('emulator')]
 emu-test-fast:
     cd emulator && bash scripts/run-tests-fast.sh
 
 # Run emulator e2e tests only
-[group('Emulator')]
+[group('emulator')]
 emu-test-e2e:
     cd emulator && bash scripts/run-tests-e2e.sh
 
 # Format emulator (ruff + golangci-lint fmt for CLIs)
-[group('Emulator')]
+[group('emulator')]
 emu-fmt:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2608,7 +2731,7 @@ emu-fmt:
     done
 
 # Lint emulator (ruff + semgrep root rules + markdownlint, emulator-scoped)
-[group('Emulator')]
+[group('emulator')]
 emu-lint:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2630,7 +2753,8 @@ emu-lint:
 # Start emulate API emulators (vercel-labs/emulate) via bunx on host (base 4100; Ctrl+C, or
 # `just emu-api-stop` if backgrounded)
 # Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
-[group('Emulator')]
+[doc('Start the emulate API emulators via bunx on the host (base 4100)')]
+[group('emulator')]
 emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2641,7 +2765,8 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
 
 # Stop the emulate API emulators started by `just emu-api` (the host bunx/emulate process; no
 # Podman container is involved, unlike emu-stop / tel-down)
-[group('Emulator')]
+[doc('Stop the emulate API emulators started by emu-api')]
+[group('emulator')]
 emu-api-stop:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2661,7 +2786,8 @@ emu-api-stop:
 
 # Start telemetry stack (detached). Ensures the shared-otel-net network exists
 # (shared with the emulator stack; telemetry compose references it as external).
-[group('Telemetry')]
+[doc('Start the telemetry stack (detached)')]
+[group('telemetry')]
 tel-up:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     @podman network inspect shared-otel-net >/dev/null 2>&1 || podman network create shared-otel-net
@@ -2669,19 +2795,20 @@ tel-up:
 
 # Stop telemetry stack. --remove-orphans also stops containers of an older
 # telemetry/compose.yaml (the five-container stack before ADR 0072).
-[group('Telemetry')]
+[doc('Stop the telemetry stack')]
+[group('telemetry')]
 tel-down:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     cd telemetry && {{ PODMAN_COMPOSE }} down --remove-orphans
 
 # Show telemetry stack status
-[group('Telemetry')]
+[group('telemetry')]
 tel-check:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     cd telemetry && {{ PODMAN_COMPOSE }} ps
 
 # Tail telemetry logs (optional service name)
-[group('Telemetry')]
+[group('telemetry')]
 tel-logs svc='':
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     cd telemetry && if [ -n {{ quote(svc) }} ]; then {{ PODMAN_COMPOSE }} logs -f {{ quote(svc) }}; else {{ PODMAN_COMPOSE }} logs -f; fi

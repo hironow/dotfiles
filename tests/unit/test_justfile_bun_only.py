@@ -36,7 +36,8 @@ def _invocations() -> list[str]:
     found = []
     for number, raw in enumerate(JUSTFILE.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
-        if not line or line.startswith("#"):
+        # a comment or a [doc] attribute (at column 0) describes, it runs nothing
+        if not line or line.startswith("#") or raw.startswith("[doc("):
             continue
         command = line.lstrip("@-").strip()
         if _IN_COMMAND_POSITION.search(command) or _RUN_HINT.search(command):

@@ -28,6 +28,29 @@ repos) are exempt.
 | `pyproject.toml`| Python project config incl. ruff settings                     |
 | `compose.yaml`  | Compose specification for Podman (`podman-compose`)           |
 
+## The justfile
+
+Write it the way the current `just` release writes it (its manual and
+`GRAMMAR.md` are the reference); the agent-baseline `justfile` shows every
+rule below.
+
+- Keep it in `just --fmt` form, and check that in the gate with
+  `just --fmt --check`. Format and check with one pinned `just` version: the
+  manual does not promise that `--fmt` gives the same output across versions.
+- Keep the justfile LF on every OS (`justfile text eol=lf` in
+  `.gitattributes`): `--fmt --check` compares the file with LF output.
+- Name the oldest `just` the file needs with `set minimum-version`.
+- Use no setting or function the manual marks deprecated. Use the `[windows]`
+  and `[unix]` attributes on `set shell`, not `set windows-shell`.
+- List the recipes on a bare `just` with `set default-list`, not with a
+  `default` recipe.
+- Put every public recipe in one `[group(...)]`, named by purpose in
+  lowercase (`gate`, `lint`, `test`, `setup`, ...).
+- Give every public recipe a one-line doc. `just --list` shows only the
+  comment line right above the recipe, so under a block of explanation, give
+  the summary with `[doc('...')]` and keep the block.
+- Start a helper's name with `_` so that `just --list` hides it.
+
 ## Container image layout
 
 - **One** Dockerfile: keep it at the repo root as `Dockerfile`.

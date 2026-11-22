@@ -119,7 +119,7 @@ def test_justfile_wires_both_modes() -> None:
         # every attribute line in front of the recipe, one per line or combined
         m = re.search(rf"((?:^\[[^\]]*\]\n)+){recipe}:", text, re.MULTILINE)
         assert m is not None, f"justfile must define {recipe}."
-        assert "windows" in m.group(1) and "Disk" in m.group(1), (
+        assert "windows" in m.group(1) and "[group('runner')]" in m.group(1), (
             f"{recipe}: [windows]-gated, grouped with the runner recipes."
         )
 

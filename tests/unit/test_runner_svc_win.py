@@ -193,9 +193,9 @@ def test_justfile_wires_the_service_recipes() -> None:
         assert "windows" in m.group(1), (
             f"{recipe} manages a Windows service; it must be [windows]-gated."
         )
-        assert "Disk" in m.group(1), (
-            f"{recipe} belongs with the runner-gc recipes in group('Disk') — "
-            "just status (Disk) is what reports the service."
+        assert "[group('runner')]" in m.group(1), (
+            f"{recipe} belongs with the runner-gc recipes in group('runner') — "
+            "just status (runner) is what reports the service."
         )
 
 
