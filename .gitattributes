@@ -20,6 +20,12 @@ dump/harness/skill-lock.json text eol=lf
 # checkout needs a forced re-checkout, because git skips stat-clean paths (see
 # ADR 0050). Same shape as the *.sh pin above.
 *.go   text eol=lf
+# justfiles must be LF for the same reason: `just --fmt --check` (the
+# check-except-go leg, tests/unit/test_just_canonical.py) compares the working
+# tree with just's own LF output, so a core.autocrlf=true checkout fails it on
+# an unchanged file. *.just covers module files.
+justfile text eol=lf
+*.just   text eol=lf
 # The doctor tools embed these bytes and compare them against the working
 # tree, so they must be LF on every OS or a CRLF checkout reports a stale
 # binary for an unchanged commit.

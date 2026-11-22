@@ -161,3 +161,23 @@ def test_ci_installs_the_pinned_just() -> None:
     assert installs, "no workflow installs just"
     unpinned = [i for i in installs if not i[1].endswith(f"rust-just=={_pinned()}")]
     assert not unpinned, unpinned
+
+
+@pytest.mark.parametrize(
+    "path", ["justfile", "templates/agent-baseline/justfile", "just/example.just"]
+)
+def test_justfiles_are_lf_on_every_os(path: str) -> None:
+    # `just --fmt --check` compares the working tree with just's own LF
+    # output: a core.autocrlf=true checkout (Windows) fails it on an unchanged
+    # file. Pinned like *.sh and *.go (ADR 0020, ADR 0050); *.just covers
+    # module files.
+    result = subprocess.run(
+        ["git", "check-attr", "eol", "--", path],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    assert result.stdout.strip().endswith(": eol: lf"), result.stdout
