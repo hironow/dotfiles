@@ -51,9 +51,10 @@ type Job struct {
 
 // Options tune the summary.
 type Options struct {
-	// RecipeSteps names a job's recipe step, by job name, where the longest
-	// step is not the recipe (a bootstrap that takes longer than the checks).
-	RecipeSteps map[string]string
+	// RecipeSteps names a job's recipe steps, by job name. Running is the span
+	// from the first named step to the last. Without a name, running is the
+	// job's longest own step (a guess that a long bootstrap can fool).
+	RecipeSteps map[string][]string
 }
 
 // Parts is how long each phase of one job took, in seconds.
@@ -73,39 +74,57 @@ func (p Parts) Total() float64 { return p.Wall }
 
 // Split cuts one job into its phases, with the longest step as its recipe.
 func Split(j Job) Parts {
-	p, _ := split(j, "")
+	p, _, _ := split(j, nil)
 	return p
 }
 
-// split cuts one job into its phases. The recipe step is the step named
-// recipe, or the longest of the job's own steps when recipe is "". It returns
-// the name of the step it counted as running ("" when there is none).
-func split(j Job, recipe string) (Parts, string) {
+// split cuts one job into its phases. Running is the span from the first step
+// named in recipe to the last, or the longest of the job's own steps when
+// recipe is empty. It returns the label of what it counted as running ("" when
+// nothing), and whether a named step was missing from the job.
+func split(j Job, recipe []string) (Parts, string, bool) {
 	p := Parts{Waiting: seconds(j.Created, j.Started), Wall: seconds(j.Started, j.Completed)}
-	index := recipeStep(j.Steps)
-	if recipe != "" {
-		index = slices.IndexFunc(j.Steps, func(s Step) bool { return s.Name == recipe })
+	first, last := -1, -1
+	missing := false
+	if len(recipe) == 0 {
+		first = recipeStep(j.Steps)
+		last = first
+	} else {
+		for _, name := range recipe {
+			i := slices.IndexFunc(j.Steps, func(s Step) bool { return s.Name == name })
+			if i < 0 {
+				missing = true
+				continue
+			}
+			if first < 0 || i < first {
+				first = i
+			}
+			last = max(last, i)
+		}
 	}
-	if index < 0 {
+	if first < 0 {
 		// Nothing in the job is its own work: the whole body is setup.
 		for _, s := range j.Steps {
 			p.Setup += seconds(s.Started, s.Completed)
 		}
-		return p, ""
+		return p, "", missing
 	}
-	recipe = j.Steps[index].Name
 	for i, s := range j.Steps {
 		d := seconds(s.Started, s.Completed)
 		switch {
-		case i < index:
+		case i < first:
 			p.Setup += d
-		case i == index:
+		case i <= last:
 			p.Running += d
 		default:
 			p.After += d
 		}
 	}
-	return p, recipe
+	label := j.Steps[first].Name
+	if last != first {
+		label += " .. " + j.Steps[last].Name
+	}
+	return p, label, missing
 }
 
 // recipeStep returns the index of the job's own work: the longest step that is
@@ -167,9 +186,13 @@ type Row struct {
 	Total   [2]float64
 	// RunnerSeconds is the sum of Total over all samples.
 	RunnerSeconds float64
-	// RecipeStep is the step counted as running, in most samples. The report
-	// prints it, so a wrong guess is visible.
+	// RecipeStep is the step counted as running, in most samples, and Agree
+	// is how many samples counted that step. The report prints both, so a
+	// guess that is wrong in some samples is visible.
 	RecipeStep string
+	Agree      int
+	// Missing counts samples that lacked a named recipe step.
+	Missing int
 }
 
 // finished reports whether a job measured something: it succeeded, failed, or
@@ -187,6 +210,7 @@ func finished(conclusion string) bool {
 func Summarize(jobs []Job, opt Options) []Row {
 	groups := map[string][]Parts{}
 	steps := map[string]map[string]int{}
+	missed := map[string]int{}
 	var order []string
 	for _, j := range jobs {
 		if !finished(j.Conclusion) {
@@ -196,14 +220,18 @@ func Summarize(jobs []Job, opt Options) []Row {
 			order = append(order, j.Name)
 			steps[j.Name] = map[string]int{}
 		}
-		p, step := split(j, opt.RecipeSteps[j.Name])
+		p, step, missing := split(j, opt.RecipeSteps[j.Name])
 		groups[j.Name] = append(groups[j.Name], p)
 		steps[j.Name][step]++
+		if missing {
+			missed[j.Name]++
+		}
 	}
 	rows := make([]Row, 0, len(order))
 	for _, name := range order {
 		parts := groups[name]
-		row := Row{Job: name, Samples: len(parts), RecipeStep: mostCommon(steps[name])}
+		step := mostCommon(steps[name])
+		row := Row{Job: name, Samples: len(parts), RecipeStep: step, Agree: steps[name][step], Missing: missed[name]}
 		pick := func(f func(Parts) float64) [2]float64 {
 			values := make([]float64, len(parts))
 			for i, p := range parts {
@@ -248,8 +276,12 @@ func mostCommon(counts map[string]int) string {
 func Render(rows []Row) string {
 	var b strings.Builder
 	for _, r := range rows {
-		fmt.Fprintf(&b, "%s\n  n=%d  waiting %s  setup %s  running %s  after %s  total %s  runner seconds %.0f  running = %q\n",
-			r.Job, r.Samples, pair(r.Waiting), pair(r.Setup), pair(r.Running), pair(r.After), pair(r.Total), r.RunnerSeconds, r.RecipeStep)
+		fmt.Fprintf(&b, "%s\n  n=%d  waiting %s  setup %s  running %s  after %s  total %s  runner seconds %.0f  running = %q (%d of %d)",
+			r.Job, r.Samples, pair(r.Waiting), pair(r.Setup), pair(r.Running), pair(r.After), pair(r.Total), r.RunnerSeconds, r.RecipeStep, r.Agree, r.Samples)
+		if r.Missing > 0 {
+			fmt.Fprintf(&b, "  named step missing in %d of %d", r.Missing, r.Samples)
+		}
+		b.WriteString("\n")
 	}
 	return b.String()
 }
@@ -268,24 +300,30 @@ type Push struct {
 // PushSummary is Pushes' result.
 type PushSummary struct {
 	Pushes []Push
-	// Partial counts pushes left out because a workflow that ran for that event
-	// elsewhere in the window has no run for them.
-	Partial       int
+	// OutsideWindow counts pushes that started before the window: a workflow
+	// whose fetch was cut by the run limit may lack their runs.
+	OutsideWindow int
+	// Ambiguous counts pushes where one workflow ran twice (attempt 1 of two
+	// runs), such as a pull request closed and reopened on the same commit.
+	Ambiguous     int
 	Result        [2]float64 // p50, p95
 	RunnerSeconds [2]float64 // p50, p95 per push
 }
 
-// Pushes groups jobs by commit and event, and measures each push.
-func Pushes(jobs []Job) PushSummary {
+// Pushes groups jobs by commit and event, and measures each push. windowStart
+// is the newest of the oldest fetched runs of the workflows whose fetch was
+// cut by the run limit (zero when none was): before it, a push may be missing
+// a run. A workflow that did not run for a push (a paths filter) is not
+// missing.
+func Pushes(jobs []Job, windowStart time.Time) PushSummary {
 	type key struct{ sha, event string }
 	type group struct {
-		workflows map[string]bool
+		firstRuns map[string]map[int64]bool // workflow -> run ids with an attempt 1
 		first     time.Time
 		last      time.Time
 		runner    float64
 	}
 	groups := map[key]*group{}
-	eventWorkflows := map[string]map[string]bool{}
 	var order []key
 	for _, j := range jobs {
 		if !finished(j.Conclusion) || j.HeadSHA == "" {
@@ -294,19 +332,18 @@ func Pushes(jobs []Job) PushSummary {
 		k := key{j.HeadSHA, j.Event}
 		g, ok := groups[k]
 		if !ok {
-			g = &group{workflows: map[string]bool{}}
+			g = &group{firstRuns: map[string]map[int64]bool{}}
 			groups[k] = g
 			order = append(order, k)
 		}
-		if eventWorkflows[j.Event] == nil {
-			eventWorkflows[j.Event] = map[string]bool{}
-		}
-		eventWorkflows[j.Event][j.Workflow] = true
-		g.workflows[j.Workflow] = true
 		g.runner += seconds(j.Started, j.Completed)
 		if j.Attempt != 1 {
 			continue
 		}
+		if g.firstRuns[j.Workflow] == nil {
+			g.firstRuns[j.Workflow] = map[int64]bool{}
+		}
+		g.firstRuns[j.Workflow][j.RunID] = true
 		if g.first.IsZero() || j.RunCreated.Before(g.first) {
 			g.first = j.RunCreated
 		}
@@ -318,8 +355,12 @@ func Pushes(jobs []Job) PushSummary {
 	var results, runner []float64
 	for _, k := range order {
 		g := groups[k]
-		if len(g.workflows) != len(eventWorkflows[k.event]) {
-			out.Partial++
+		if !windowStart.IsZero() && g.first.Before(windowStart) {
+			out.OutsideWindow++
+			continue
+		}
+		if slices.ContainsFunc(slices.Collect(maps.Values(g.firstRuns)), func(runs map[int64]bool) bool { return len(runs) > 1 }) {
+			out.Ambiguous++
 			continue
 		}
 		p := Push{HeadSHA: k.sha, Event: k.event, Result: seconds(g.first, g.last), RunnerSeconds: g.runner}
@@ -335,8 +376,13 @@ func Pushes(jobs []Job) PushSummary {
 // RenderPushes prints the push summary and the commits it counted.
 func RenderPushes(s PushSummary) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "pushes n=%d (left out, a workflow missing: %d)  result %s  runner seconds per push %s\n",
-		len(s.Pushes), s.Partial, pair(s.Result), pair(s.RunnerSeconds))
+	left := fmt.Sprintf("left out: %d before the window, %d with a workflow that ran twice", s.OutsideWindow, s.Ambiguous)
+	if len(s.Pushes) == 0 {
+		fmt.Fprintf(&b, "no push could be measured (%s)\n", left)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "pushes n=%d (%s)  result %s  runner seconds per push %s\n",
+		len(s.Pushes), left, pair(s.Result), pair(s.RunnerSeconds))
 	for _, p := range s.Pushes {
 		sha := p.HeadSHA
 		if len(sha) > 12 {

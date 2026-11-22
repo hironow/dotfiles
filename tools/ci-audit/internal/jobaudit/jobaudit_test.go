@@ -170,8 +170,55 @@ func TestTheReportNamesTheStepItCountedAsRunning(t *testing.T) {
 	}
 }
 
+// The report says in how many samples the counted step was the one it names,
+// so a guess that is wrong in a few samples is visible.
+func TestTheReportSaysHowManySamplesCountedTheNamedStep(t *testing.T) {
+	normal := setupHeavyJob()
+	normal.Steps[1] = step("Install the frozen tool set", 1, 10) // now the checks are longest
+	normal.Steps[2] = step("Run just check", 10, 99)
+	rows := jobaudit.Summarize([]jobaudit.Job{normal, normal, setupHeavyJob()}, jobaudit.Options{})
+	if rows[0].RecipeStep != "Run just check" || rows[0].Agree != 2 {
+		t.Fatalf("got step %q agree %d, want Run just check in 2 of 3", rows[0].RecipeStep, rows[0].Agree)
+	}
+	if out := jobaudit.Render(rows); !strings.Contains(out, `running = "Run just check" (2 of 3)`) {
+		t.Fatalf("render does not show the agreement:\n%s", out)
+	}
+}
+
+// A job with several recipe steps (the unit extras run three): running is the
+// span from the first named step to the last.
+func TestSeveralNamedStepsMakeOneRunningSpan(t *testing.T) {
+	j := jobaudit.Job{
+		Name: "extras", RunID: 1, Attempt: 1, Conclusion: "success",
+		Created: at(0), Started: at(0), Completed: at(60),
+		Steps: []jobaudit.Step{
+			step("Set up job", 0, 1), step("Install", 1, 30),
+			step("Corpora", 30, 40), step("Run actions/setup-go@x", 40, 45), step("Real Go tests", 45, 58),
+			step("Complete job", 58, 60),
+		},
+	}
+	opt := jobaudit.Options{RecipeSteps: map[string][]string{"extras": {"Corpora", "Real Go tests"}}}
+	r := jobaudit.Summarize([]jobaudit.Job{j}, opt)[0]
+	if r.Setup[0] != 30 || r.Running[0] != 28 || r.After[0] != 2 || r.Missing != 0 {
+		t.Fatalf("setup %v running %v after %v missing %d, want 30/28/2/0", r.Setup, r.Running, r.After, r.Missing)
+	}
+}
+
+// A named step that a job does not have (renamed in the workflow) is reported,
+// not silently replaced by the guess.
+func TestANamedStepThatIsMissingIsReported(t *testing.T) {
+	opt := jobaudit.Options{RecipeSteps: map[string][]string{"just check (no container)": {"Renamed away"}}}
+	r := jobaudit.Summarize([]jobaudit.Job{setupHeavyJob()}, opt)[0]
+	if r.Missing != 1 {
+		t.Fatalf("missing = %d, want 1", r.Missing)
+	}
+	if out := jobaudit.Render([]jobaudit.Row{r}); !strings.Contains(out, "named step missing in 1 of 1") {
+		t.Fatalf("render does not report the missing step:\n%s", out)
+	}
+}
+
 func TestANamedRecipeStepOverridesTheGuess(t *testing.T) {
-	opt := jobaudit.Options{RecipeSteps: map[string]string{"just check (no container)": "Run just check"}}
+	opt := jobaudit.Options{RecipeSteps: map[string][]string{"just check (no container)": {"Run just check"}}}
 	rows := jobaudit.Summarize([]jobaudit.Job{setupHeavyJob()}, opt)
 	r := rows[0]
 	if r.RecipeStep != "Run just check" || r.Running[0] != 29 || r.Setup[0] != 70 || r.After[0] != 1 {
@@ -195,7 +242,7 @@ func TestPushesMeasureFromTheFirstRunToTheLastJobOfTheFirstAttempt(t *testing.T)
 		mk("b.yaml", 1, 1, 3, 90),
 		mk("b.yaml", 2, 200, 202, 230), // a re-run of b later
 	}
-	p := jobaudit.Pushes(jobs)
+	p := jobaudit.Pushes(jobs, time.Time{})
 	if len(p.Pushes) != 1 {
 		t.Fatalf("pushes = %+v, want 1", p.Pushes)
 	}
@@ -208,22 +255,58 @@ func TestPushesMeasureFromTheFirstRunToTheLastJobOfTheFirstAttempt(t *testing.T)
 	}
 }
 
-// When the window of fetched runs cuts a push in half (one workflow's older
-// runs are past its limit), its result would look too fast: leave it out and
-// say so.
-func TestPushesLeaveOutAPushThatMissesAWorkflow(t *testing.T) {
-	job := func(workflow, sha string) jobaudit.Job {
-		return jobaudit.Job{
-			Name: "j", Workflow: workflow, Attempt: 1, Conclusion: "success", HeadSHA: sha, Event: "pull_request",
-			RunCreated: at(0), Created: at(0), Started: at(1), Completed: at(10),
-		}
+func pushJob(workflow, sha string, runID int64, created int) jobaudit.Job {
+	return jobaudit.Job{
+		Name: "j", Workflow: workflow, RunID: runID, Attempt: 1, Conclusion: "success", HeadSHA: sha, Event: "pull_request",
+		RunCreated: at(created), Created: at(created), Started: at(created + 1), Completed: at(created + 10),
 	}
-	p := jobaudit.Pushes([]jobaudit.Job{job("a.yaml", "one"), job("b.yaml", "one"), job("a.yaml", "two")})
-	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "one" {
-		t.Fatalf("pushes = %+v, want only the complete push one", p.Pushes)
+}
+
+// A workflow with a paths filter runs for some pushes only. A push it skipped
+// is complete, and counts.
+func TestPushesCountAPushThatAPathFilteredWorkflowSkipped(t *testing.T) {
+	p := jobaudit.Pushes([]jobaudit.Job{
+		pushJob("a.yaml", "one", 1, 0),
+		pushJob("a.yaml", "two", 2, 100),
+		pushJob("emulators.yaml", "two", 3, 100), // ran for push two only
+	}, time.Time{})
+	if len(p.Pushes) != 2 || p.OutsideWindow != 0 {
+		t.Fatalf("pushes = %+v, outside = %d, want both pushes", p.Pushes, p.OutsideWindow)
 	}
-	if p.Partial != 1 {
-		t.Errorf("partial = %d, want 1", p.Partial)
+}
+
+// When a workflow's fetch was cut by the run limit, its older runs are
+// unknown: a push that started before that workflow's oldest fetched run may
+// be missing a run and would look too fast. It is left out and counted.
+func TestPushesLeaveOutAPushThatStartedBeforeTheWindow(t *testing.T) {
+	p := jobaudit.Pushes([]jobaudit.Job{
+		pushJob("a.yaml", "one", 1, 0),
+		pushJob("a.yaml", "two", 2, 100),
+		pushJob("b.yaml", "two", 3, 100),
+	}, at(100)) // b.yaml's fetch was cut: its oldest fetched run is at 100
+	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.OutsideWindow != 1 {
+		t.Fatalf("pushes = %+v, outside = %d, want push two only and 1 outside", p.Pushes, p.OutsideWindow)
+	}
+}
+
+// A pull request closed and reopened on the same commit starts a second run of
+// a workflow. Joined, the two would measure from the first run to the second
+// one's end. Such a push is left out and counted.
+func TestPushesLeaveOutACommitThatOneWorkflowRanTwice(t *testing.T) {
+	p := jobaudit.Pushes([]jobaudit.Job{
+		pushJob("a.yaml", "one", 1, 0),
+		pushJob("a.yaml", "one", 2, 5000), // a second run, not a re-run (attempt 1 again)
+		pushJob("a.yaml", "two", 3, 6000),
+	}, time.Time{})
+	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.Ambiguous != 1 {
+		t.Fatalf("pushes = %+v, ambiguous = %d, want push two only and 1 ambiguous", p.Pushes, p.Ambiguous)
+	}
+}
+
+func TestRenderPushesSaysWhenNoPushCouldBeMeasured(t *testing.T) {
+	out := jobaudit.RenderPushes(jobaudit.Pushes(nil, time.Time{}))
+	if !strings.Contains(out, "no push could be measured") || strings.Contains(out, "result 0/0s") {
+		t.Fatalf("an empty sample must not print zeros as a result:\n%s", out)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hironow/dotfiles/tools/ci-audit/internal/ghrest"
 	"github.com/hironow/dotfiles/tools/ci-audit/internal/jobaudit"
@@ -116,6 +117,32 @@ func TestFetchReadsEveryAttemptAndTimedOutRuns(t *testing.T) {
 	}
 	if rows := jobaudit.Summarize(jobs, jobaudit.Options{}); len(rows) != 1 || rows[0].Samples != 3 {
 		t.Fatalf("rows = %+v, want one row with 3 samples", rows)
+	}
+}
+
+// When the limit cuts the list, runs older than the oldest one read are
+// unknown: Fetch says where its window starts. When every run was read, the
+// window has no start.
+func TestFetchSaysWhereItsWindowStartsOnlyWhenTheLimitCutTheList(t *testing.T) {
+	bodies := map[string]string{
+		runsPath + "&page=1": `{"workflow_runs":[
+			{"id":1,"conclusion":"cancelled","created_at":"2026-11-22T10:00:09Z"},
+			{"id":2,"conclusion":"cancelled","created_at":"2026-11-22T10:00:05Z"},
+			{"id":3,"conclusion":"cancelled","created_at":"2026-11-22T10:00:01Z"}]}`,
+	}
+	cut, err := ghrest.FetchWindow(context.Background(), &fakeRuns{bodies: bodies}, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "2026-11-22T10:00:05Z"; cut.WindowStart.Format(time.RFC3339) != want {
+		t.Errorf("window start = %v, want %s (the oldest run read)", cut.WindowStart, want)
+	}
+	whole, err := ghrest.FetchWindow(context.Background(), &fakeRuns{bodies: bodies}, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !whole.WindowStart.IsZero() {
+		t.Errorf("window start = %v, want none: every run was read", whole.WindowStart)
 	}
 }
 

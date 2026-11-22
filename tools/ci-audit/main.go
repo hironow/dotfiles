@@ -20,6 +20,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-json"
 
@@ -55,29 +56,34 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 	branch := flags.String("branch", "", "read only the runs of this branch")
 	event := flags.String("event", "", "read only the runs this event started (push, pull_request, ...)")
 	var recipeSteps listFlag
-	flags.Var(&recipeSteps, "recipe-step", "JOB=STEP: count STEP as JOB's running step (repeat per job)")
+	flags.Var(&recipeSteps, "recipe-step", "JOB=STEP: count STEP as JOB's running step; repeat for a job with several, and running is the span from the first to the last")
 	if err := flags.Parse(args); err != nil || *repo == "" || flags.NArg() == 0 || *runs < 1 {
 		fmt.Fprintln(stderr, "usage: ci-audit jobs --repo OWNER/REPO [--runs N] [--branch B] [--event E] [--recipe-step JOB=STEP...] WORKFLOW.yaml...")
 		return 2
 	}
-	opt := jobaudit.Options{RecipeSteps: map[string]string{}}
+	opt := jobaudit.Options{RecipeSteps: map[string][]string{}}
 	for _, pair := range recipeSteps {
 		job, step, ok := strings.Cut(pair, "=")
 		if !ok || job == "" || step == "" {
 			fmt.Fprintf(stderr, "ci-audit: --recipe-step %q is not JOB=STEP\n", pair)
 			return 2
 		}
-		opt.RecipeSteps[job] = step
+		opt.RecipeSteps[job] = append(opt.RecipeSteps[job], step)
 	}
 	filter := ghrest.Filter{Limit: *runs, Branch: *branch, Event: *event}
 	var all []jobaudit.Job
+	// The pushes are measured only where every workflow's window reaches.
+	var windowStart time.Time
 	for _, workflow := range flags.Args() {
-		jobs, err := ghrest.Fetch(ctx, api, *repo, workflow, filter)
+		w, err := ghrest.FetchWindow(ctx, api, *repo, workflow, filter)
 		if err != nil {
 			fmt.Fprintln(stderr, "ci-audit:", err)
 			return 1
 		}
-		all = append(all, jobs...)
+		all = append(all, w.Jobs...)
+		if w.WindowStart.After(windowStart) {
+			windowStart = w.WindowStart
+		}
 	}
 	rows := jobaudit.Summarize(all, opt)
 	if len(rows) == 0 {
@@ -88,7 +94,7 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 		"waiting = started minus created; setup = steps before the recipe; running = the recipe step;\n"+
 		"after = steps behind it; total = completed minus started.\n\n%s", jobaudit.Render(rows))
 	fmt.Fprintf(stdout, "\nPer push: result = first run created to the last job of the first attempts done;\n"+
-		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all)))
+		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all, windowStart)))
 	return 0
 }
 

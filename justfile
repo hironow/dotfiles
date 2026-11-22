@@ -313,8 +313,15 @@ ci-audit *args:
     #!/usr/bin/env bash
     set -euo pipefail
     args=("$@")
-    named=0
-    for a in "${args[@]}"; do case "$a" in *.yaml) named=1 ;; esac; done
+    named=0 steps=0
+    for a in "${args[@]}"; do
+      case "$a" in *.yaml) named=1 ;; --recipe-step) steps=1 ;; esac
+    done
+    # The unit extras job runs three recipe steps: running is their span.
+    if [ "$steps" -eq 0 ]; then
+      args+=(--recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Command guard, payload, and tool-hooks corpora on Python 3.14")
+      args+=(--recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Instruction budget")
+    fi
     if [ "$named" -eq 0 ]; then
       args+=(unit-test.yaml check.yaml small-checks.yaml frontend-ci.yaml claude-lint.yaml iac-test.yaml test-emulators.yaml test-podman-gc-compat.yaml test-just.yaml)
     fi

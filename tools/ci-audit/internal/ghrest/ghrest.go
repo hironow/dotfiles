@@ -36,10 +36,27 @@ type Filter struct {
 // perPage is the largest page GitHub's REST API gives.
 const perPage = 100
 
+// Window is what FetchWindow read.
+type Window struct {
+	Jobs []jobaudit.Job
+	// WindowStart is the creation time of the oldest run read, when the run
+	// limit cut the list (older runs exist and were not read); zero when every
+	// run was read.
+	WindowStart time.Time
+}
+
 // Fetch returns the jobs of the last f.Limit completed runs of one workflow,
-// every attempt of each. Runs that succeeded, failed, or timed out count; a
-// cancelled or skipped run measured nothing.
+// every attempt of each (see FetchWindow).
 func Fetch(ctx context.Context, api Runs, repo, workflow string, f Filter) ([]jobaudit.Job, error) {
+	w, err := FetchWindow(ctx, api, repo, workflow, f)
+	return w.Jobs, err
+}
+
+// FetchWindow returns the jobs of the last f.Limit completed runs of one
+// workflow, every attempt of each, and where its window starts. Runs that
+// succeeded, failed, or timed out count; a cancelled or skipped run measured
+// nothing.
+func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter) (Window, error) {
 	query := url.Values{}
 	if f.Branch != "" {
 		query.Set("branch", f.Branch)
@@ -52,24 +69,29 @@ func Fetch(ctx context.Context, api Runs, repo, workflow string, f Filter) ([]jo
 		extra = "&" + query.Encode()
 	}
 	var jobs []jobaudit.Job
-	read := 0
+	var oldest time.Time
+	read, cut := 0, false
 	for page := 1; read < f.Limit; page++ {
 		listPath := fmt.Sprintf("repos/%s/actions/workflows/%s/runs?per_page=%d&status=completed%s&page=%d", repo, workflow, perPage, extra, page)
 		body, err := api.Get(ctx, listPath)
 		if err != nil {
-			return nil, fmt.Errorf("list runs of %s: %w", workflow, err)
+			return Window{}, fmt.Errorf("list runs of %s: %w", workflow, err)
 		}
 		var runs struct {
 			WorkflowRuns []runJSON `json:"workflow_runs"`
 		}
 		if err := json.Unmarshal(body, &runs); err != nil {
-			return nil, fmt.Errorf("read runs of %s: %w", workflow, err)
+			return Window{}, fmt.Errorf("read runs of %s: %w", workflow, err)
 		}
 		for _, run := range runs.WorkflowRuns {
 			if read >= f.Limit {
+				cut = true // a run past the limit is in this page
 				break
 			}
 			read++
+			if created := parseTime(run.CreatedAt); oldest.IsZero() || created.Before(oldest) {
+				oldest = created
+			}
 			switch run.Conclusion {
 			case "success", "failure", "timed_out":
 			default:
@@ -77,7 +99,7 @@ func Fetch(ctx context.Context, api Runs, repo, workflow string, f Filter) ([]jo
 			}
 			got, err := fetchJobs(ctx, api, repo, run.ID)
 			if err != nil {
-				return nil, err
+				return Window{}, err
 			}
 			for i := range got {
 				got[i].Workflow = workflow
@@ -90,8 +112,15 @@ func Fetch(ctx context.Context, api Runs, repo, workflow string, f Filter) ([]jo
 		if len(runs.WorkflowRuns) < perPage {
 			break
 		}
+		if read >= f.Limit {
+			cut = true // a full page at the limit: a next page may hold more
+		}
 	}
-	return jobs, nil
+	w := Window{Jobs: jobs}
+	if cut {
+		w.WindowStart = oldest
+	}
+	return w, nil
 }
 
 type runJSON struct {
