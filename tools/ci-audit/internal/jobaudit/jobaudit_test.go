@@ -242,7 +242,7 @@ func TestPushesMeasureFromTheFirstRunToTheLastJobOfTheFirstAttempt(t *testing.T)
 		mk("b.yaml", 1, 1, 3, 90),
 		mk("b.yaml", 2, 200, 202, 230), // a re-run of b later
 	}
-	p := jobaudit.Pushes(jobs, time.Time{})
+	p := jobaudit.Pushes(jobs, jobaudit.PushOptions{})
 	if len(p.Pushes) != 1 {
 		t.Fatalf("pushes = %+v, want 1", p.Pushes)
 	}
@@ -269,7 +269,7 @@ func TestPushesCountAPushThatAPathFilteredWorkflowSkipped(t *testing.T) {
 		pushJob("a.yaml", "one", 1, 0),
 		pushJob("a.yaml", "two", 2, 100),
 		pushJob("emulators.yaml", "two", 3, 100), // ran for push two only
-	}, time.Time{})
+	}, jobaudit.PushOptions{})
 	if len(p.Pushes) != 2 || p.OutsideWindow != 0 {
 		t.Fatalf("pushes = %+v, outside = %d, want both pushes", p.Pushes, p.OutsideWindow)
 	}
@@ -283,7 +283,7 @@ func TestPushesLeaveOutAPushThatStartedBeforeTheWindow(t *testing.T) {
 		pushJob("a.yaml", "one", 1, 0),
 		pushJob("a.yaml", "two", 2, 100),
 		pushJob("b.yaml", "two", 3, 100),
-	}, at(100)) // b.yaml's fetch was cut: its oldest fetched run is at 100
+	}, jobaudit.PushOptions{WindowStart: at(100)}) // b.yaml's fetch was cut: its oldest fetched run is at 100
 	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.OutsideWindow != 1 {
 		t.Fatalf("pushes = %+v, outside = %d, want push two only and 1 outside", p.Pushes, p.OutsideWindow)
 	}
@@ -297,7 +297,7 @@ func TestPushesLeaveOutACommitThatOneWorkflowRanTwice(t *testing.T) {
 		pushJob("a.yaml", "one", 1, 0),
 		pushJob("a.yaml", "one", 2, 5000), // a second run, not a re-run (attempt 1 again)
 		pushJob("a.yaml", "two", 3, 6000),
-	}, time.Time{})
+	}, jobaudit.PushOptions{})
 	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.Ambiguous != 1 {
 		t.Fatalf("pushes = %+v, ambiguous = %d, want push two only and 1 ambiguous", p.Pushes, p.Ambiguous)
 	}
@@ -307,14 +307,60 @@ func TestPushesLeaveOutACommitWithARunStillInProgress(t *testing.T) {
 	p := jobaudit.Pushes([]jobaudit.Job{
 		pushJob("a.yaml", "one", 1, 0),
 		pushJob("a.yaml", "two", 2, 100), // b.yaml is still running for two
-	}, time.Time{}, jobaudit.Commit{HeadSHA: "two", Event: "pull_request"})
+	}, jobaudit.PushOptions{Unfinished: []jobaudit.Commit{{HeadSHA: "two", Event: "pull_request"}}})
 	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "one" || p.Unfinished != 1 {
 		t.Fatalf("pushes = %+v, unfinished = %d, want push one only and 1 unfinished", p.Pushes, p.Unfinished)
 	}
 }
 
+// concurrency's cancel-in-progress cancels a branch's runs when a new commit
+// lands: that push never had its whole result. It is left out of the result
+// sample and counted, and its jobs' time still counts as runner time.
+func TestPushesLeaveOutACancelledPushButCountItsRunnerTime(t *testing.T) {
+	cancelled := pushJob("b.yaml", "one", 2, 0)
+	cancelled.Conclusion, cancelled.RunConclusion = "cancelled", "cancelled"
+	cancelled.Completed = at(243) // ran 242 s before it was cancelled
+	p := jobaudit.Pushes([]jobaudit.Job{pushJob("a.yaml", "one", 1, 0), cancelled, pushJob("a.yaml", "two", 3, 1000)}, jobaudit.PushOptions{})
+	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.Cancelled != 1 {
+		t.Fatalf("pushes = %+v, cancelled = %d, want push two only and 1 cancelled", p.Pushes, p.Cancelled)
+	}
+	if p.TotalRunnerSeconds != 9+242+9 {
+		t.Errorf("total runner seconds = %v, want %v (every job that ran, cancelled too)", p.TotalRunnerSeconds, 9+242+9)
+	}
+}
+
+func TestPushesLeaveOutACommitWithARunThatWasNotRead(t *testing.T) {
+	opt := jobaudit.PushOptions{Incomplete: []jobaudit.Commit{{HeadSHA: "one", Event: "pull_request"}}}
+	p := jobaudit.Pushes([]jobaudit.Job{pushJob("a.yaml", "one", 1, 0), pushJob("a.yaml", "two", 2, 100)}, opt)
+	if len(p.Pushes) != 1 || p.Pushes[0].HeadSHA != "two" || p.Incomplete != 1 {
+		t.Fatalf("pushes = %+v, incomplete = %d, want push two only and 1 incomplete", p.Pushes, p.Incomplete)
+	}
+}
+
+// Complete compares a commit's runs, as GitHub lists them, with the runs read.
+func TestCompleteNeedsEveryRunOfAnAuditedWorkflow(t *testing.T) {
+	audited := map[string]bool{"a.yaml": true, "b.yaml": true}
+	read := map[int64]bool{1: true, 2: true}
+	cases := []struct {
+		name string
+		runs []jobaudit.RunRef
+		want bool
+	}{
+		{"every audited run was read", []jobaudit.RunRef{{ID: 1, Workflow: "a.yaml", Conclusion: "success"}, {ID: 2, Workflow: "b.yaml", Conclusion: "failure"}}, true},
+		{"a run past a workflow's limit", []jobaudit.RunRef{{ID: 1, Workflow: "a.yaml", Conclusion: "success"}, {ID: 9, Workflow: "b.yaml", Conclusion: "success"}}, false},
+		{"a skipped run (a draft) ran nothing", []jobaudit.RunRef{{ID: 1, Workflow: "a.yaml", Conclusion: "success"}, {ID: 9, Workflow: "b.yaml", Conclusion: "skipped"}}, true},
+		{"a workflow that is not audited", []jobaudit.RunRef{{ID: 1, Workflow: "a.yaml", Conclusion: "success"}, {ID: 9, Workflow: "pages.yaml", Conclusion: "success"}}, true},
+		{"a run still in progress", []jobaudit.RunRef{{ID: 1, Workflow: "a.yaml", Conclusion: "success"}, {ID: 9, Workflow: "b.yaml", Status: "in_progress"}}, false},
+	}
+	for _, c := range cases {
+		if got := jobaudit.Complete(read, c.runs, audited); got != c.want {
+			t.Errorf("%s: Complete = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestRenderPushesSaysWhenNoPushCouldBeMeasured(t *testing.T) {
-	out := jobaudit.RenderPushes(jobaudit.Pushes(nil, time.Time{}))
+	out := jobaudit.RenderPushes(jobaudit.Pushes(nil, jobaudit.PushOptions{}))
 	if !strings.Contains(out, "no push could be measured") || strings.Contains(out, "result 0/0s") {
 		t.Fatalf("an empty sample must not print zeros as a result:\n%s", out)
 	}

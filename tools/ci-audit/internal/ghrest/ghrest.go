@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 
@@ -101,8 +102,10 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 			if created := parseTime(run.CreatedAt); oldest.IsZero() || created.Before(oldest) {
 				oldest = created
 			}
+			// A cancelled run ran jobs (runner time) and left its push without
+			// a whole result; a skipped one (a draft) ran nothing.
 			switch run.Conclusion {
-			case "success", "failure", "timed_out":
+			case "success", "failure", "timed_out", "cancelled":
 			default:
 				continue
 			}
@@ -115,6 +118,7 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 				got[i].HeadSHA = run.HeadSHA
 				got[i].Event = run.Event
 				got[i].RunCreated = parseTime(run.CreatedAt)
+				got[i].RunConclusion = run.Conclusion
 			}
 			jobs = append(jobs, got...)
 		}
@@ -132,7 +136,35 @@ func FetchWindow(ctx context.Context, api Runs, repo, workflow string, f Filter)
 	return w, nil
 }
 
+// CommitRuns lists every run GitHub made for one commit and event, in every
+// workflow.
+func CommitRuns(ctx context.Context, api Runs, repo string, c jobaudit.Commit) ([]jobaudit.RunRef, error) {
+	query := url.Values{}
+	query.Set("head_sha", c.HeadSHA)
+	query.Set("event", c.Event)
+	var refs []jobaudit.RunRef
+	for page := 1; ; page++ {
+		body, err := api.Get(ctx, fmt.Sprintf("repos/%s/actions/runs?%s&per_page=%d&page=%d", repo, query.Encode(), perPage, page))
+		if err != nil {
+			return nil, fmt.Errorf("runs of commit %s: %w", c.HeadSHA, err)
+		}
+		var runs struct {
+			WorkflowRuns []runJSON `json:"workflow_runs"`
+		}
+		if err := json.Unmarshal(body, &runs); err != nil {
+			return nil, fmt.Errorf("read runs of commit %s: %w", c.HeadSHA, err)
+		}
+		for _, r := range runs.WorkflowRuns {
+			refs = append(refs, jobaudit.RunRef{ID: r.ID, Workflow: path.Base(r.Path), Status: r.Status, Conclusion: r.Conclusion})
+		}
+		if len(runs.WorkflowRuns) < perPage {
+			return refs, nil
+		}
+	}
+}
+
 type runJSON struct {
+	Path       string `json:"path"`
 	ID         int64  `json:"id"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`

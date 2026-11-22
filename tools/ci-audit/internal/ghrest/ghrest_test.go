@@ -42,7 +42,7 @@ func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 	api := &fakeRuns{bodies: map[string]string{
 		runsPath + "&page=1": `{"workflow_runs":[
 			{"id":11,"conclusion":"success","head_sha":"aaa","event":"pull_request","created_at":"2026-11-22T09:59:58Z"},
-			{"id":12,"conclusion":"cancelled"},{"id":13,"conclusion":"failure"}]}`,
+			{"id":12,"conclusion":"skipped"},{"id":13,"conclusion":"failure"}]}`,
 		"repos/o/r/actions/runs/11/jobs?per_page=100&filter=all&page=1": jobsBody,
 	}}
 	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 2})
@@ -50,7 +50,7 @@ func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(jobs) != 2 {
-		t.Fatalf("jobs = %d, want 2 (run 11 only: 12 is cancelled, 13 is past the limit)", len(jobs))
+		t.Fatalf("jobs = %d, want 2 (run 11 only: 12 is skipped, 13 is past the limit)", len(jobs))
 	}
 	if jobs[0].RunID != 11 || jobs[0].Attempt != 1 {
 		t.Errorf("job 0 = %+v", jobs[0])
@@ -126,9 +126,9 @@ func TestFetchReadsEveryAttemptAndTimedOutRuns(t *testing.T) {
 func TestFetchSaysWhereItsWindowStartsOnlyWhenTheLimitCutTheList(t *testing.T) {
 	bodies := map[string]string{
 		runsPath + "&page=1": `{"workflow_runs":[
-			{"id":1,"conclusion":"cancelled","created_at":"2026-11-22T10:00:09Z"},
-			{"id":2,"conclusion":"cancelled","created_at":"2026-11-22T10:00:05Z"},
-			{"id":3,"conclusion":"cancelled","created_at":"2026-11-22T10:00:01Z"}]}`,
+			{"id":1,"conclusion":"skipped","created_at":"2026-11-22T10:00:09Z"},
+			{"id":2,"conclusion":"skipped","created_at":"2026-11-22T10:00:05Z"},
+			{"id":3,"conclusion":"skipped","created_at":"2026-11-22T10:00:01Z"}]}`,
 	}
 	cut, err := ghrest.FetchWindow(context.Background(), &fakeRuns{bodies: bodies}, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 2})
 	if err != nil {
@@ -165,6 +165,44 @@ func TestFetchNamesTheCommitsWithARunStillInProgress(t *testing.T) {
 	}
 	if len(w.Unfinished) != 1 || w.Unfinished[0] != (jobaudit.Commit{HeadSHA: "new", Event: "pull_request"}) {
 		t.Fatalf("unfinished = %+v, want commit new", w.Unfinished)
+	}
+}
+
+// A cancelled run (cancel-in-progress) ran jobs that cost runner time, and its
+// push never had its whole result: Fetch reads its jobs and says how the run
+// ended.
+func TestFetchReadsACancelledRunsJobs(t *testing.T) {
+	api := &fakeRuns{bodies: map[string]string{
+		runsPath + "&page=1": `{"workflow_runs":[{"id":5,"status":"completed","conclusion":"cancelled","head_sha":"c","event":"pull_request"}]}`,
+		"repos/o/r/actions/runs/5/jobs?per_page=100&filter=all&page=1": `{"jobs":[` + oneJob(1, "cancelled") + `]}`,
+	}}
+	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].RunConclusion != "cancelled" {
+		t.Fatalf("jobs = %+v, want the cancelled run's job, marked cancelled", jobs)
+	}
+}
+
+// CommitRuns lists every run GitHub made for one commit and event, in every
+// workflow, so a push can be checked against the runs that were read.
+func TestCommitRunsListsEveryWorkflowsRunsForACommit(t *testing.T) {
+	api := &fakeRuns{bodies: map[string]string{
+		"repos/o/r/actions/runs?event=pull_request&head_sha=abc&per_page=100&page=1": `{"workflow_runs":[
+			{"id":1,"status":"completed","conclusion":"success","path":".github/workflows/unit-test.yaml"},
+			{"id":2,"status":"in_progress","conclusion":null,"path":".github/workflows/check.yaml"}]}`,
+	}}
+	runs, err := ghrest.CommitRuns(context.Background(), api, "o/r", jobaudit.Commit{HeadSHA: "abc", Event: "pull_request"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []jobaudit.RunRef{
+		{ID: 1, Workflow: "unit-test.yaml", Status: "completed", Conclusion: "success"},
+		{ID: 2, Workflow: "check.yaml", Status: "in_progress"},
+	}
+	if fmt.Sprint(runs) != fmt.Sprint(want) {
+		t.Fatalf("runs = %+v, want %+v", runs, want)
 	}
 }
 

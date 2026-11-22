@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +145,57 @@ func TestARecipeStepThatIsNotJobEqualsStepIsAUsageError(t *testing.T) {
 	args := []string{"jobs", "--repo", "o/r", "--recipe-step", "no-equals-sign", "x.yaml"}
 	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 2 {
 		t.Fatalf("exit %d, want 2\n%s", code, stderr.String())
+	}
+}
+
+// fakeAPI serves canned bodies by path.
+type fakeAPI map[string]string
+
+func (f fakeAPI) Get(_ context.Context, path string) ([]byte, error) {
+	body, ok := f[path]
+	if !ok {
+		return nil, fmt.Errorf("fake: no body for %s", path)
+	}
+	return []byte(body), nil
+}
+
+func runBody(id int64, sha string, created string) string {
+	return fmt.Sprintf(`{"id":%d,"status":"completed","conclusion":"success","head_sha":%q,"event":"pull_request","created_at":%q}`, id, sha, created)
+}
+
+func jobBody(name, created, started, completed string) string {
+	return fmt.Sprintf(`{"jobs":[{"name":%q,"run_attempt":1,"conclusion":"success","created_at":%q,"started_at":%q,"completed_at":%q,"steps":[]}]}`,
+		name, created, started, completed)
+}
+
+// a.yaml reads both pushes; b.yaml reads only its newest run (limit 1), and
+// GitHub's list for push "one" holds b.yaml's run 21, which was not read. The
+// window rule alone would keep "one" if b.yaml's oldest read run were older,
+// so the check against the commit's runs is what leaves it out.
+func TestJobsLeavesOutAPushWithARunThatWasNotRead(t *testing.T) {
+	api := fakeAPI{
+		"repos/o/r/actions/workflows/a.yaml/runs?per_page=100&event=pull_request&page=1": `{"workflow_runs":[` +
+			runBody(12, "two", "2026-11-22T10:10:00Z") + `,` + runBody(11, "one", "2026-11-22T10:00:00Z") + `]}`,
+		"repos/o/r/actions/workflows/b.yaml/runs?per_page=100&event=pull_request&page=1": `{"workflow_runs":[` +
+			runBody(22, "two", "2026-11-22T10:10:01Z") + `]}`,
+		"repos/o/r/actions/runs/11/jobs?per_page=100&filter=all&page=1": jobBody("a", "2026-11-22T10:00:00Z", "2026-11-22T10:00:01Z", "2026-11-22T10:00:20Z"),
+		"repos/o/r/actions/runs/12/jobs?per_page=100&filter=all&page=1": jobBody("a", "2026-11-22T10:10:00Z", "2026-11-22T10:10:01Z", "2026-11-22T10:10:20Z"),
+		"repos/o/r/actions/runs/22/jobs?per_page=100&filter=all&page=1": jobBody("b", "2026-11-22T10:10:01Z", "2026-11-22T10:10:02Z", "2026-11-22T10:10:40Z"),
+		"repos/o/r/actions/runs?event=pull_request&head_sha=one&per_page=100&page=1": `{"workflow_runs":[
+			{"id":11,"status":"completed","conclusion":"success","path":".github/workflows/a.yaml"},
+			{"id":21,"status":"completed","conclusion":"success","path":".github/workflows/b.yaml"}]}`,
+		"repos/o/r/actions/runs?event=pull_request&head_sha=two&per_page=100&page=1": `{"workflow_runs":[
+			{"id":12,"status":"completed","conclusion":"success","path":".github/workflows/a.yaml"},
+			{"id":22,"status":"completed","conclusion":"success","path":".github/workflows/b.yaml"}]}`,
+	}
+	var stdout, stderr bytes.Buffer
+	args := []string{"jobs", "--repo", "o/r", "--runs", "2", "--event", "pull_request", "a.yaml", "b.yaml"}
+	if code := run(context.Background(), args, &stdout, &stderr, api); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "pushes n=1") || !strings.Contains(out, "1 with a run that was not read") {
+		t.Fatalf("want push two only, and push one left out:\n%s", out)
 	}
 }
 

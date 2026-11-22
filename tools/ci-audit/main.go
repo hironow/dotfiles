@@ -87,6 +87,11 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 			windowStart = w.WindowStart
 		}
 	}
+	pushes, err := measurePushes(ctx, api, *repo, flags.Args(), all, jobaudit.PushOptions{WindowStart: windowStart, Unfinished: unfinished})
+	if err != nil {
+		fmt.Fprintln(stderr, "ci-audit:", err)
+		return 1
+	}
 	rows := jobaudit.Summarize(all, opt)
 	if len(rows) == 0 {
 		fmt.Fprintln(stderr, "ci-audit: no completed job was found")
@@ -96,7 +101,7 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 		"waiting = started minus created; setup = steps before the recipe; running = the recipe step;\n"+
 		"after = steps behind it; total = completed minus started.\n\n%s", jobaudit.Render(rows))
 	fmt.Fprintf(stdout, "\nPer push: result = first run created to the last job of the first attempts done;\n"+
-		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all, windowStart, unfinished...)))
+		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(pushes))
 	return 0
 }
 
@@ -200,4 +205,29 @@ func withoutSecretShapes(durations map[string]float64) map[string]float64 {
 		}
 	}
 	return kept
+}
+
+// measurePushes checks each push that the window rule keeps against the runs
+// GitHub lists for its commit, and leaves out the ones with a run that was not
+// read. It costs one call per push.
+func measurePushes(ctx context.Context, api ghrest.Runs, repo string, workflows []string, jobs []jobaudit.Job, opt jobaudit.PushOptions) (jobaudit.PushSummary, error) {
+	read := map[int64]bool{}
+	for _, j := range jobs {
+		read[j.RunID] = true
+	}
+	audited := map[string]bool{}
+	for _, w := range workflows {
+		audited[w] = true
+	}
+	for _, p := range jobaudit.Pushes(jobs, opt).Pushes {
+		c := jobaudit.Commit{HeadSHA: p.HeadSHA, Event: p.Event}
+		runs, err := ghrest.CommitRuns(ctx, api, repo, c)
+		if err != nil {
+			return jobaudit.PushSummary{}, err
+		}
+		if !jobaudit.Complete(read, runs, audited) {
+			opt.Incomplete = append(opt.Incomplete, c)
+		}
+	}
+	return jobaudit.Pushes(jobs, opt), nil
 }

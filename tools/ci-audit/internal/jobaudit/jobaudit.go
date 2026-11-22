@@ -35,18 +35,19 @@ type Step struct {
 
 // Job is one job of one run attempt.
 type Job struct {
-	Name       string
-	Workflow   string // the workflow file, such as "unit-test.yaml"
-	RunID      int64
-	Attempt    int
-	Conclusion string
-	HeadSHA    string // the commit the run tested
-	Event      string // what started the run: push, pull_request, ...
-	RunCreated time.Time
-	Created    time.Time
-	Started    time.Time
-	Completed  time.Time
-	Steps      []Step
+	Name          string
+	Workflow      string // the workflow file, such as "unit-test.yaml"
+	RunID         int64
+	Attempt       int
+	Conclusion    string
+	HeadSHA       string // the commit the run tested
+	Event         string // what started the run: push, pull_request, ...
+	RunCreated    time.Time
+	RunConclusion string // how the run ended: success, failure, cancelled, ...
+	Created       time.Time
+	Started       time.Time
+	Completed     time.Time
+	Steps         []Step
 }
 
 // Options tune the summary.
@@ -314,43 +315,104 @@ type PushSummary struct {
 	Ambiguous int
 	// Unfinished counts pushes with a run still in progress: its jobs are
 	// not read yet, so the push would look finished and fast.
-	Unfinished    int
-	Result        [2]float64 // p50, p95
-	RunnerSeconds [2]float64 // p50, p95 per push
+	Unfinished int
+	// Cancelled counts pushes with a cancelled run (a newer commit landed):
+	// they never had their whole result.
+	Cancelled int
+	// Incomplete counts pushes with a run that was not read.
+	Incomplete int
+	// TotalRunnerSeconds is the wall time of every job read, of every push,
+	// left out or not, cancelled or not.
+	TotalRunnerSeconds float64
+	Result             [2]float64 // p50, p95
+	RunnerSeconds      [2]float64 // p50, p95 per push
 }
 
-// Pushes groups jobs by commit and event, and measures each push. windowStart
-// is the newest of the oldest fetched runs of the workflows whose fetch was
-// cut by the run limit (zero when none was): before it, a push may be missing
-// a run. A workflow that did not run for a push (a paths filter) is not
-// missing.
-func Pushes(jobs []Job, windowStart time.Time, unfinished ...Commit) PushSummary {
-	running := map[Commit]bool{}
-	for _, c := range unfinished {
-		running[c] = true
+// PushOptions say which pushes cannot be measured; the shell finds them.
+type PushOptions struct {
+	// WindowStart is the newest of the oldest read runs of the workflows
+	// whose fetch was cut by the run limit (zero when none was): before it, a
+	// push may be missing a run.
+	WindowStart time.Time
+	// Unfinished are commits with a run still in progress.
+	Unfinished []Commit
+	// Incomplete are commits with a run of an audited workflow that was not
+	// read (see Complete).
+	Incomplete []Commit
+}
+
+// RunRef is one run GitHub lists for a commit.
+type RunRef struct {
+	ID         int64
+	Workflow   string // the workflow file, such as "unit-test.yaml"
+	Status     string
+	Conclusion string
+}
+
+// Complete reports whether every run GitHub lists for a commit, in an audited
+// workflow, was read. A skipped run (a draft) ran nothing, so it need not be
+// read; a run still in progress cannot have been.
+func Complete(read map[int64]bool, runs []RunRef, audited map[string]bool) bool {
+	for _, r := range runs {
+		if !audited[r.Workflow] || r.Conclusion == "skipped" {
+			continue
+		}
+		if r.Status != "" && r.Status != "completed" {
+			return false
+		}
+		if !read[r.ID] {
+			return false
+		}
 	}
-	type key struct{ sha, event string }
+	return true
+}
+
+// Pushes groups jobs by commit and event, and measures each push: when the
+// pull request had its whole result, and its runner seconds. A workflow that
+// did not run for a push (a paths filter) is not missing. A push is left out,
+// and counted, when it has a run still in progress, a cancelled run (it never
+// had its whole result), a run that was not read, a start before the window,
+// or one workflow that ran twice.
+func Pushes(jobs []Job, opt PushOptions) PushSummary {
+	unfinished := map[Commit]bool{}
+	for _, c := range opt.Unfinished {
+		unfinished[c] = true
+	}
+	incomplete := map[Commit]bool{}
+	for _, c := range opt.Incomplete {
+		incomplete[c] = true
+	}
 	type group struct {
 		firstRuns map[string]map[int64]bool // workflow -> run ids with an attempt 1
+		cancelled bool
 		first     time.Time
 		last      time.Time
 		runner    float64
 	}
-	groups := map[key]*group{}
-	var order []key
+	groups := map[Commit]*group{}
+	var order []Commit
+	var out PushSummary
 	for _, j := range jobs {
-		if !finished(j.Conclusion) || j.HeadSHA == "" {
+		if j.HeadSHA == "" {
 			continue
 		}
-		k := key{j.HeadSHA, j.Event}
+		k := Commit{j.HeadSHA, j.Event}
 		g, ok := groups[k]
 		if !ok {
 			g = &group{firstRuns: map[string]map[int64]bool{}}
 			groups[k] = g
 			order = append(order, k)
 		}
+		// Every job that ran costs runner time, whatever its conclusion.
 		g.runner += seconds(j.Started, j.Completed)
+		out.TotalRunnerSeconds += seconds(j.Started, j.Completed)
 		if j.Attempt != 1 {
+			continue
+		}
+		if j.RunConclusion == "cancelled" {
+			g.cancelled = true
+		}
+		if !finished(j.Conclusion) {
 			continue
 		}
 		if g.firstRuns[j.Workflow] == nil {
@@ -364,23 +426,29 @@ func Pushes(jobs []Job, windowStart time.Time, unfinished ...Commit) PushSummary
 			g.last = j.Completed
 		}
 	}
-	var out PushSummary
 	var results, runner []float64
 	for _, k := range order {
 		g := groups[k]
-		if running[Commit{k.sha, k.event}] {
+		switch {
+		case unfinished[k]:
 			out.Unfinished++
 			continue
-		}
-		if !windowStart.IsZero() && g.first.Before(windowStart) {
+		case g.cancelled:
+			out.Cancelled++
+			continue
+		case incomplete[k]:
+			out.Incomplete++
+			continue
+		case g.first.IsZero():
+			continue // no finished first-attempt job: nothing to measure
+		case !opt.WindowStart.IsZero() && g.first.Before(opt.WindowStart):
 			out.OutsideWindow++
 			continue
-		}
-		if slices.ContainsFunc(slices.Collect(maps.Values(g.firstRuns)), func(runs map[int64]bool) bool { return len(runs) > 1 }) {
+		case slices.ContainsFunc(slices.Collect(maps.Values(g.firstRuns)), func(runs map[int64]bool) bool { return len(runs) > 1 }):
 			out.Ambiguous++
 			continue
 		}
-		p := Push{HeadSHA: k.sha, Event: k.event, Result: seconds(g.first, g.last), RunnerSeconds: g.runner}
+		p := Push{HeadSHA: k.HeadSHA, Event: k.Event, Result: seconds(g.first, g.last), RunnerSeconds: g.runner}
 		out.Pushes = append(out.Pushes, p)
 		results = append(results, p.Result)
 		runner = append(runner, p.RunnerSeconds)
@@ -393,14 +461,14 @@ func Pushes(jobs []Job, windowStart time.Time, unfinished ...Commit) PushSummary
 // RenderPushes prints the push summary and the commits it counted.
 func RenderPushes(s PushSummary) string {
 	var b strings.Builder
-	left := fmt.Sprintf("left out: %d before the window, %d with a workflow that ran twice, %d with a run still in progress",
-		s.OutsideWindow, s.Ambiguous, s.Unfinished)
+	left := fmt.Sprintf("left out: %d with a run still in progress, %d cancelled, %d with a run that was not read, %d before the window, %d with a workflow that ran twice",
+		s.Unfinished, s.Cancelled, s.Incomplete, s.OutsideWindow, s.Ambiguous)
 	if len(s.Pushes) == 0 {
 		fmt.Fprintf(&b, "no push could be measured (%s)\n", left)
 		return b.String()
 	}
-	fmt.Fprintf(&b, "pushes n=%d (%s)  result %s  runner seconds per push %s\n",
-		len(s.Pushes), left, pair(s.Result), pair(s.RunnerSeconds))
+	fmt.Fprintf(&b, "pushes n=%d (%s)  result %s  runner seconds per push %s  runner seconds of every job read %.0f\n",
+		len(s.Pushes), left, pair(s.Result), pair(s.RunnerSeconds), s.TotalRunnerSeconds)
 	for _, p := range s.Pushes {
 		sha := p.HeadSHA
 		if len(sha) > 12 {
