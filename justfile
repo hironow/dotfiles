@@ -318,9 +318,13 @@ ci-audit *args:
       case "$a" in *.yaml) named=1 ;; --recipe-step) steps=1 ;; esac
     done
     # The unit extras job runs three recipe steps: running is their span.
+    # In front: Go's flag package stops at the first workflow name.
     if [ "$steps" -eq 0 ]; then
-      args+=(--recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Command guard, payload, and tool-hooks corpora on Python 3.14")
-      args+=(--recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Instruction budget")
+      args=(
+        --recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Command guard, payload, and tool-hooks corpora on Python 3.14"
+        --recipe-step "unit extras (Python 3.14 corpora, real Go, instruction budget)=Instruction budget"
+        "${args[@]}"
+      )
     fi
     if [ "$named" -eq 0 ]; then
       args+=(unit-test.yaml check.yaml small-checks.yaml frontend-ci.yaml claude-lint.yaml iac-test.yaml test-emulators.yaml test-podman-gc-compat.yaml test-just.yaml)
