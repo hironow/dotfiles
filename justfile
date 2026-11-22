@@ -112,8 +112,8 @@ meta-semgrep:
 # passed as BOTH the config and the target.
 [doc('Test: run every semgrep rule against its co-located fixtures')]
 [group('test')]
+[script]
 semgrep-test:
-    #!/usr/bin/env bash
     set -euo pipefail
     # semgrep's native-Windows engine mis-fires some rules (e.g.
     # python-no-mutable-default-args yields no finding on `def f(x=[])`), so
@@ -137,8 +137,8 @@ semgrep-test:
 # `semgrep --test` alone cannot show the scope: it ignores a rule's `paths`.
 [doc('Test: the agent-baseline scaffold in a throwaway repo')]
 [group('test')]
+[script]
 agent-baseline-test:
-    #!/usr/bin/env bash
     set -euo pipefail
     src="{{ justfile_directory() }}/templates/agent-baseline"
     {{ SEMGREP }} --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
@@ -258,8 +258,8 @@ harden-env:
 [doc('WSL: advise on /etc/wsl.conf; advisory only, never self-applies')]
 [group('setup')]
 [linux]
+[script]
 wsl-conf:
-    #!/usr/bin/env bash
     set -euo pipefail
     if ! grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
       echo "ℹ️  Not running under WSL (kernel: $(uname -r)); nothing to do."
@@ -340,8 +340,8 @@ pi-extensions-install:
 [doc('Where CI time goes, per job and per push, at p50 and p95')]
 [group('test')]
 [positional-arguments]
+[script]
 ci-audit *args:
-    #!/usr/bin/env bash
     set -euo pipefail
     args=("$@")
     named=0 steps=0
@@ -556,8 +556,8 @@ sync-agents *args:
 # uses prek + its own CI/.semgrep). See templates/agent-baseline/README-agents-setup.md.
 [doc('Scaffold: copy the agent-baseline template into a target repo')]
 [group('agents')]
+[script]
 scaffold-agent-baseline dir:
-    #!/usr/bin/env bash
     set -euo pipefail
     src="{{ justfile_directory() }}/templates/agent-baseline"
     dest="{{ dir }}"
@@ -780,8 +780,8 @@ wsl-compact:
 # Usage: just clean-work-env d
 [doc('Clean: reset a claude-work-X directory (synced files and CLAUDE.md)')]
 [group('agents')]
+[script]
 clean-work-env target:
-    #!/usr/bin/env bash
     set -eu -o pipefail
     case "{{ target }}" in
       a) config_dir="$HOME/.claude-work-a" ;;
@@ -817,8 +817,8 @@ clean-work-env target:
 # Windows native (MSYS/MINGW/CYGWIN): scoop export (record-only, see ADR 0019).
 [doc('Dump: write per-host package manifests into dump/<host>/')]
 [group('setup')]
+[script]
 dump:
-    #!/usr/bin/env bash
     set -eu
     host="$(bash scripts/dump_host.sh resolve-dump)"
     mkdir -p "./dump/$host"
@@ -894,8 +894,8 @@ set-host alias:
 # freshly, then exercise actual devcontainer up/exec in a disposable snapshot.
 [doc('Test: devcontainer up/exec in a disposable snapshot (needs Podman)')]
 [group('test')]
+[script]
 test:
-    #!/usr/bin/env bash
     set -euo pipefail
     export PODMAN_COMPOSE_PROVIDER=podman-compose
     info="$(podman info --format json)"
@@ -944,8 +944,8 @@ test-install:
 
 # Self-check: quick, safe health checks with summary
 [group('doctor')]
+[script]
 self-check with_tests="":
-    #!/usr/bin/env bash
     set -u
     echo '🔎 Running self-check...'
     ok=0; warn=0; err=0
@@ -986,8 +986,8 @@ self-check with_tests="":
 
 # Test (by marker): run tests filtered by -m MARKER
 [group('test')]
+[script]
 test-mark marker="":
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ -z {{ quote(marker) }} ]; then
       echo 'Marker is empty. Usage: just test-mark install' >&2
@@ -1062,8 +1062,8 @@ lint:
 
 # Formal GC safety: bounded seeded model traces plus real-script fake-I/O replay.
 [group('lint')]
+[script]
 spec-check:
-    #!/usr/bin/env bash
     set -euo pipefail
     for spec in scripts/spec/*.qnt; do
       [ -f "$spec" ] || { echo 'No safety models found in scripts/spec' >&2; exit 1; }
@@ -1195,8 +1195,8 @@ go-test go="mise x -- go":
 
 # Compile the image-local TCP probe for each supported device (not runtime proof).
 [group('test')]
+[script]
 healthcheck-build go="mise x -- go":
-    #!/usr/bin/env bash
     set -euo pipefail
     cd emulator/healthcheck
     mkdir -p dist
@@ -1331,9 +1331,9 @@ agent-hooks-gc *args:
 [doc('Run the agent-hook process tests against a home installed release')]
 [group('agents')]
 [positional-arguments]
+[script]
 [unix]
 agent-hooks-test-installed key="claude" go="mise x -- go":
-    #!/usr/bin/env bash
     set -euo pipefail
     key="${1:-claude}"
     [[ "$key" =~ ^[a-z0-9-]+$ ]] || { echo "agent-hooks-test-installed: KEY is lowercase letters, digits, and -" >&2; exit 64; }
@@ -1356,8 +1356,8 @@ _agent-hooks-test-binary binary id go="mise x -- go" *args:
 
 # Go: golangci-lint for each module and each GOOS it ships to, and the formatter's diff
 [group('lint')]
+[script]
 go-lint:
-    #!/usr/bin/env bash
     set -euo pipefail
     config="$PWD/.golangci.yaml"
     git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
@@ -1374,8 +1374,8 @@ go-lint:
 
 # Go: format every module with golangci-lint fmt
 [group('lint')]
+[script]
 go-fmt:
-    #!/usr/bin/env bash
     set -euo pipefail
     config="$PWD/.golangci.yaml"
     git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
@@ -1531,8 +1531,8 @@ ci-all: ci test test-install
 # Retains .pi/tasks/ci-emu.*/run.json for serial recovery after interruption (tests/README.md).
 [doc('Isolated emulator workflow parity: lint, services, all test selections')]
 [group('gate')]
+[script]
 ci-emu:
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]; then
       echo 'ci-emu refuses an inherited run manifest' >&2
@@ -1604,8 +1604,8 @@ check-all: pre-commit ci-all
 # let a cached package bypass them.
 [doc('Run the offline tofu test suites of every stack under tofu/')]
 [group('test')]
+[script]
 test-iac:
-    #!/usr/bin/env bash
     set -euo pipefail
     unset TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE
     # The XDG spec ignores an XDG_CACHE_HOME that is not absolute; so does this
@@ -1644,9 +1644,9 @@ add-all host="":
 
 # Add: install Homebrew bundle from dump/<host>/Brewfile; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('setup')]
+[script]
 [unix]
 add-brew host="":
-    #!/usr/bin/env bash
     set -euo pipefail
     host="$(bash scripts/dump_host.sh resolve-restore {{ quote(host) }})"
     brewfile="./dump/$host/Brewfile"
@@ -1657,9 +1657,9 @@ add-brew host="":
 
 # Add: install gcloud components from dump/<host>/gcloud; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('setup')]
+[script]
 [unix]
 add-gcloud host="":
-    #!/usr/bin/env bash
     set -euo pipefail
     host="$(bash scripts/dump_host.sh resolve-restore {{ quote(host) }})"
     dump="./dump/$host/gcloud"
@@ -1687,9 +1687,9 @@ add-gcloud host="":
 # (supersedes ADR 0019's record-only stance; `just dump` still writes the record).
 [doc('Add: restore scoop apps from the host dump (Windows, idempotent)')]
 [group('setup')]
+[script]
 [windows]
 add-scoop host="":
-    #!/usr/bin/env bash
     set -euo pipefail
     case "$(uname -s)" in
       MINGW*|MSYS*|CYGWIN*) : ;;
@@ -1767,8 +1767,8 @@ update-all-safe:
 
 # Update: update and cleanup Homebrew
 [group('setup')]
+[script]
 update-brew:
-    #!/usr/bin/env bash
     set -euo pipefail
     # No Homebrew on native Windows — skip so `update-all` (which calls this)
     # does not abort before its guarded mise/gh/tldr tail.
@@ -1778,8 +1778,8 @@ update-brew:
 
 # Update: update gcloud components
 [group('setup')]
+[script]
 update-gcloud:
-    #!/usr/bin/env bash
     set -euo pipefail
     # No gcloud on native Windows — skip so `update-all` does not abort.
     # (Update the Cloud SDK via its official Windows installer instead.)
@@ -1864,8 +1864,8 @@ check-rust:
 # by design; only user-actionable duplicates are flagged.
 [doc('Validate: detect duplicate command names in PATH')]
 [group('lint')]
+[script]
 validate-path-duplicates:
-    #!/usr/bin/env bash
     set -euo pipefail
     echo '🔎 Validating duplicate commands in PATH...'
     # The role() classifier below only recognizes Unix structural roots
@@ -2005,8 +2005,8 @@ validate-path-duplicates:
 # (cross-platform safe). VALIDATE_PATH overrides the scan target (for tests).
 [doc('Validate: detect Windows drive dirs leaking into a WSL PATH')]
 [group('lint')]
+[script]
 validate-path-windows:
-    #!/usr/bin/env bash
     set -euo pipefail
     echo '🔎 Validating PATH for Windows (/mnt) contamination...'
     scan_path="${VALIDATE_PATH:-$PATH}"
@@ -2127,8 +2127,8 @@ prune-rogue-npm-globals:
 # Idempotent; prints nothing to do when there is nothing.
 [doc('Remove the retired Coder dangling symlinks in ~/.local/bin')]
 [group('setup')]
+[script]
 prune-retired-cdr-symlinks:
-    #!/usr/bin/env bash
     set -euo pipefail
     found=0
     for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
@@ -2268,9 +2268,9 @@ check-version-torch expected:
 # and PROVENANCE.json, which tests/unit/test_site_vendor.py checks.
 [doc('Site: vendor the browser build of the ui-sdk web package')]
 [group('site')]
+[script]
 [unix]
 site-vendor-ui-sdk version min_age="7d":
-    #!/usr/bin/env bash
     set -euo pipefail
     version={{ quote(version) }}
     [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not an exact version: $version" >&2; exit 2; }
@@ -2296,9 +2296,9 @@ site-vendor-ui-sdk version min_age="7d":
 # version again in a temp folder (no wait: it is already adopted) and diffs it.
 [doc('Site: compare the vendored ui-sdk copy with the registry')]
 [group('site')]
+[script]
 [unix]
 site-vendor-ui-sdk-check:
-    #!/usr/bin/env bash
     set -euo pipefail
     folders=(site/vendor/ui-sdk/*/)
     [ "${#folders[@]}" -eq 1 ] || { echo "expected one vendored version" >&2; exit 1; }
@@ -2320,9 +2320,9 @@ site-vendor-ui-sdk-check:
 # private/ (keys and certificates). Port 4173: 8080 is the Firestore emulator.
 [doc('Site: serve the page on 127.0.0.1 to look at it')]
 [group('site')]
+[script]
 [unix]
 site-serve port="4173":
-    #!/usr/bin/env bash
     set -euo pipefail
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
@@ -2360,8 +2360,8 @@ env := ""
 
 # Run the bunx skills CLI, for a Claude home when env=p|a|b|c|d
 [group('agents')]
+[script]
 skills *args:
-    #!/usr/bin/env bash
     set -eu -o pipefail
     config_dir=""
     case "{{ env }}" in
@@ -2517,8 +2517,8 @@ _TAILNET_DIR := "tofu/tailnet"
 # used, kept here with its OWN passphrase file so nothing of this stack depended
 # on that one. Generate it once with
 # umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
+[script]
 _tailnet-encryption:
-    #!/usr/bin/env bash
     set -euo pipefail
     pass=$(cat "${HOME}/.config/tofu/tailnet.passphrase")
     cat <<EOF
@@ -2538,8 +2538,8 @@ _tailnet-encryption:
     }
     EOF
 
+[script]
 _tailnet-tofu *args:
-    #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}/{{ _TAILNET_DIR }}"
     TF_ENCRYPTION="$(just _tailnet-encryption)"
@@ -2564,8 +2564,8 @@ tailnet-test *args:
 # Plan against the live tailnet, saved for review.
 [doc('Plan against the live tailnet, saved for review')]
 [group('tailnet')]
+[script]
 tailnet-plan *args:
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${TAILSCALE_API_KEY:-}" ] && [ -z "${TAILSCALE_OAUTH_CLIENT_ID:-}" ]; then
       echo "tailnet-plan: set TAILSCALE_API_KEY, or TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET" >&2
@@ -2626,8 +2626,8 @@ emu-up-full nobuild='no':
 
 # One-shot LITE: clean volumes -> prebuild lite images -> up lite -> wait
 [group('emulator')]
+[script]
 emu-start:
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated runs; refusing shared resources' >&2; exit 2; fi
     cd emulator
@@ -2641,8 +2641,8 @@ emu-start:
 
 # One-shot FULL: clean volumes -> prebuild heavy images -> up everything -> wait
 [group('emulator')]
+[script]
 emu-start-full:
-    #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated runs; refusing shared resources' >&2; exit 2; fi
     cd emulator
@@ -2685,8 +2685,8 @@ emu-clean:
 
 # Check emulator port usage before starting
 [group('emulator')]
+[script]
 emu-port-check:
-    #!/usr/bin/env bash
     set -uo pipefail
     echo '🔍 Checking emulator port usage...'
     # Includes the cross-stack collision ports (9399/4000/4400 firebase, 4317/4318
@@ -2729,8 +2729,8 @@ emu-test-e2e:
 
 # Format emulator (ruff + golangci-lint fmt for CLIs)
 [group('emulator')]
+[script]
 emu-fmt:
-    #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
     cd emulator
@@ -2742,8 +2742,8 @@ emu-fmt:
 
 # Lint emulator (ruff + semgrep root rules + markdownlint, emulator-scoped)
 [group('emulator')]
+[script]
 emu-lint:
-    #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
     cd emulator
@@ -2765,8 +2765,8 @@ emu-lint:
 # Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
 [doc('Start the emulate API emulators via bunx on the host (base 4100)')]
 [group('emulator')]
+[script]
 emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
-    #!/usr/bin/env bash
     set -euo pipefail
     command -v bunx >/dev/null 2>&1 || { echo '❌ bunx not found (need bun)'; exit 127; }
     cd emulator/emulate
@@ -2777,8 +2777,8 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
 # Podman container is involved, unlike emu-stop / tel-down)
 [doc('Stop the emulate API emulators started by emu-api')]
 [group('emulator')]
+[script]
 emu-api-stop:
-    #!/usr/bin/env bash
     set -euo pipefail
     pids="$(pgrep -f 'emulate.* --service' 2>/dev/null || true)"
     if [ -z "$pids" ]; then

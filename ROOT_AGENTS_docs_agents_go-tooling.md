@@ -97,8 +97,8 @@ Lint and format with **golangci-lint v2**: one tool, one config.
   default `sh -cu`, a loop returns only the last GOOS's exit code.
 
 ```just
+[script]
 go-lint:
-    #!/usr/bin/env bash
     set -euo pipefail
     for goos in windows linux darwin; do GOOS="$goos" golangci-lint run ./...; done
     golangci-lint fmt --diff ./...

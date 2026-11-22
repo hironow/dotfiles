@@ -24,15 +24,16 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
+TEMPLATE = ROOT / "templates/agent-baseline/justfile"
 WINDOWS_SH = Path(r"C:\Program Files\Git\usr\bin\sh.exe")
-# The recipes converted first, one for each CI path: Linux (small-checks, in
-# small-checks.yaml), Linux and Windows (go-test, in check.yaml and the
-# Windows Go job), Windows PowerShell 5.1 (test-windows-powershell).
-PILOT = ("small-checks", "go-test", "test-windows-powershell")
+# Recipes that CI runs as script recipes on each path: Linux (small-checks),
+# Linux and Windows (go-test, in check.yaml and the Windows Go job), and
+# Windows PowerShell 5.1 (test-windows-powershell).
+ON_CI = ("small-checks", "go-test", "test-windows-powershell")
 
 
-def _setting(os_attr: str) -> list[str]:
-    text = JUSTFILE.read_text(encoding="utf-8")
+def _setting(os_attr: str, path: Path = JUSTFILE) -> list[str]:
+    text = path.read_text(encoding="utf-8")
     m = re.search(
         rf"^\[{os_attr}\]\nset script-interpreter := \[(.+)\]$", text, re.MULTILINE
     )
@@ -71,8 +72,8 @@ def test_windows_puts_usr_bin_first_and_runs_gits_bash() -> None:
     assert re.search(r'exec /usr/bin/bash "\$0" "\$@"$', argv[2]), argv[2]
 
 
-@pytest.mark.parametrize("name", PILOT)
-def test_the_pilot_recipes_are_script_recipes(name: str) -> None:
+@pytest.mark.parametrize("name", ON_CI)
+def test_the_recipes_ci_runs_are_script_recipes(name: str) -> None:
     attrs, body = _header(name)
     assert "[script]" in attrs, attrs
     assert not body[0].strip().startswith("#!"), body[0]
@@ -159,3 +160,19 @@ def test_real_msys_sh_runs_a_script_that_finds_git_bash(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[0] == "/usr/bin/bash"
     assert result.stdout.splitlines()[1] in ("msys", "cygwin")
+
+
+@pytest.mark.parametrize("path", [JUSTFILE, TEMPLATE], ids=["justfile", "template"])
+def test_no_recipe_runs_through_a_shebang_line(path: Path) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    shebang = [
+        lines[i - 1]
+        for i, line in enumerate(lines)
+        if line.startswith("    #!") and i > 0 and not lines[i - 1].startswith(" ")
+    ]
+    assert not shebang, shebang
+
+
+def test_the_template_sets_the_same_interpreters() -> None:
+    assert _setting("unix", TEMPLATE) == _setting("unix")
+    assert _setting("windows", TEMPLATE) == _setting("windows")

@@ -245,9 +245,10 @@ def test_the_python_spoke_and_the_template_type_check_every_os():
 
 def test_the_go_spoke_lints_for_every_os_it_ships_to():
     block = _recipe("go-lint", _just_blocks(GO_SPOKE))
-    # a shebang recipe with errexit: a loop in just's default `sh -cu` would
-    # return only the last GOOS's exit code
-    assert block.lstrip().startswith("#!/usr/bin/env bash")
+    # one bash process with errexit ([script]): a loop in just's default
+    # linewise `sh -cu` would return only the last GOOS's exit code
+    assert "[script]\ngo-lint:" in _just_blocks(GO_SPOKE)
+    assert block.lstrip().startswith("set -euo pipefail")
     assert "set -euo pipefail" in block
     loop = re.search(r"for goos in ([^;\n]+); do", block)
     assert loop and set(loop.group(1).split()) == GOOSES
@@ -273,7 +274,8 @@ def test_the_rust_spoke_lints_for_every_target_it_ships_to():
     assert listed, "the rust block must list the shipped targets once"
     targets = set(listed.group(1).split())
     body = _recipe("rust-lint", blocks)
-    assert body.lstrip().startswith("#!/usr/bin/env bash")
+    assert "[script]\nrust-lint " in blocks
+    assert body.lstrip().startswith("set -euo pipefail")
     assert "set -euo pipefail" in body
     assert re.search(r"for target in \{\{ targets \}\}; do", body)
     assert 'rustup target add "$target"' in body

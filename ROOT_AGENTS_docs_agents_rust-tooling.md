@@ -62,8 +62,8 @@ only the last target's exit code.
 ```just
 rust_targets := "x86_64-unknown-linux-musl aarch64-unknown-linux-musl aarch64-apple-darwin x86_64-pc-windows-msvc"
 
+[script]
 rust-lint *targets=rust_targets:
-    #!/usr/bin/env bash
     set -euo pipefail
     cargo fmt --all --check
     for target in {{ targets }}; do
