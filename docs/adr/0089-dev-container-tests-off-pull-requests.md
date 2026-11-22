@@ -34,7 +34,7 @@ shellcheck, actionlint and the semgrep rule tests run in one small job.
 - D2. `check.yaml` runs `just check` on ready pull requests and on main, without a container, as three parallel jobs: `just check-except-go`, `just go-lint`, `just go-test`. `just check` runs the same three in a row. The gate job "just check (no container)" needs all three and fails when any is not a success. The tools come from `.devcontainer/ci-bootstrap.sh --tools-only`: the same pinned mise, verified by checksum, and the same frozen tool versions as the container image, without Podman.
 - D3. `unit-test.yaml` runs the unit suite in shards (pytest-split, `least_duration`): three on Linux (`tests/durations/unit.json`) and four on Windows (`tests/durations/unit-windows.json`), and the Windows PowerShell 5.1 tests in a job of their own. The jobs "unit tests + instruction budget" and "Unit tests on Windows, and on Windows PowerShell 5.1" keep their names and become gates: each needs its shards, reads one collected list per shard, and runs `ci-audit shards`, which fails when a collected test did not run, ran twice, was not collected, when a module failed to collect, when the shards collected different lists, when a shard ran nothing, or when the slowest shard is more than 1.5 times the mean. A module that skips itself at collection (POSIX-only modules on Windows) is listed in the output and is not a test.
 - D4. `small-checks.yaml` (replacing `shellcheck.yaml`) runs `just small-checks`: shellcheck over every tracked `*.sh` outside `emulator/`, actionlint 1.7.12 (release archive checked against its sha256), and `just semgrep-test`. Each checker runs to the end and the recipe lists every failure. `just semgrep-test` ran on pull requests only inside the dev container job before; it now runs on every pull request.
-- D5. `tools/ci-audit` (`just ci-audit`, `just ci-shard-check`): per job, waiting, setup, running and after at p50 and p95 over every attempt of the last completed runs (paged past 100; timed-out runs count); the step counted as running is printed, and `--recipe-step "JOB=STEP"` names it where the longest step is not the recipe; per push, when the pull request had its result and its runner seconds. `--branch` and `--event` fix the sample.
+- D5. `tools/ci-audit` (`just ci-audit`, `just ci-shard-check`): per job, waiting, setup, running and after at p50 and p95 over every attempt of the last completed runs (paged past 100; timed-out runs count); the step counted as running is printed, and `--recipe-step "JOB=STEP"` names it where the longest step is not the recipe; per push, when the pull request had its result and its runner seconds. A push is left out of the result sample, and counted, when a run is still in progress, a run was cancelled (a newer commit landed), a run of an audited workflow was not read (each push is checked against GitHub's list of runs for its commit), it started before the window of a workflow whose fetch the run limit cut, or one workflow ran twice for it; cancelled jobs still count as runner time. `--branch` and `--event` fix the sample.
 
 ## Exception to ADR-0088
 
@@ -49,9 +49,11 @@ Measured with `just ci-audit` on 2026-11-22, from GitHub's REST jobs endpoint. P
 
 | Pull request pushes | n | result p50 / p95 | runner seconds p50 / p95 |
 | ------------------- | - | ---------------- | ------------------------ |
-| Before: other branches, old layout (last 150 runs of each workflow) | 119 | 1380 s / 1662 s (23.0 / 27.7 min) | 2890 s / 3847 s |
-| After: this PR, from the first push without the dev container job | 5 | 395 s / 455 s (6.6 / 7.6 min) | 2028 s / 2310 s |
-| After: this PR, the final layout only (pushes b7bf64ae, f381cf38) | 2 | 327 s, 319 s | 2310 s, 2143 s |
+| Before: other branches, old layout (last 150 runs of each workflow) | 105 | 1447 s / 1662 s (24.1 / 27.7 min) | 2965 s / 3913 s |
+| After: this PR, from the first push without the dev container job | 7 | 376 s / 455 s (6.3 / 7.6 min) | 2143 s / 2350 s |
+| After: this PR, the final layout only (b7bf64ae and the three pushes after it) | 4 | 327 s / 376 s (5.5 / 6.3 min) | 2302 s / 2350 s |
+
+Left out of the before sample, and counted: 21 pushes with a cancelled run (a newer commit landed), 1 with a run that was not read, 1 with a run still in progress, and 105 that started before the window of a workflow whose last 150 runs did not reach back to them.
 
 The after samples are few; they are the PR's own runs. The table in docs/agents/ci-speed.md asks for p50 under 60 s; this change does not reach it (see "Budgets" and "Not done").
 
@@ -62,13 +64,13 @@ Per job, seconds from start to end (before: p50 / p95 over the audit's runs; aft
 | Required disposable Podman devcontainer build/up/exec | 1416 / 1751 | not on pull requests |
 | Unit tests on Windows (+ PowerShell 5.1), one job | 739 / 892 | 4 shards 93-149, 5.1 tests 125, gate 11 |
 | unit tests + instruction budget (ubuntu), one job | 432 / 523 | 3 shards 63-73, extras 123, gate 7 |
-| `just check`, one container-free job (this PR's run 45014603116, before the split) | 389 | check-except-go 114, go-lint 295, go-test 109, gate 4 |
+| `just check`, one container-free job (this PR's run 45014603116, before the split) | 392 | check-except-go 114, go-lint 295, go-test 109, gate 4 |
 | shellcheck (`shellcheck *.sh`, the root scripts only; n=42) | 6 / 11 | small checks (every tracked `*.sh`, actionlint, semgrep rule tests) 21 |
 | Test Emulators (unit-integration-e2e) | 261 / 325 | 316 (unchanged) |
 | Go tests on Windows (tools/) | 121 / 185 | 94 (unchanged) |
 | Go tests (tools/) | 80 / 97 | 78 (unchanged) |
 
-Total CI cost: GitHub-hosted standard runners on a public repository are free, so the money cost is $0 before and after. Runner time per pull request push fell from 2890 s at p50 to 2143 s and 2310 s on the final layout's two pushes.
+Total CI cost: GitHub-hosted standard runners on a public repository are free, so the money cost is $0 before and after. Runner time per pull request push fell from 2965 s to 2302 s at p50 (the final layout).
 
 ## Budgets
 
