@@ -1,0 +1,52 @@
+name: Small checks
+
+# shellcheck, actionlint, and the semgrep rules' own tests in one job
+# (docs/agents/ci-speed.md, "Shape"; ADR-0089). `just small-checks` runs each
+# to the end and lists every failure. The semgrep rule tests ran on pull
+# requests only inside the dev container job before; that job now runs on main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # ready_for_review is not in the default event set; without it a draft
+    # marked ready would not get a run until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  small-checks:
+    name: small checks (shellcheck, actionlint, semgrep rule tests)
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    # About twice the 30 s the checks take on a Mac (semgrep-test 13 s, with
+    # its first download of semgrep).
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # shellcheck comes with the runner image. actionlint is the release
+      # archive, checked against the sha256 in its release's checksums file.
+      - name: Install just and actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          uv tool install rust-just
+          bin="$(uv tool dir --bin)"
+          tmp="$(mktemp -d)"
+          curl -fsSL --retry 3 -o "$tmp/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $tmp/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/actionlint.tar.gz" -C "$tmp" actionlint
+          install -m 0755 "$tmp/actionlint" "$bin/actionlint"
+          echo "$bin" >> "$GITHUB_PATH"
+          "$bin/actionlint" --version
+      - name: Run the small checks
+        run: just small-checks

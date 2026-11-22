@@ -163,6 +163,27 @@ agent-baseline-test:
 [group('Validation')]
 validate: semgrep-test meta-semgrep
 
+# The small checks in one job (docs/agents/ci-speed.md, "Shape"; ADR-0089):
+# shellcheck over every tracked *.sh outside emulator/ (the list `just check`
+# uses), actionlint over every workflow, and the semgrep rules' own tests.
+# Each checker runs to the end; the recipe lists every failure, then fails.
+[group('Validation')]
+small-checks:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    failed=()
+    echo '🔎 shellcheck (every tracked *.sh outside emulator/)'
+    git ls-files -z '*.sh' ':!emulator' | xargs -0 -r shellcheck || failed+=(shellcheck)
+    echo '🔎 actionlint (every workflow)'
+    actionlint || failed+=(actionlint)
+    echo '🔎 semgrep rules against their own fixtures'
+    just semgrep-test || failed+=(semgrep-test)
+    if [ "${#failed[@]}" -gt 0 ]; then
+      echo "❌ small checks failed: ${failed[*]}" >&2
+      exit 1
+    fi
+    echo '✅ small checks passed'
+
 # Gate the always-loaded instruction budget. Counts Markdown list items
 # (code fences / HTML comments excluded) in the base + overlay as a proxy
 # for instruction count. Cap = 40: measured 31 at introduction (2026-06)
