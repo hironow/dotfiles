@@ -27,6 +27,16 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 [windows]
 set shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH"; exec /usr/bin/sh -eu -o pipefail -c "$0"']
 
+# Script recipes (`[script]`) run through script-interpreter instead of a
+# `#!` line. No shell flags: each recipe keeps its own `set` line. On native
+# Windows the same /usr/bin-first prelude as the shell above runs Git's bash,
+# so a bare `bash` in a body is not WSL's (tests/unit/test_just_script.py).
+[unix]
+set script-interpreter := ["bash"]
+
+[windows]
+set script-interpreter := ["sh", "-c", 'PATH="/usr/bin:$PATH"; exec /usr/bin/bash "$0" "$@"']
+
 # External commands. Wrapping every mise-managed tool with `mise exec --`
 # at call time guarantees the mise-pinned version even from
 # non-mise-activated bash sub-shells (= the shell `just` spawns under
@@ -181,8 +191,8 @@ validate: semgrep-test meta-semgrep
 # shellcheck, actionlint and the semgrep rule tests, every failure listed
 [doc('Check: shellcheck, actionlint and semgrep rule tests, all failures listed')]
 [group('gate')]
+[script]
 small-checks:
-    #!/usr/bin/env bash
     set -uo pipefail
     failed=()
     echo '🔎 shellcheck (every tracked *.sh outside emulator/)'
@@ -913,9 +923,9 @@ test-unit *args:
 # differently from the pwsh 7 that test-unit uses. Run their tests on 5.1.
 [doc('Test: the GC and bootstrap scripts on Windows PowerShell 5.1')]
 [group('test')]
+[script]
 [windows]
 test-windows-powershell:
-    #!/usr/bin/env bash
     set -euo pipefail
     identity="$(powershell.exe -NoProfile -NonInteractive -Command "'{0} {1}' -f \$PSVersionTable.PSVersion, \$PSVersionTable.PSEdition")"
     identity="${identity%$'\r'}"
@@ -1174,8 +1184,8 @@ rttm-check: rttm-lint rttm-typecheck
 # actions/setup-go, runs `just go-test go` (a positional argument).
 [doc('Go: go test -short for every tools/ module and the health probe')]
 [group('test')]
+[script]
 go-test go="mise x -- go":
-    #!/usr/bin/env bash
     set -euo pipefail
     git ls-files -z 'tools/**/go.mod' 'emulator/healthcheck/go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"

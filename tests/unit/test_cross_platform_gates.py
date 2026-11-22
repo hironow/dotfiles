@@ -153,7 +153,13 @@ def test_windows_ci_runs_the_go_tests():
 
 def test_the_5_1_recipe_checks_the_runtime_then_runs_the_scripts_tests():
     text = JUSTFILE.read_text(encoding="utf-8")
-    assert "[group('test')]\n[windows]\ntest-windows-powershell:\n" in text
+    # the attribute lines above the recipe, in whatever order `just --fmt` keeps
+    attrs = re.search(
+        r"((?:^\[[^\]]*\]\n)+)test-windows-powershell:\n", text, re.MULTILINE
+    )
+    assert attrs, "test-windows-powershell must be a recipe with attributes"
+    assert "[group('test')]\n" in attrs.group(1)
+    assert "[windows]\n" in attrs.group(1)
     body = _recipe("test-windows-powershell")
     assert '"5.1."*" Desktop")' in body
     run = body.index(
