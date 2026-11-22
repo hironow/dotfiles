@@ -1,5 +1,8 @@
 # https://just.systems
 
+# The oldest just this file is written for (the image and CI pin 1.59.0).
+set minimum-version := "1.59.0"
+
 [unix]
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
@@ -26,6 +29,9 @@ set shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH"; exec 
 # non-mise-activated bash sub-shells (= the shell `just` spawns under
 # ADR 0023 / ADR 0025).
 MARKDOWNLINT := "mise exec -- markdownlint-cli2"
+# The manual gives `just --fmt` no promise of the same output across
+# versions: write and check with the pinned just (config/mise/image-tools.toml).
+JUST_FMT := "mise x just@1.59.0 -- just"
 PDOC := "mise exec -- uv run pdoc"
 UV := "mise exec -- uv"
 # --frozen: the root is a uv project now (dev deps pytest/ruff/ty, ADR 0044);
@@ -954,6 +960,9 @@ fmt:
     @just rttm-fmt
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    @echo '🔧 justfiles (just --fmt, the pinned just)...'
+    {{ JUST_FMT }} --justfile justfile --fmt
+    {{ JUST_FMT }} --justfile templates/agent-baseline/justfile --fmt
     @echo '🔧 JS/TS (vp fmt)...'
     git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site fmt
     @echo '✅ fmt done.'
@@ -1028,6 +1037,9 @@ check-except-go:
     git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2
+    @echo '🔎 justfiles (just --fmt --check, the pinned just)...'
+    {{ JUST_FMT }} --justfile justfile --fmt --check
+    {{ JUST_FMT }} --justfile templates/agent-baseline/justfile --fmt --check
     @echo '🔎 JS/TS (vp fmt --check, oxlint, bun check)...'
     git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site fmt --check
     just js-lint

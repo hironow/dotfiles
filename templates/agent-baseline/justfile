@@ -1,6 +1,9 @@
 # justfile — the ONLY task runner for this repo (no make, no npm scripts).
 # Exactly one justfile, at the root. `just` with no args prints this list.
 
+# The oldest just this file is written for.
+set minimum-version := "1.59.0"
+
 # Show available tasks (default)
 default: help
 
