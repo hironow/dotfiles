@@ -29,6 +29,10 @@ def test_matrix_splits_and_gate_agree_on_the_shard_count() -> None:
     assert f"--splits {count}" in shard
     gate = _job("unit")
     assert len(re.findall(r"--junit ", gate)) == count
+    # One list per shard, compared by ids: a byte compare fails on pytest's
+    # summary line, which holds the collection time.
+    assert len(re.findall(r"--collected ", gate)) == count
+    assert "cmp " not in gate
     assert f"of {count})" in shard
 
 

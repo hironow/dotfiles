@@ -182,15 +182,15 @@ jobs:
           pattern: unit-shard-*
           path: ${{ runner.temp }}/shards
           merge-multiple: true
-      - name: Every shard collected the same list
-        run: |
-          cmp "$RUNNER_TEMP/shards/collected-1.txt" "$RUNNER_TEMP/shards/collected-2.txt"
-          cmp "$RUNNER_TEMP/shards/collected-1.txt" "$RUNNER_TEMP/shards/collected-3.txt"
-      - name: Prove that the shards ran every collected test once
+      # Each shard's list is compared by its ids: pytest ends the list with a
+      # summary line that holds the collection time, so the bytes differ.
+      - name: Prove that the shards collected one list and ran every test in it once
         working-directory: tools/ci-audit
         run: >-
           go run . shards
           --collected "$RUNNER_TEMP/shards/collected-1.txt"
+          --collected "$RUNNER_TEMP/shards/collected-2.txt"
+          --collected "$RUNNER_TEMP/shards/collected-3.txt"
           --junit "$RUNNER_TEMP/shards/shard-1.xml"
           --junit "$RUNNER_TEMP/shards/shard-2.xml"
           --junit "$RUNNER_TEMP/shards/shard-3.xml"
