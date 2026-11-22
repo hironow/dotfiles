@@ -276,6 +276,26 @@ pi-extensions-install:
 # and skill with its newest version. With a name: move that one (newest, or the
 # given version) and install it here. Declared items skip the 7-day wait; new
 # ones are added by hand. Commit and PR stay manual (ADR 0074).
+# CI audit (docs/agents/ci-speed.md): where each CI job's time goes, as p50/p95
+# seconds over the last N completed runs of the named workflow files. Waiting is
+# a job's started time minus its created time, so a job that `needs` another is
+# not charged for the wait. Reads GitHub through the `gh` CLI (log in first).
+#   just ci-audit                      # the 8 workflows, last 50 runs each
+#   just ci-audit 150 unit-test.yaml   # one workflow, last 150 runs
+[group('Test')]
+ci-audit runs="50" *workflows="unit-test.yaml test-just.yaml frontend-ci.yaml small-checks.yaml claude-lint.yaml iac-test.yaml test-emulators.yaml test-podman-gc-compat.yaml":
+    @mise exec -- go -C tools/ci-audit run . jobs --repo "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" --runs {{ runs }} {{ workflows }}
+
+# CI audit: prove that the shards of a split test run together ran every test once
+# (docs/agents/ci-speed.md "Shards"). Pass the collected list of the whole suite
+# and one JUnit report per shard; add --durations-out FILE to write the balance
+# data for the next split. Fails on a missing, unexpected or doubled test, on a
+# shard that ran nothing, and when the slowest shard is over 1.5 times the mean.
+#   just ci-shard-check --collected all.txt --junit 1.xml --junit 2.xml --junit 3.xml
+[group('Test')]
+ci-shard-check *args:
+    @mise exec -- go -C tools/ci-audit run . shards {{ args }}
+
 # Show or move the versions of declared agent plugins and skills
 [group('Agents')]
 agent-bump *args:

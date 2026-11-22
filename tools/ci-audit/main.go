@@ -1,0 +1,137 @@
+// ci-audit measures CI the way docs/agents/ci-speed.md asks. Run it through
+// `just ci-audit` and `just ci-shard-check`.
+//
+//	ci-audit jobs --repo OWNER/REPO [--runs N] WORKFLOW...
+//	    where each job's time goes (waiting, setup, running, after), at p50 and p95,
+//	    over the last N completed runs of each workflow file.
+//
+//	ci-audit shards --junit FILE... --collected FILE [--max-imbalance X] [--durations-out FILE]
+//	    proves that the shards together ran every collected test once.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/goccy/go-json"
+
+	"github.com/hironow/dotfiles/tools/ci-audit/internal/ghrest"
+	"github.com/hironow/dotfiles/tools/ci-audit/internal/jobaudit"
+	"github.com/hironow/dotfiles/tools/ci-audit/internal/shardcheck"
+)
+
+func main() {
+	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, ghrest.GH{}))
+}
+
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, api ghrest.Runs) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "usage: ci-audit jobs|shards ...")
+		return 2
+	}
+	switch args[0] {
+	case "jobs":
+		return runJobs(ctx, args[1:], stdout, stderr, api)
+	case "shards":
+		return runShards(args[1:], stdout, stderr)
+	}
+	fmt.Fprintf(stderr, "ci-audit: unknown command %q\n", args[0])
+	return 2
+}
+
+func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api ghrest.Runs) int {
+	flags := flag.NewFlagSet("jobs", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repo := flags.String("repo", "", "OWNER/REPO")
+	runs := flags.Int("runs", 150, "how many completed runs of each workflow to read")
+	if err := flags.Parse(args); err != nil || *repo == "" || flags.NArg() == 0 || *runs < 1 {
+		fmt.Fprintln(stderr, "usage: ci-audit jobs --repo OWNER/REPO [--runs N] WORKFLOW.yaml...")
+		return 2
+	}
+	var all []jobaudit.Job
+	for _, workflow := range flags.Args() {
+		jobs, err := ghrest.Fetch(ctx, api, *repo, workflow, *runs)
+		if err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+		all = append(all, jobs...)
+	}
+	rows := jobaudit.Summarize(all)
+	if len(rows) == 0 {
+		fmt.Fprintln(stderr, "ci-audit: no completed job was found")
+		return 1
+	}
+	fmt.Fprintf(stdout, "Seconds as p50/p95 over the completed runs (each run attempt is its own sample).\n"+
+		"waiting = started minus created; setup = steps before the recipe; running = the recipe step;\n"+
+		"after = steps behind it; total = completed minus started.\n\n%s", jobaudit.Render(rows))
+	return 0
+}
+
+type listFlag []string
+
+func (l *listFlag) String() string     { return strings.Join(*l, ",") }
+func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+
+func runShards(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("shards", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	var junit listFlag
+	flags.Var(&junit, "junit", "a shard's JUnit report (repeat once per shard)")
+	collected := flags.String("collected", "", "the `pytest --collect-only -q` list of the whole suite")
+	maxImbalance := flags.Float64("max-imbalance", 1.5, "the largest allowed ratio of the slowest shard to the mean (0 turns it off)")
+	durationsOut := flags.String("durations-out", "", "write per-test seconds, keyed by node id, to this file")
+	if err := flags.Parse(args); err != nil || len(junit) == 0 || *collected == "" {
+		fmt.Fprintln(stderr, "usage: ci-audit shards --collected FILE --junit FILE [--junit FILE...] [--max-imbalance X] [--durations-out FILE]")
+		return 2
+	}
+	list, err := os.ReadFile(*collected)
+	if err != nil {
+		fmt.Fprintln(stderr, "ci-audit:", err)
+		return 1
+	}
+	ids := shardcheck.ParseCollected(list)
+	shards := make([]shardcheck.Shard, 0, len(junit))
+	for i, path := range junit {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+		cases, err := shardcheck.ParseJUnit(data)
+		if err != nil {
+			fmt.Fprintf(stderr, "ci-audit: %s: %v\n", path, err)
+			return 1
+		}
+		shards = append(shards, shardcheck.Shard{Name: fmt.Sprintf("shard-%d (%s)", i+1, path), Collected: ids, Cases: cases})
+	}
+	report := shardcheck.Check(shards, shardcheck.Options{MaxImbalance: *maxImbalance})
+	fmt.Fprintf(stdout, "collected %d tests; %d executed by %d shards; slowest shard is %.2f times the mean\n",
+		report.Expected, report.Executed, len(shards), report.Imbalance)
+	for _, s := range shards {
+		fmt.Fprintf(stdout, "  %-60s %6.0fs\n", s.Name, report.ShardSeconds[s.Name])
+	}
+	if *durationsOut != "" {
+		data, err := json.MarshalIndent(report.Durations, "", "  ")
+		if err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+		if err := os.WriteFile(*durationsOut, append(data, '\n'), 0o600); err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+	}
+	if !report.OK() {
+		for _, p := range report.Problems {
+			fmt.Fprintln(stderr, "FAIL:", p)
+		}
+		return 1
+	}
+	fmt.Fprintln(stdout, "OK: every collected test ran once")
+	return 0
+}
