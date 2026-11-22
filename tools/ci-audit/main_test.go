@@ -71,6 +71,49 @@ func TestShardsFailsWhenACaseWasDropped(t *testing.T) {
 	}
 }
 
+// Each shard writes its own collected list, and pytest ends that list with a
+// summary line that holds the collection time. Two runs differ there and
+// nowhere else, so the lists must be compared by their ids, not their bytes.
+func TestShardsComparesEachShardsListByItsIDs(t *testing.T) {
+	dir := t.TempDir()
+	listOne := write(t, dir, "all-1.txt", collectedList+"\n3 tests collected in 0.68s\n")
+	listTwo := write(t, dir, "all-2.txt", collectedList+"\n3 tests collected in 1.00s\n")
+	one := write(t, dir, "1.xml", junit(tc("tests.unit.test_a", "test_one", "1"), tc("tests.unit.test_b", "test_three", "1")))
+	two := write(t, dir, "2.xml", junit(tc("tests.unit.test_a", "test_two", "2")))
+	var stdout, stderr bytes.Buffer
+	args := []string{"shards", "--collected", listOne, "--collected", listTwo, "--junit", one, "--junit", two, "--max-imbalance", "0"}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestShardsFailsWhenOneShardCollectedADifferentList(t *testing.T) {
+	dir := t.TempDir()
+	listOne := write(t, dir, "all-1.txt", collectedList)
+	listTwo := write(t, dir, "all-2.txt", "tests/unit/test_a.py::test_one\ntests/unit/test_a.py::test_two\n")
+	one := write(t, dir, "1.xml", junit(tc("tests.unit.test_a", "test_one", "1"), tc("tests.unit.test_b", "test_three", "1")))
+	two := write(t, dir, "2.xml", junit(tc("tests.unit.test_a", "test_two", "2")))
+	var stdout, stderr bytes.Buffer
+	args := []string{"shards", "--collected", listOne, "--collected", listTwo, "--junit", one, "--junit", two, "--max-imbalance", "0"}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 1 {
+		t.Fatalf("exit %d, want 1\nstderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "collected a different list") {
+		t.Fatalf("the differing shard is not reported:\n%s", stderr.String())
+	}
+}
+
+func TestShardsNeedsOneCollectedListOrOnePerShard(t *testing.T) {
+	dir := t.TempDir()
+	list := write(t, dir, "all.txt", collectedList)
+	one := write(t, dir, "1.xml", junit(tc("tests.unit.test_a", "test_one", "1")))
+	var stdout, stderr bytes.Buffer
+	args := []string{"shards", "--collected", list, "--collected", list, "--junit", one}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 2 {
+		t.Fatalf("exit %d, want 2 (two lists for one report)", code)
+	}
+}
+
 func TestShardsNeedsTheCollectedListAndAReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(context.Background(), []string{"shards", "--junit", "x.xml"}, &stdout, &stderr, noNetwork{}); code != 2 {

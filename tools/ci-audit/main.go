@@ -5,8 +5,10 @@
 //	    where each job's time goes (waiting, setup, running, after), at p50 and p95,
 //	    over the last N completed runs of each workflow file.
 //
-//	ci-audit shards --junit FILE... --collected FILE [--max-imbalance X] [--durations-out FILE]
-//	    proves that the shards together ran every collected test once.
+//	ci-audit shards --junit FILE... --collected FILE... [--max-imbalance X] [--durations-out FILE]
+//	    proves that the shards together ran every collected test once. Give
+//	    --collected once, or once per shard in --junit order; each shard's list
+//	    is compared with the first by its ids.
 package main
 
 import (
@@ -83,21 +85,33 @@ func runShards(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	var junit listFlag
 	flags.Var(&junit, "junit", "a shard's JUnit report (repeat once per shard)")
-	collected := flags.String("collected", "", "the `pytest --collect-only -q` list of the whole suite")
+	var collected listFlag
+	flags.Var(&collected, "collected", "the `pytest --collect-only -q` list of the whole suite (once, or once per shard in --junit order)")
 	maxImbalance := flags.Float64("max-imbalance", 1.5, "the largest allowed ratio of the slowest shard to the mean (0 turns it off)")
 	durationsOut := flags.String("durations-out", "", "write per-test seconds, keyed by node id, to this file")
-	if err := flags.Parse(args); err != nil || len(junit) == 0 || *collected == "" {
-		fmt.Fprintln(stderr, "usage: ci-audit shards --collected FILE --junit FILE [--junit FILE...] [--max-imbalance X] [--durations-out FILE]")
+	err := flags.Parse(args)
+	if err != nil || len(junit) == 0 || (len(collected) != 1 && len(collected) != len(junit)) {
+		fmt.Fprintln(stderr, "usage: ci-audit shards --collected FILE [--collected FILE...] --junit FILE [--junit FILE...] [--max-imbalance X] [--durations-out FILE]\n"+
+			"  give --collected once, or once per --junit, in the same order")
 		return 2
 	}
-	list, err := os.ReadFile(*collected)
-	if err != nil {
-		fmt.Fprintln(stderr, "ci-audit:", err)
-		return 1
+	// Each shard's list is compared by its ids, so pytest's summary line, which
+	// holds the collection time, never makes two equal lists differ.
+	lists := make([][]string, len(collected))
+	for i, path := range collected {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintln(stderr, "ci-audit:", err)
+			return 1
+		}
+		lists[i] = shardcheck.ParseCollected(data)
 	}
-	ids := shardcheck.ParseCollected(list)
 	shards := make([]shardcheck.Shard, 0, len(junit))
 	for i, path := range junit {
+		ids := lists[0]
+		if len(lists) > 1 {
+			ids = lists[i]
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			fmt.Fprintln(stderr, "ci-audit:", err)
