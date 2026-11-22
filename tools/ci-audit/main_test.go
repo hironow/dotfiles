@@ -139,6 +139,14 @@ func TestShardsNeedsTheCollectedListAndAReport(t *testing.T) {
 	}
 }
 
+func TestARecipeStepThatIsNotJobEqualsStepIsAUsageError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	args := []string{"jobs", "--repo", "o/r", "--recipe-step", "no-equals-sign", "x.yaml"}
+	if code := run(context.Background(), args, &stdout, &stderr, noNetwork{}); code != 2 {
+		t.Fatalf("exit %d, want 2\n%s", code, stderr.String())
+	}
+}
+
 func TestUnknownCommandIsAUsageError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(context.Background(), []string{"frobnicate"}, &stdout, &stderr, noNetwork{}); code != 2 {

@@ -1,9 +1,10 @@
 // ci-audit measures CI the way docs/agents/ci-speed.md asks. Run it through
 // `just ci-audit` and `just ci-shard-check`.
 //
-//	ci-audit jobs --repo OWNER/REPO [--runs N] WORKFLOW...
+//	ci-audit jobs --repo OWNER/REPO [--runs N] [--branch B] [--event E] [--recipe-step JOB=STEP...] WORKFLOW...
 //	    where each job's time goes (waiting, setup, running, after), at p50 and p95,
-//	    over the last N completed runs of each workflow file.
+//	    over the last N completed runs of each workflow file, every attempt; and
+//	    per push, when the pull request had its result and the runner seconds.
 //
 //	ci-audit shards --junit FILE... --collected FILE... [--max-imbalance X] [--durations-out FILE]
 //	    proves that the shards together ran every collected test once. Give
@@ -51,20 +52,34 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 	flags.SetOutput(stderr)
 	repo := flags.String("repo", "", "OWNER/REPO")
 	runs := flags.Int("runs", 150, "how many completed runs of each workflow to read")
+	branch := flags.String("branch", "", "read only the runs of this branch")
+	event := flags.String("event", "", "read only the runs this event started (push, pull_request, ...)")
+	var recipeSteps listFlag
+	flags.Var(&recipeSteps, "recipe-step", "JOB=STEP: count STEP as JOB's running step (repeat per job)")
 	if err := flags.Parse(args); err != nil || *repo == "" || flags.NArg() == 0 || *runs < 1 {
-		fmt.Fprintln(stderr, "usage: ci-audit jobs --repo OWNER/REPO [--runs N] WORKFLOW.yaml...")
+		fmt.Fprintln(stderr, "usage: ci-audit jobs --repo OWNER/REPO [--runs N] [--branch B] [--event E] [--recipe-step JOB=STEP...] WORKFLOW.yaml...")
 		return 2
 	}
+	opt := jobaudit.Options{RecipeSteps: map[string]string{}}
+	for _, pair := range recipeSteps {
+		job, step, ok := strings.Cut(pair, "=")
+		if !ok || job == "" || step == "" {
+			fmt.Fprintf(stderr, "ci-audit: --recipe-step %q is not JOB=STEP\n", pair)
+			return 2
+		}
+		opt.RecipeSteps[job] = step
+	}
+	filter := ghrest.Filter{Limit: *runs, Branch: *branch, Event: *event}
 	var all []jobaudit.Job
 	for _, workflow := range flags.Args() {
-		jobs, err := ghrest.Fetch(ctx, api, *repo, workflow, *runs)
+		jobs, err := ghrest.Fetch(ctx, api, *repo, workflow, filter)
 		if err != nil {
 			fmt.Fprintln(stderr, "ci-audit:", err)
 			return 1
 		}
 		all = append(all, jobs...)
 	}
-	rows := jobaudit.Summarize(all)
+	rows := jobaudit.Summarize(all, opt)
 	if len(rows) == 0 {
 		fmt.Fprintln(stderr, "ci-audit: no completed job was found")
 		return 1
@@ -72,6 +87,8 @@ func runJobs(ctx context.Context, args []string, stdout, stderr io.Writer, api g
 	fmt.Fprintf(stdout, "Seconds as p50/p95 over the completed runs (each run attempt is its own sample).\n"+
 		"waiting = started minus created; setup = steps before the recipe; running = the recipe step;\n"+
 		"after = steps behind it; total = completed minus started.\n\n%s", jobaudit.Render(rows))
+	fmt.Fprintf(stdout, "\nPer push: result = first run created to the last job of the first attempts done;\n"+
+		"runner seconds = every job of every attempt.\n%s", jobaudit.RenderPushes(jobaudit.Pushes(all)))
 	return 0
 }
 

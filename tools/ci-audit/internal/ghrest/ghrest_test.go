@@ -35,13 +35,16 @@ const jobsBody = `{"jobs":[
  {"name":"Frontend CI","run_attempt":1,"conclusion":"success",
   "created_at":"2026-11-22T10:00:12Z","started_at":"2026-11-22T10:00:14Z","completed_at":"2026-11-22T10:00:18Z","steps":[]}]}`
 
+const runsPath = "repos/o/r/actions/workflows/frontend-ci.yaml/runs?per_page=100&status=completed"
+
 func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 	api := &fakeRuns{bodies: map[string]string{
-		"repos/o/r/actions/workflows/frontend-ci.yaml/runs?per_page=2&status=completed": `{"workflow_runs":[
-			{"id":11,"conclusion":"success"},{"id":12,"conclusion":"cancelled"},{"id":13,"conclusion":"failure"}]}`,
-		"repos/o/r/actions/runs/11/jobs?per_page=100&filter=latest": jobsBody,
+		runsPath + "&page=1": `{"workflow_runs":[
+			{"id":11,"conclusion":"success","head_sha":"aaa","event":"pull_request","created_at":"2026-11-22T09:59:58Z"},
+			{"id":12,"conclusion":"cancelled"},{"id":13,"conclusion":"failure"}]}`,
+		"repos/o/r/actions/runs/11/jobs?per_page=100&filter=all&page=1": jobsBody,
 	}}
-	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", 2)
+	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +54,10 @@ func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 	if jobs[0].RunID != 11 || jobs[0].Attempt != 1 {
 		t.Errorf("job 0 = %+v", jobs[0])
 	}
-	rows := jobaudit.Summarize(jobs)
+	if jobs[0].Workflow != "frontend-ci.yaml" || jobs[0].HeadSHA != "aaa" || jobs[0].Event != "pull_request" || jobs[0].RunCreated.IsZero() {
+		t.Errorf("job 0 lost its run: %+v", jobs[0])
+	}
+	rows := jobaudit.Summarize(jobs, jobaudit.Options{})
 	for _, r := range rows {
 		if r.Job == "Frontend CI" && r.Waiting[0] != 2 {
 			t.Errorf("Frontend CI waiting = %v, want 2 (it was created when bun test finished)", r.Waiting[0])
@@ -59,9 +65,72 @@ func TestFetchReadsTheLastCompletedRunsJobs(t *testing.T) {
 	}
 }
 
+// runPage is a page of completed runs with ids from first to last.
+func runPage(first, last int64, conclusion string) string {
+	var runs []string
+	for id := first; id <= last; id++ {
+		runs = append(runs, fmt.Sprintf(`{"id":%d,"conclusion":%q}`, id, conclusion))
+	}
+	return `{"workflow_runs":[` + strings.Join(runs, ",") + `]}`
+}
+
+func oneJob(attempt int, conclusion string) string {
+	return fmt.Sprintf(`{"name":"j","run_attempt":%d,"conclusion":%q,
+	  "created_at":"2026-11-22T10:00:00Z","started_at":"2026-11-22T10:00:01Z","completed_at":"2026-11-22T10:00:05Z","steps":[]}`, attempt, conclusion)
+}
+
+// The standard reads the last 150 runs; GitHub gives at most 100 a page.
+func TestFetchReadsPastTheFirstPage(t *testing.T) {
+	bodies := map[string]string{
+		runsPath + "&page=1": runPage(1, 100, "success"),
+		runsPath + "&page=2": runPage(101, 200, "success"),
+	}
+	for id := 1; id <= 200; id++ {
+		bodies[fmt.Sprintf("repos/o/r/actions/runs/%d/jobs?per_page=100&filter=all&page=1", id)] = `{"jobs":[` + oneJob(1, "success") + `]}`
+	}
+	api := &fakeRuns{bodies: bodies}
+	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 150})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 150 {
+		t.Fatalf("jobs = %d, want 150 (one job in each of the last 150 runs)", len(jobs))
+	}
+}
+
+// A failed first attempt, then a green re-run: both cost runner time, and the
+// standard reads each attempt on its own. A job that ran into its timeout is
+// the slow tail, and must count.
+func TestFetchReadsEveryAttemptAndTimedOutRuns(t *testing.T) {
+	api := &fakeRuns{bodies: map[string]string{
+		runsPath + "&page=1": `{"workflow_runs":[{"id":7,"conclusion":"success"},{"id":8,"conclusion":"timed_out"}]}`,
+		"repos/o/r/actions/runs/7/jobs?per_page=100&filter=all&page=1": `{"jobs":[` + oneJob(1, "failure") + `,` + oneJob(2, "success") + `]}`,
+		"repos/o/r/actions/runs/8/jobs?per_page=100&filter=all&page=1": `{"jobs":[` + oneJob(1, "timed_out") + `]}`,
+	}}
+	jobs, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 3 {
+		t.Fatalf("jobs = %d, want 3 (two attempts of run 7, the timed-out run 8)", len(jobs))
+	}
+	if rows := jobaudit.Summarize(jobs, jobaudit.Options{}); len(rows) != 1 || rows[0].Samples != 3 {
+		t.Fatalf("rows = %+v, want one row with 3 samples", rows)
+	}
+}
+
+func TestFetchNarrowsTheRunsByBranchAndEvent(t *testing.T) {
+	api := &fakeRuns{bodies: map[string]string{
+		runsPath + "&branch=feat%2Fx&event=pull_request&page=1": `{"workflow_runs":[]}`,
+	}}
+	if _, err := ghrest.Fetch(context.Background(), api, "o/r", "frontend-ci.yaml", ghrest.Filter{Limit: 5, Branch: "feat/x", Event: "pull_request"}); err != nil {
+		t.Fatalf("asked %v: %v", api.asked, err)
+	}
+}
+
 func TestFetchReportsAFailedCallInsteadOfReturningFewerJobs(t *testing.T) {
 	api := &fakeRuns{bodies: map[string]string{}}
-	if _, err := ghrest.Fetch(context.Background(), api, "o/r", "x.yaml", 5); err == nil || !strings.Contains(err.Error(), "list runs") {
+	if _, err := ghrest.Fetch(context.Background(), api, "o/r", "x.yaml", ghrest.Filter{Limit: 5}); err == nil || !strings.Contains(err.Error(), "list runs") {
 		t.Fatalf("want a list-runs error, got %v", err)
 	}
 }
@@ -92,7 +161,7 @@ func TestRealRunsMatchTheOwnersNumbers(t *testing.T) {
 		}
 		all = append(all, jobs...)
 	}
-	rows := jobaudit.Summarize(all)
+	rows := jobaudit.Summarize(all, jobaudit.Options{})
 	found := map[string]jobaudit.Row{}
 	for _, r := range rows {
 		found[r.Job] = r
