@@ -940,11 +940,22 @@ spec-check:
     done
     {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 
-# check: strict gate, never writes. `just ci`, `just check-all`, and CI's dev
-# container job run it. The Go legs run last: golangci for three GOOS is the
-# slowest leg, so a cheaper leg that fails ends the run before it.
+# check: strict gate, never writes. `just ci`, `just check-all`, and CI's
+# check.yaml run it; CI runs its three parts (check-except-go, go-lint,
+# go-test) as parallel jobs (ADR-0089). The Go legs run last: golangci for three
+# GOOS is the slowest leg, so a cheaper leg that fails ends the run before it.
 [group('Lint')]
 check:
+    @just check-except-go
+    @echo '🔎 Go (golangci-lint per GOOS)...'
+    just go-lint
+    @echo '🔎 Go tests (tools/ modules)...'
+    just go-test
+    @echo '✅ All checks passed.'
+
+# Every leg of `check` except the two Go legs, in the same order.
+[group('Lint')]
+check-except-go:
     @echo '🔎 Python (ruff format --check)...'
     {{UV_RUN}} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
@@ -975,11 +986,6 @@ check:
     @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
     @mise exec -- go run tools/text-hygiene/main.go
-    @echo '🔎 Go (golangci-lint per GOOS)...'
-    just go-lint
-    @echo '🔎 Go tests (tools/ modules)...'
-    just go-test
-    @echo '✅ All checks passed.'
 
 # ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
 # fix through the 7-day hold with an absolute cutoff that never expires on its

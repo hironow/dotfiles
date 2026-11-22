@@ -85,7 +85,9 @@ def test_no_push_stage_and_both_guard_shims_stay_installed() -> None:
 
 def test_hygiene_is_a_leg_of_check_not_a_new_recipe() -> None:
     text = (ROOT / "justfile").read_text(encoding="utf-8")
-    check = text.split("\ncheck:\n", 1)[1].split("\n[group(", 1)[0]
+    # `check` reaches the hygiene leg through check-except-go (ADR-0089)
+    assert "@just check-except-go" in text.split("\ncheck:\n", 1)[1].split("\n\n", 1)[0]
+    check = text.split("\ncheck-except-go:\n", 1)[1].split("\n\n", 1)[0]
     assert "@mise exec -- go run tools/text-hygiene/main.go" in check
     assert "--fix" not in "\n".join(
         line

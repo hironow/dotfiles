@@ -59,8 +59,17 @@ def _recipe(name: str, source: str | None = None) -> str:
     return "\n".join(body)
 
 
+def test_check_runs_its_parts_and_go_last():
+    # CI runs these three as parallel jobs (check.yaml); `check` runs them in
+    # a row, and every other leg lives in check-except-go.
+    commands = [
+        line.strip().lstrip("@") for line in _recipe("check").splitlines() if line
+    ]
+    assert commands == ["just check-except-go", "just go-lint", "just go-test"]
+
+
 def test_check_runs_ty_once_per_platform():
-    check = _recipe("check")
+    check = _recipe("check-except-go")
     assert re.search(r"(?m)^\s+@?just check-ty\s*$", check)
     assert "ty check" not in check, "check runs ty only through check-ty"
     platforms = re.findall(r"ty check --python-platform (\S+)", _recipe("check-ty"))

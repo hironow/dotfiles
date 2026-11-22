@@ -321,8 +321,10 @@ def test_strict_check_includes_the_required_formal_gate() -> None:
         errors="replace",
         check=True,
     )
-    body = json.loads(result.stdout)["recipes"]["check"]["body"]
-    assert ["@just spec-check"] in body
+    recipes = json.loads(result.stdout)["recipes"]
+    # `check` reaches spec-check through check-except-go (ADR-0089)
+    assert ["@just check-except-go"] in recipes["check"]["body"]
+    assert ["@just spec-check"] in recipes["check-except-go"]["body"]
 
 
 @pytest.fixture
