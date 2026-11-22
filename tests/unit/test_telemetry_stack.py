@@ -153,7 +153,7 @@ def test_tel_down_also_removes_containers_of_an_older_stack() -> None:
         r"^tel-down:\n((?:    .*\n)+)", _read(ROOT / "justfile"), re.MULTILINE
     )
     assert recipe
-    assert "{{PODMAN_COMPOSE}} down --remove-orphans" in recipe[1]
+    assert "{{ PODMAN_COMPOSE }} down --remove-orphans" in recipe[1]
 
 
 def test_portless_telemetry_aliases_use_published_ports() -> None:

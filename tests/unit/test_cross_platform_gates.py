@@ -153,7 +153,7 @@ def test_windows_ci_runs_the_go_tests():
 
 def test_the_5_1_recipe_checks_the_runtime_then_runs_the_scripts_tests():
     text = JUSTFILE.read_text(encoding="utf-8")
-    assert "[windows]\n[group('Test')]\ntest-windows-powershell:\n" in text
+    assert "[group('Test')]\n[windows]\ntest-windows-powershell:\n" in text
     body = _recipe("test-windows-powershell")
     assert '"5.1."*" Desktop")' in body
     run = body.index(
@@ -269,7 +269,7 @@ def test_the_rust_spoke_lints_for_every_target_it_ships_to():
     body = _recipe("rust-lint", blocks)
     assert body.lstrip().startswith("#!/usr/bin/env bash")
     assert "set -euo pipefail" in body
-    assert re.search(r"for target in \{\{targets\}\}; do", body)
+    assert re.search(r"for target in \{\{ targets \}\}; do", body)
     assert 'rustup target add "$target"' in body
     assert re.search(
         r'cargo clippy --all-targets --all-features --target "\$target" -- -D warnings',

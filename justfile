@@ -72,12 +72,11 @@ help:
 # Lint markdown files
 [group('Check')]
 lint-md:
-    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
+    @{{ MARKDOWNLINT }} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
 
 [group('Check')]
 pdoc port="8888" pkg=".":
-    {{PDOC}} --port {{port}} {{pkg}}
-
+    {{ PDOC }} --port {{ port }} {{ pkg }}
 
 # ------------------------------
 # Project Management
@@ -86,7 +85,7 @@ pdoc port="8888" pkg=".":
 # Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
 [group('Validation')]
 meta-semgrep:
-    {{SEMGREP}} --config .semgrep/rules/meta/ --error .
+    {{ SEMGREP }} --config .semgrep/rules/meta/ --error .
 
 # Unit-test ALL semgrep rules against their co-located test fixtures
 # (.semgrep/rules/**/<rule>.{py,md,...}). `semgrep --test` needs the rules dir
@@ -106,7 +105,7 @@ semgrep-test:
         exit 0
         ;;
     esac
-    {{SEMGREP}} --test --config .semgrep/rules/ .semgrep/rules/
+    {{ SEMGREP }} --test --config .semgrep/rules/ .semgrep/rules/
     just agent-baseline-test
 
 # Check the agent-baseline scaffold in a throwaway repo (called by semgrep-test,
@@ -120,7 +119,7 @@ agent-baseline-test:
     #!/usr/bin/env bash
     set -euo pipefail
     src="{{ justfile_directory() }}/templates/agent-baseline"
-    {{SEMGREP}} --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
+    {{ SEMGREP }} --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
     cp -R "$src/." "$tmp/"
@@ -192,7 +191,7 @@ small-checks:
 # is a conscious, reviewable edit of this line.
 [group('Validation')]
 instruction-budget:
-    @{{UV_RUN}} scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
+    @{{ UV_RUN }} scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
 
 # Install: setup tools via mise
 [group('Setup')]
@@ -209,16 +208,16 @@ CLI_TOOLS_MQ := if os() + "-" + arch() == "macos-x86_64" { "" } else { "github:h
 
 [group('Setup')]
 cli-tools-install:
-    {{CLI_TOOLS_MISE}} install hunk ripgrep fd sd {{CLI_TOOLS_MQ}} witr aqua:jqlang/jq aqua:mikefarah/yq aqua:wader/fq
-    {{CLI_TOOLS_MISE}} exec hunk -- hunk --version
-    {{CLI_TOOLS_MISE}} exec ripgrep -- rg --version
-    {{CLI_TOOLS_MISE}} exec fd -- fd --version
-    {{CLI_TOOLS_MISE}} exec sd -- sd --version
-    if [ -n "{{CLI_TOOLS_MQ}}" ]; then {{CLI_TOOLS_MISE}} exec {{CLI_TOOLS_MQ}} -- mq --version; else echo 'mq unavailable: no Intel macOS prebuilt binary; other tools remain installed.'; fi
-    {{CLI_TOOLS_MISE}} exec witr -- witr --version
-    {{CLI_TOOLS_MISE}} exec aqua:jqlang/jq -- jq --version
-    {{CLI_TOOLS_MISE}} exec aqua:mikefarah/yq -- yq --version
-    {{CLI_TOOLS_MISE}} exec aqua:wader/fq -- fq --version
+    {{ CLI_TOOLS_MISE }} install hunk ripgrep fd sd {{ CLI_TOOLS_MQ }} witr aqua:jqlang/jq aqua:mikefarah/yq aqua:wader/fq
+    {{ CLI_TOOLS_MISE }} exec hunk -- hunk --version
+    {{ CLI_TOOLS_MISE }} exec ripgrep -- rg --version
+    {{ CLI_TOOLS_MISE }} exec fd -- fd --version
+    {{ CLI_TOOLS_MISE }} exec sd -- sd --version
+    if [ -n "{{ CLI_TOOLS_MQ }}" ]; then {{ CLI_TOOLS_MISE }} exec {{ CLI_TOOLS_MQ }} -- mq --version; else echo 'mq unavailable: no Intel macOS prebuilt binary; other tools remain installed.'; fi
+    {{ CLI_TOOLS_MISE }} exec witr -- witr --version
+    {{ CLI_TOOLS_MISE }} exec aqua:jqlang/jq -- jq --version
+    {{ CLI_TOOLS_MISE }} exec aqua:mikefarah/yq -- yq --version
+    {{ CLI_TOOLS_MISE }} exec aqua:wader/fq -- fq --version
 
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
 # exclude-newer, go proxy). Idempotent; not tracked.
@@ -275,7 +274,9 @@ wsl-conf:
 # stops the self-hosted runner distro (ADR 0035), so this never self-applies.
 # sparseVhd / vmIdleTimeout are deliberately absent from the template; the
 # template's header says why.
-[group('Setup'), windows, doc('Advise on the Windows-side .wslconfig (preview + apply steps, never self-applies)')]
+[doc('Advise on the Windows-side .wslconfig (preview + apply steps, never self-applies)')]
+[group('Setup')]
+[windows]
 wslconfig:
     bash scripts/wslconfig_conf.sh
 
@@ -389,7 +390,7 @@ agent-mcp-install *args:
 # Re-vendor config/pi/extensions/rtk.ts from the installed rtk
 [group('Agents')]
 rtk-pi-refresh:
-    @{{UV_RUN}} scripts/rtk_pi_refresh.py
+    @{{ UV_RUN }} scripts/rtk_pi_refresh.py
 
 # The JS gate (docs/agents/frontend-ci.md, ADR-0079): lint, typecheck, build,
 # and test are four recipes, so CI runs them as four parallel jobs and a
@@ -437,13 +438,13 @@ pi-jev-test: js-build js-test
 # Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
 # 3 partial (works, but the effort could not be confirmed).
 jev-claude-verify:
-    {{UV_RUN}} scripts/jev_claude_verify.py
+    {{ UV_RUN }} scripts/jev_claude_verify.py
 
 # Live check of Jev's per-worker effort in Pi (j-pi): one print-mode session
 # launches a worker; the verdict comes from pi-subagents' worker meta.
 # Exit 0 pass, 1 fail, 2 blocked (no key / extension / usage limit), 3 partial.
 jev-pi-verify:
-    {{UV_RUN}} scripts/jev_pi_verify.py
+    {{ UV_RUN }} scripts/jev_pi_verify.py
 
 # Live check that j-cc's session and its workers go through headroom: a
 # dedicated proxy logs the requests; one print-mode session launches a worker
@@ -451,7 +452,7 @@ jev-pi-verify:
 # through rtk as well (rtk). Targets: claude codex rtk (default: all).
 # Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
 jev-headroom-verify *target:
-    {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
+    {{ UV_RUN }} scripts/jev_headroom_verify.py {{ target }}
 
 # Measure what headroom's compressor does to four byte-identical payloads, via
 # a real `headroom mcp serve` + headroom_compress call. Reproduces the table in
@@ -459,12 +460,12 @@ jev-headroom-verify *target:
 # if a ratio moved. Deliberately not in `just ci` (it starts a live server);
 # `tests/unit/test_headroom_compress_measure.py` pins the payloads instead.
 headroom-compress-measure *executable:
-    {{UV_RUN}} scripts/headroom_compress_measure.py {{executable}}
+    {{ UV_RUN }} scripts/headroom_compress_measure.py {{ executable }}
 
 # Open the savings dashboard of the headroom proxy j-cc started (plain
 # `headroom dashboard` opens port 8787, where j-cc never runs it).
 headroom-dashboard:
-    {{UV_RUN}} scripts/jev_headroom.py dashboard
+    {{ UV_RUN }} scripts/jev_headroom.py dashboard
 
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
@@ -487,7 +488,7 @@ headroom-dashboard:
 # Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
+    @{{ UV_RUN }} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, check-only prek hooks, quality-gate CI, agentcore semgrep rules) into a
@@ -507,33 +508,33 @@ scaffold-agent-baseline dir:
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]
 sync-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
+    @{{ UV_RUN }} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
-    @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
+    @{{ UV_RUN }} scripts/sync_agents.py --override {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
 [group('Agents')]
 check-agent-refs *homes:
-    @{{UV_RUN}} scripts/check_agent_home_refs.py {{ homes }}
+    @{{ UV_RUN }} scripts/check_agent_home_refs.py {{ homes }}
 
 # Import only: target -> dotfiles. No forward sync, no orphan removal.
 # Default scope = .claude only. Pass targets to widen (same aliases as sync-agents).
 # Every selected agent becomes an import source — is_import_source flag is ignored.
 #   just import-agents              -> from ~/.claude only
 #   just import-agents a b          -> from ~/.claude-work-a + b
-#   just import-agents all          -> from every defined agent
+# just import-agents all          -> from every defined agent
 [group('Agents')]
 import-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only {{ args }}
+    @{{ UV_RUN }} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
 [group('Agents')]
 import-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
+    @{{ UV_RUN }} scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
 # each auto-loop plugin. The per-plugin copies are what the marketplace
@@ -578,21 +579,26 @@ clean-all: clean clean-cache
 # together — timer/task/autostart state, whether the job hook is a path the
 # runner will accept, and whether it was rejected in recent jobs. Read-only
 # (ADR 0035). Runner hosts only, hence [windows, linux].
-[group('Disk'), windows, linux, doc('Is the disk GC actually collecting? Both runner legs, read-only')]
+[doc('Is the disk GC actually collecting? Both runner legs, read-only')]
+[group('Disk')]
+[linux]
+[windows]
 status:
     bash scripts/gc_status.sh
     @echo '--- AI tooling (rtk / headroom / hooks) ---'
-    @{{UV_RUN}} scripts/ai_tools_check.py
+    @{{ UV_RUN }} scripts/ai_tools_check.py
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
-[group('Disk'), doc('Report host cache sizes + free space (measures only, never deletes)')]
+[doc('Report host cache sizes + free space (measures only, never deletes)')]
+[group('Disk')]
 disk-report:
     bash scripts/disk_gc.sh report
 
 # Disk: reclaim regenerable host caches (mise stale versions, bun/uv/cargo,
 # npm). Toolchains and project data are out of scope. Each leg stops before
 # any deletion while its runner has a job (the caches are shared with CI).
-[group('Disk'), doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — skips while a runner job is executing')]
+[doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — skips while a runner job is executing')]
+[group('Disk')]
 disk-gc:
     bash scripts/disk_gc.sh clean
 
@@ -600,7 +606,10 @@ disk-gc:
 # plus apt/journal data. Build/mount-cache reclamation is intentionally omitted.
 # Skips itself while a job is executing.
 # On Windows this dispatches into the WSL distro; needs `runner-gc-install`.
-[group('Disk'), windows, linux, doc('Collect the self-hosted runner disks now (2h retention, job-safe)')]
+[doc('Collect the self-hosted runner disks now (2h retention, job-safe)')]
+[group('Disk')]
+[linux]
+[windows]
 runner-gc:
     bash scripts/runner_gc.sh
 
@@ -610,7 +619,10 @@ runner-gc:
 # (runner + GC timer) after a reboot. Idempotent; re-run after editing
 # scripts/runner_gc.sh to re-copy the payload. Root-owned, so it runs via
 # `wsl -u root` on Windows.
-[group('Disk'), windows, linux, doc('Install runner GC (timer + job hook) and the WSL logon autostart')]
+[doc('Install runner GC (timer + job hook) and the WSL logon autostart')]
+[group('Disk')]
+[linux]
+[windows]
 runner-gc-install: run-hidden-build
     bash scripts/install_runner_gc.sh
 
@@ -619,7 +631,8 @@ runner-gc-install: run-hidden-build
 # reaches the task's last result. -H=windowsgui, because a console-subsystem
 # launcher would open the very window it avoids. Elsewhere there is nothing
 # to build. docs/runbook/windows-host.md.
-[group('Disk'), doc('Build run-hidden (Windows: the windowless launcher the scheduled tasks start)')]
+[doc('Build run-hidden (Windows: the windowless launcher the scheduled tasks start)')]
+[group('Disk')]
 run-hidden-build:
     @if [ "{{ os() }}" = windows ]; then cd tools/run-hidden && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -ldflags=-H=windowsgui -o ../../output/run-hidden/run-hidden.exe . ; fi
 
@@ -628,7 +641,9 @@ run-hidden-build:
 # re-enables a Disabled service in place. Self-elevates via UAC. No
 # -NonInteractive here - it would break the UAC/console interaction.
 # Root override: RUNNER_WIN_ROOT (default %USERPROFILE%ctions-runner-win).
-[group('Disk'), windows, doc('Install/repair the native Windows runner service (UAC self-elevating)')]
+[doc('Install/repair the native Windows runner service (UAC self-elevating)')]
+[group('Disk')]
+[windows]
 runner-svc-install:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install_runner_svc_win.ps1
 
@@ -636,13 +651,17 @@ runner-svc-install:
 # run.cmd in the user's session). GUI e2e / user-profile jobs need this -
 # a LocalSystem service runs in Session 0 where WebView2 cannot draw.
 # Stops + Disables the service; UAC self-elevating; refuses mid-job.
-[group('Disk'), windows, doc('Run the native runner interactively at logon (GUI-capable; disables the service)')]
+[doc('Run the native runner interactively at logon (GUI-capable; disables the service)')]
+[group('Disk')]
+[windows]
 runner-mode-interactive: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode interactive
 
 # Runner: switch back to SERVICE mode (delayed-auto; headless boxes only -
 # Session 0 cannot run GUI e2e). Removes the logon task.
-[group('Disk'), windows, doc('Run the native runner as a service again (headless; removes the logon task)')]
+[doc('Run the native runner as a service again (headless; removes the logon task)')]
+[group('Disk')]
+[windows]
 runner-mode-service:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode service
 
@@ -650,13 +669,17 @@ runner-mode-service:
 # task that re-fires the logon task every 5 min when Runner.Listener is gone
 # (lived 2026-09-03: listener died silently, box offline until the next
 # logon). Unelevated; `runner-mode-interactive` installs it too. ADR 0042.
-[group('Disk'), windows, doc('Install the interactive-runner watchdog task (re-fires the logon task when the listener dies)')]
+[doc('Install the interactive-runner watchdog task (re-fires the logon task when the listener dies)')]
+[group('Disk')]
+[windows]
 runner-watchdog-install: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_watchdog_win.ps1 -Install
 
 # Runner: restart the native Windows runner service (self-elevates via UAC;
 # refuses while a job is executing - Runner.Worker guard).
-[group('Disk'), windows, doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]
+[doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]
+[group('Disk')]
+[windows]
 runner-svc-restart:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1
 
@@ -664,7 +687,9 @@ runner-svc-restart:
 # section): the plain restart is refused while Runner.Worker lives, which is
 # exactly what a hung, cancellation-ignoring job looks like. This KILLS that
 # in-flight job — use it only after deciding the job is lost anyway.
-[group('Disk'), windows, doc('Force-restart the native Windows runner service (KILLS an in-flight job)')]
+[doc('Force-restart the native Windows runner service (KILLS an in-flight job)')]
+[group('Disk')]
+[windows]
 runner-svc-restart-force:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1 -Force
 
@@ -679,7 +704,9 @@ wsl-fsck:
 # Disk: report WSL vhdx slack and print the compaction steps. Advisory only —
 # compaction needs Administrator + a full `wsl --shutdown` (runner goes
 # offline), so it is never self-applied. See ADR 0035.
-[group('Disk'), windows, doc('Report WSL vhdx slack + compaction steps (advisory, never self-applied)')]
+[doc('Report WSL vhdx slack + compaction steps (advisory, never self-applied)')]
+[group('Disk')]
+[windows]
 wsl-compact:
     bash scripts/wsl_compact.sh
 
@@ -775,21 +802,20 @@ dump:
     echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
 
 # Provision only the native Podman 5+ CLI; never initialize or start a machine.
-[unix]
 [group('Setup')]
+[unix]
 podman-install:
     bash install.sh --podman-only
 
-[windows]
 [group('Setup')]
+[windows]
 podman-install:
     powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File bootstrap.ps1 -PodmanOnly
 
 # Setup: record this machine's dump host alias in dump/.host (untracked, ADR 0030).
 [group('Setup')]
 set-host alias:
-    bash scripts/dump_host.sh set {{quote(alias)}}
-
+    bash scripts/dump_host.sh set {{ quote(alias) }}
 
 # ------------------------------
 # Tests
@@ -803,10 +829,10 @@ test:
     set -euo pipefail
     export PODMAN_COMPOSE_PROVIDER=podman-compose
     info="$(podman info --format json)"
-    socket="$(printf '%s' "$info" | {{UV_RUN}} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
+    socket="$(printf '%s' "$info" | {{ UV_RUN }} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
     export DOTFILES_PODMAN_ENGINE_SOCKET="$socket"
     bash .devcontainer/require-podman-socket.sh
-    {{UV_RUN}} --group dev pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
+    {{ UV_RUN }} --group dev pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
 
 # Test (unit): fast host-side unit tests — no containers. Covers sync_agents
 # helpers and the agent hook scripts (tests/unit/). Runs as part of `ci`.
@@ -824,8 +850,8 @@ test-unit *args:
 # Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
 # and bootstrap.ps1 on a new machine run on 5.1, which reads some input
 # differently from the pwsh 7 that test-unit uses. Run their tests on 5.1.
-[windows]
 [group('Test')]
+[windows]
 test-windows-powershell:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -842,7 +868,7 @@ test-windows-powershell:
 # Test (install): mandatory owned-image build from a tracked-only context.
 [group('Test')]
 test-install:
-    {{UV_RUN}} --group dev pytest -q tests/test_install.py
+    {{ UV_RUN }} --group dev pytest -q tests/test_install.py
 
 # Self-check: quick, safe health checks with summary
 [group('Setup')]
@@ -877,7 +903,7 @@ self-check with_tests="":
     esac
 
     # Once requested, the Podman validation is required, never skipped.
-    if [ -n {{quote(with_tests)}} ]; then
+    if [ -n {{ quote(with_tests) }} ]; then
       echo '🧪 Running sandbox validate tests...'
       if just test-mark validate; then step_ok 'tests: validate'; else step_err 'tests: validate failed'; fi
     fi
@@ -891,16 +917,16 @@ self-check with_tests="":
 test-mark marker="":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z {{quote(marker)}} ]; then
+    if [ -z {{ quote(marker) }} ]; then
       echo 'Marker is empty. Usage: just test-mark install' >&2
       exit 2
     fi
     export PODMAN_COMPOSE_PROVIDER=podman-compose
     info="$(podman info --format json)"
-    socket="$(printf '%s' "$info" | {{UV_RUN}} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
+    socket="$(printf '%s' "$info" | {{ UV_RUN }} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
     export DOTFILES_PODMAN_ENGINE_SOCKET="$socket"
     bash .devcontainer/require-podman-socket.sh
-    {{UV_RUN}} --group dev pytest -v -ra -m {{quote(marker)}} tests/test_just_sandbox.py tests/test_devcontainer.py
+    {{ UV_RUN }} --group dev pytest -v -ra -m {{ quote(marker) }} tests/test_just_sandbox.py tests/test_devcontainer.py
 
 # ------------------------------
 # Formatting
@@ -916,11 +942,11 @@ test-mark marker="":
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
 #   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
 #   - ruff/ty versions live in [dependency-groups].lint (root/emulator/RTTM) and
-#     uv.lock; `just bump-tool` moves them. `--frozen` keeps sandbox == CI.
+# uv.lock; `just bump-tool` moves them. `--frozen` keeps sandbox == CI.
 [group('Lint')]
 fmt:
     @echo '🔧 Python (ruff format)...'
-    {{UV_RUN}} --only-group lint ruff format .
+    {{ UV_RUN }} --only-group lint ruff format .
     @just rttm-fmt
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
@@ -932,13 +958,13 @@ fmt:
 #   - Python  : ruff check --fix
 #   - Shell   : shellcheck (no auto-fix)
 #   - Markdown: markdownlint-cli2 --fix
-#   - JS/TS   : vp lint
+# - JS/TS   : vp lint
 [group('Lint')]
 lint:
     @echo '🔍 Python (ruff check --fix)...'
-    {{UV_RUN}} --only-group lint ruff check . --fix
+    {{ UV_RUN }} --only-group lint ruff check . --fix
     @echo '🔍 Python (ty check, ADR 0044)...'
-    @{{UV_RUN}} --group lint ty check
+    @{{ UV_RUN }} --group lint ty check
     @just rttm-lint rttm-typecheck
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
@@ -950,9 +976,9 @@ lint:
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
+    @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
-    @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @{{ UV_RUN }} scripts/check_mcp_node_runner.py
     @echo '🔍 Frozen image tool generation (one source, no drift; ADR 0060)...'
     @just mise-versions-check
     @echo '✅ lint done.'
@@ -964,11 +990,11 @@ spec-check:
     set -euo pipefail
     for spec in scripts/spec/*.qnt; do
       [ -f "$spec" ] || { echo 'No safety models found in scripts/spec' >&2; exit 1; }
-      {{QUINT}} typecheck "$spec"
-      {{QUINT}} test "$spec" --backend typescript --max-samples 100
-      {{QUINT}} run "$spec" --backend typescript --invariant Safety --max-samples 1000 --max-steps 12 --seed 565 --verbosity 1
+      {{ QUINT }} typecheck "$spec"
+      {{ QUINT }} test "$spec" --backend typescript --max-samples 100
+      {{ QUINT }} run "$spec" --backend typescript --invariant Safety --max-samples 1000 --max-steps 12 --seed 565 --verbosity 1
     done
-    {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
+    {{ UV_RUN }} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 
 # check: strict gate, never writes. `just ci`, `just check-all`, and CI's
 # check.yaml run it; CI runs its three parts (check-except-go, go-lint,
@@ -987,9 +1013,9 @@ check:
 [group('Lint')]
 check-except-go:
     @echo '🔎 Python (ruff format --check)...'
-    {{UV_RUN}} --only-group lint ruff format --check .
+    {{ UV_RUN }} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
-    {{UV_RUN}} --only-group lint ruff check .
+    {{ UV_RUN }} --only-group lint ruff check .
     @echo '🔎 Python (ty check per platform, ADR 0044)...'
     @just check-ty
     @just rttm-check
@@ -1005,15 +1031,15 @@ check-except-go:
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
-    {{SEMGREP}} --config .semgrep/rules/meta/ --error .
+    {{ SEMGREP }} --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
+    @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
-    @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @{{ UV_RUN }} scripts/check_mcp_node_runner.py
     @echo '🔎 Frozen image tool generation (one source, no drift; ADR 0060)...'
     @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
-    @{{UV_RUN}} scripts/check_storage_bounds.py
+    @{{ UV_RUN }} scripts/check_storage_bounds.py
     @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
     @mise exec -- go run tools/text-hygiene/main.go
 
@@ -1028,30 +1054,30 @@ check-except-go:
 # branch for another OS is checked only when ty checks for that OS.
 [group('Lint')]
 check-ty:
-    @{{UV_RUN}} --group lint ty check --python-platform win32
-    @{{UV_RUN}} --group lint ty check --python-platform linux
-    @{{UV_RUN}} --group lint ty check --python-platform darwin
+    @{{ UV_RUN }} --group lint ty check --python-platform win32
+    @{{ UV_RUN }} --group lint ty check --python-platform linux
+    @{{ UV_RUN }} --group lint ty check --python-platform darwin
 
 # RTTM is a separate uv project; its ty scope and dependencies must be local.
 [group('Lint')]
-[working-directory: 'tools/rttm']
+[working-directory('tools/rttm')]
 rttm-fmt:
-    @{{UV_RUN}} --only-group lint ruff format .
+    @{{ UV_RUN }} --only-group lint ruff format .
 
 [group('Lint')]
-[working-directory: 'tools/rttm']
+[working-directory('tools/rttm')]
 rttm-lint:
-    @{{UV_RUN}} --only-group lint ruff check .
-    @{{UV_RUN}} --only-group lint ruff format --check .
+    @{{ UV_RUN }} --only-group lint ruff check .
+    @{{ UV_RUN }} --only-group lint ruff format --check .
 
 [group('Lint')]
-[working-directory: 'tools/rttm']
+[working-directory('tools/rttm')]
 rttm-typecheck:
-    @{{UV_RUN}} --group lint ty check
+    @{{ UV_RUN }} --group lint ty check
 
 [group('Lint')]
 rttm-check: rttm-lint rttm-typecheck
-    @cd tools/rttm && MPLBACKEND=Agg {{UV_RUN}} --group lint python -m pytest -q tests
+    @cd tools/rttm && MPLBACKEND=Agg {{ UV_RUN }} --group lint python -m pytest -q tests
 
 # Go quality gate (docs/agents/go-tooling.md): golangci-lint v2, one root
 # config, gofumpt-only formatters. Per module because this repo has several
@@ -1078,7 +1104,7 @@ go-test go="mise x -- go":
     git ls-files -z 'tools/**/go.mod' 'emulator/healthcheck/go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"
       echo "🧪 go test -short $dir"
-      (cd "$dir" && {{go}} test -short ./...)
+      (cd "$dir" && {{ go }} test -short ./...)
     done
 
 # Compile the image-local TCP probe for each supported device (not runtime proof).
@@ -1093,7 +1119,7 @@ healthcheck-build go="mise x -- go":
       arch="${target#*/}"
       suffix=""
       [ "$os" != windows ] || suffix=".exe"
-      CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" {{go}} build -trimpath -o "dist/tcp-healthcheck-$os-$arch$suffix" .
+      CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" {{ go }} build -trimpath -o "dist/tcp-healthcheck-$os-$arch$suffix" .
     done
 
 # tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is what the Go command guard is
@@ -1103,7 +1129,7 @@ healthcheck-build go="mise x -- go":
 # Rewrite the Go command guard's test corpus from the Python guard (the reference).
 [group('Test')]
 command-guard-corpus:
-    @{{UV_RUN}} --python 3.14 scripts/command_guard_corpus.py
+    @{{ UV_RUN }} --python 3.14 scripts/command_guard_corpus.py
 
 # tools/agent-hooks/internal/guardcorpus/{files,secrets}-guard.jsonl are what the Go
 # file and secrets guards are tested against. Run this after changing either shell
@@ -1111,7 +1137,7 @@ command-guard-corpus:
 # Rewrite the Go file and secrets guards' test corpora by running the shell guards.
 [group('Test')]
 file-guards-corpus:
-    @{{UV_RUN}} scripts/file_guards_corpus.py
+    @{{ UV_RUN }} scripts/file_guards_corpus.py
 
 # tools/agent-hooks/internal/guardcorpus/payloads.jsonl is what the agent-hook binary is
 # tested against: every payload run through every old hook script as Claude Code and
@@ -1121,7 +1147,7 @@ file-guards-corpus:
 # Rewrite the agent-hook binary's payload corpus by running the old hook scripts.
 [group('Test')]
 hook-payload-corpus:
-    @{{UV_RUN}} --python 3.14 scripts/hook_payload_corpus.py
+    @{{ UV_RUN }} --python 3.14 scripts/hook_payload_corpus.py
 
 # tools/agent-hooks/internal/toolhookcorpus/{rtk,formatter}.jsonl are what the agent-hook
 # binary's rtk and formatter hooks are tested against: every scenario run through the
@@ -1131,7 +1157,7 @@ hook-payload-corpus:
 # Rewrite the agent-hook binary's rtk and formatter corpora by running the old scripts.
 [group('Test')]
 tool-hooks-corpus:
-    @{{UV_RUN}} --python 3.14 scripts/tool_hooks_corpus.py
+    @{{ UV_RUN }} --python 3.14 scripts/tool_hooks_corpus.py
 
 # tools/agent-hooks/internal/pipath/corpus.jsonl records Pi 1.4.0's POSIX path
 # resolution. Run this after changing the path cases. Needs node and Pi 1.4.0.
@@ -1155,13 +1181,13 @@ agent-hooks-render-corpus:
 # Print the agent-hook binary's recent log lines as a table.
 [group('Agents')]
 agent-hooks-log *args:
-    cd tools/agent-hooks && mise x -- go run ./cmd/agent-hook log {{args}}
+    cd tools/agent-hooks && mise x -- go run ./cmd/agent-hook log {{ args }}
 
 # Times today's hook scripts against the binary (p50/p95 per hook); slow (N=200 by default).
 # Measure the agent-hook binary's latency against today's hook scripts.
 [group('Agents')]
 agent-hooks-latency *args:
-    cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{args}}
+    cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{ args }}
 
 # Build the agent-hook binary as a release, reproducibly, into the data directory.
 # Each argument reaches hookrelease as given (positional arguments).
@@ -1186,21 +1212,21 @@ agent-hooks-build *args:
 [positional-arguments]
 [unix]
 agent-hooks-install *targets:
-    {{UV_RUN}} scripts/agent_hook_sync.py install "$@"
+    {{ UV_RUN }} scripts/agent_hook_sync.py install "$@"
 
 # Restore the scripts and keep each home's link for running sessions.
 [group('Agents')]
 [positional-arguments]
 [unix]
 agent-hooks-uninstall *targets:
-    {{UV_RUN}} scripts/agent_hook_sync.py uninstall "$@"
+    {{ UV_RUN }} scripts/agent_hook_sync.py uninstall "$@"
 
 # List unreferenced releases; delete only with --delete.
 [group('Agents')]
 [positional-arguments]
 [unix]
 agent-hooks-gc *args:
-    {{UV_RUN}} scripts/agent_hook_sync.py gc "$@"
+    {{ UV_RUN }} scripts/agent_hook_sync.py gc "$@"
 
 # Run agent-hook's process tests (cmd/agent-hook) against the release a home's
 # link names, after `hookrelease check` passes on it. KEY is sync's target key;
@@ -1220,16 +1246,16 @@ agent-hooks-test-installed key="claude" go="mise x -- go":
     id="$(basename "$(dirname "$release")")"
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT
-    (cd tools/agent-hooks && {{go}} build -o "$work/hookrelease" ./cmd/hookrelease)
+    (cd tools/agent-hooks && {{ go }} build -o "$work/hookrelease" ./cmd/hookrelease)
     (cd tools/agent-hooks && "$work/hookrelease" check "$link")
-    "{{ just_executable() }}" --justfile "{{ justfile() }}" _agent-hooks-test-binary "$link" "$id" "{{go}}"
+    "{{ just_executable() }}" --justfile "{{ justfile() }}" _agent-hooks-test-binary "$link" "$id" "{{ go }}"
 
 # Run cmd/agent-hook's tests against BINARY, which must say it is release ID
 # (AGENT_HOOK_UNDER_TEST, AGENT_HOOK_EXPECT_RELEASE). -count=1: no cached result.
 [positional-arguments]
 [unix]
 _agent-hooks-test-binary binary id go="mise x -- go" *args:
-    cd tools/agent-hooks && AGENT_HOOK_UNDER_TEST="$1" AGENT_HOOK_EXPECT_RELEASE="$2" {{go}} test -count=1 ./cmd/agent-hook/ "${@:4}"
+    cd tools/agent-hooks && AGENT_HOOK_UNDER_TEST="$1" AGENT_HOOK_EXPECT_RELEASE="$2" {{ go }} test -count=1 ./cmd/agent-hook/ "${@:4}"
 
 [group('Lint')]
 go-lint:
@@ -1260,14 +1286,14 @@ go-fmt:
 
 [group('Lint')]
 check-uv-exclude-newer:
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
+    @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
 # command guard + Bash(npx:*) deny never see them -- this is the only wall.
 [group('Lint')]
 check-mcp-node-runner:
-    @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @{{ UV_RUN }} scripts/check_mcp_node_runner.py
 
 # The image's frozen tool generation has one source
 # (config/mise/image-tools.toml). This reports drift between it and the
@@ -1297,7 +1323,7 @@ mise-versions-sync:
 [group('Lint')]
 lint-claude:
     @echo '🔎 effective settings (profiles x OS, ADR 0037; stdlib validator per ADR 0041)...'
-    {{UV_RUN}} scripts/check_effective_settings.py
+    {{ UV_RUN }} scripts/check_effective_settings.py
     @echo '🔎 claude plugin validate --strict (official; skipped if claude absent)...'
     @# mise-wrapped per ADR 0025: a bare `claude` follows the inherited PATH,
     @# which can hold a stale/half-uninstalled copy (seen live: a locked
@@ -1404,7 +1430,7 @@ ci-emu:
       echo 'ci-emu refuses an inherited run manifest' >&2
       exit 1
     fi
-    repo="{{justfile_directory()}}"
+    repo="{{ justfile_directory() }}"
     interrupted=0
     cleanup() {
       result=$?
@@ -1413,7 +1439,7 @@ ci-emu:
         cleanup_result=0
         (
           cd "$repo/emulator" || exit
-          {{UV_RUN}} --group dev python -m tests.utils.isolation cleanup --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+          {{ UV_RUN }} --group dev python -m tests.utils.isolation cleanup --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
         ) || cleanup_result=$?
         if [ "$cleanup_result" != 0 ]; then
           echo "Cleanup failed; retained recovery manifest: $DOTFILES_PODMAN_RUN_MANIFEST" >&2
@@ -1440,12 +1466,12 @@ ci-emu:
     export DOTFILES_E2E_REQUIRED=1
     export PODMAN_COMPOSE_PROVIDER=podman-compose
     cd "$repo/emulator"
-    {{UV_RUN}} --group dev python -m tests.utils.isolation prepare --source "$repo" --manifest "$DOTFILES_PODMAN_RUN_MANIFEST" --services firebase-emulator,spanner-emulator,pgadapter,postgres --telemetry
-    {{UV_RUN}} --group dev python -m tests.utils.isolation start --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
-    {{UV_RUN}} --group dev python -m tests.utils.isolation wait --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
-    {{UV_RUN}} --group dev pytest tests/ -v -m 'not e2e'
-    {{UV_RUN}} --group dev pytest tests/e2e -v -m e2e -ra
-    {{UV_RUN}} --group dev pytest tests/test_postgres18_features.py tests/test_postgres18_emulator.py -v
+    {{ UV_RUN }} --group dev python -m tests.utils.isolation prepare --source "$repo" --manifest "$DOTFILES_PODMAN_RUN_MANIFEST" --services firebase-emulator,spanner-emulator,pgadapter,postgres --telemetry
+    {{ UV_RUN }} --group dev python -m tests.utils.isolation start --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+    {{ UV_RUN }} --group dev python -m tests.utils.isolation wait --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+    {{ UV_RUN }} --group dev pytest tests/ -v -m 'not e2e'
+    {{ UV_RUN }} --group dev pytest tests/e2e -v -m e2e -ra
+    {{ UV_RUN }} --group dev pytest tests/test_postgres18_features.py tests/test_postgres18_emulator.py -v
 
 # CI-equivalent gate: prek hooks plus the full non-emulator suite (= pre-commit + ci-all)
 [group('CI')]
@@ -1503,8 +1529,8 @@ test-iac:
 [group('Add')]
 [unix]
 add-all host="":
-    just add-gcloud {{quote(host)}}
-    just add-brew {{quote(host)}}
+    just add-gcloud {{ quote(host) }}
+    just add-brew {{ quote(host) }}
 
 # Add: install Homebrew bundle from dump/<host>/Brewfile; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('Add')]
@@ -1512,7 +1538,7 @@ add-all host="":
 add-brew host="":
     #!/usr/bin/env bash
     set -euo pipefail
-    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    host="$(bash scripts/dump_host.sh resolve-restore {{ quote(host) }})"
     brewfile="./dump/$host/Brewfile"
     if [[ ! -s "$brewfile" ]]; then
         echo "❌ $brewfile is missing or empty"; exit 1
@@ -1525,7 +1551,7 @@ add-brew host="":
 add-gcloud host="":
     #!/usr/bin/env bash
     set -euo pipefail
-    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    host="$(bash scripts/dump_host.sh resolve-restore {{ quote(host) }})"
     dump="./dump/$host/gcloud"
     if [[ ! -s "$dump" ]]; then
         echo "❌ $dump is missing or empty"; exit 1
@@ -1558,7 +1584,7 @@ add-scoop host="":
       MINGW*|MSYS*|CYGWIN*) : ;;
       *) echo "❌ add-scoop is Windows-only (scoop); on this OS use add-brew / add-gcloud"; exit 1 ;;
     esac
-    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    host="$(bash scripts/dump_host.sh resolve-restore {{ quote(host) }})"
     manifest="./dump/$host/scoop.json"
     if [[ ! -s "$manifest" ]]; then
         echo "❌ $manifest is missing or empty (run 'just dump' on that Windows host first)"; exit 1
@@ -1900,7 +1926,7 @@ ca-doctor-build:
 
 [group('Test')]
 ca-doctor *args:
-    @bash -c 'bin=output/ca-doctor/ca-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN ca-build - run just ca-doctor-build first"; exit 1; fi; exec "$bin" --source tools/ca-doctor "$@"' -- {{args}}
+    @bash -c 'bin=output/ca-doctor/ca-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN ca-build - run just ca-doctor-build first"; exit 1; fi; exec "$bin" --source tools/ca-doctor "$@"' -- {{ args }}
 
 # macOS: write a candidate of /private/etc/ssl/cert.pem (what Apple's LibreSSL
 # clients read) without the incident's untrustedRoots, into
@@ -1912,7 +1938,7 @@ ca-doctor *args:
 ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
     @mkdir -p output/ca-os-bundle
     @rm -f output/ca-os-bundle/cert.pem
-    output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{incident}} --in /private/etc/ssl/cert.pem --out output/ca-os-bundle/cert.pem
+    output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{ incident }} --in /private/etc/ssl/cert.pem --out output/ca-os-bundle/cert.pem
 
 # macOS, sudo: replace /private/etc/ssl/cert.pem with the candidate, only if
 # both hashes are the candidate run's; the old bundle is kept beside it.
@@ -1920,7 +1946,7 @@ ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
 [group('Setup')]
 [macos]
 ca-os-bundle-apply input_sha candidate_sha incident="emudhra-2026":
-    sudo output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{incident}} --in /private/etc/ssl/cert.pem --apply --expect-sha256 {{input_sha}} --expect-out-sha256 {{candidate_sha}} --backup "/private/etc/ssl/cert.pem.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
+    sudo output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{ incident }} --in /private/etc/ssl/cert.pem --apply --expect-sha256 {{ input_sha }} --expect-out-sha256 {{ candidate_sha }} --backup "/private/etc/ssl/cert.pem.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
 
 # Static native binaries for each supported OS/CPU; no C toolchain required.
 [group('Setup')]
@@ -2008,7 +2034,7 @@ prune-retired-python-tools:
 # is the path a pin moves through. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
 [group('Setup')]
 bump-tool tool version:
-    @{{UV_RUN}} scripts/bump_tool.py {{ tool }} {{ version }}
+    @{{ UV_RUN }} scripts/bump_tool.py {{ tool }} {{ version }}
 
 # ------------------------------
 # Connect sets
@@ -2068,7 +2094,7 @@ AWS_CLI := if os() == "windows" { "aws" } else { CLI_TOOLS_MISE + " exec http:aw
 
 [group('Cloud')]
 aws-list:
-    {{AWS_CLI}} configure list-profiles
+    {{ AWS_CLI }} configure list-profiles
 
 # List: Alibaba Cloud profiles (local configuration only)
 [group('Cloud')]
@@ -2091,7 +2117,8 @@ elt-list:
 
 # Version check: verify NVCC version (CUDA hosts only — no CUDA on macOS)
 [group('Check')]
-[linux, windows]
+[linux]
+[windows]
 check-version-nvcc expected:
     # Usage: just check-version-nvcc <EXPECTED_NVCC_VERSION>
     version=$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n1); if [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected NVCC version {{ expected }}, but found ${version}"; exit 1; fi
@@ -2186,7 +2213,7 @@ check-localhost-tls port="443":
 
 [group('Validation')]
 semgrep:
-    {{UV_RUN}} semgrep --config=auto .
+    {{ UV_RUN }} semgrep --config=auto .
 
 # ------------------------------
 # Claude Code
@@ -2279,15 +2306,15 @@ skills-lock-check:
 [group('CDP')]
 [macos]
 start-cdp:
-  @echo "Starting Chrome Dev with remote debugging on port 9222..."
-  "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
+    @echo "Starting Chrome Dev with remote debugging on port 9222..."
+    "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
 
 # Start Chrome Dev for debugging
 [group('CDP')]
 [macos]
 debug-cdp:
-  @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
-  "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
+    @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
+    "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
 
 # ------------------------------
 # DNS Tools
@@ -2325,7 +2352,6 @@ scan domain:
 check-free:
     @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
 
-
 # Open docs in mo viewer (live-reload)
 [group('Docs')]
 docs-view:
@@ -2348,7 +2374,7 @@ _TAILNET_DIR := "tofu/tailnet"
 # block in tofu/tailnet/main.tf. This is the mechanism the retired Coder stack
 # used, kept here with its OWN passphrase file so nothing of this stack depended
 # on that one. Generate it once with
-#   umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
+# umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
 _tailnet-encryption:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2426,7 +2452,7 @@ tailnet-apply:
 # Start the lite profile: firebase + spanner + pgadapter + postgres (GCP core)
 [group('Emulator')]
 emu-up nobuild='no':
-    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES= bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES= bash scripts/start-services.sh; fi
+    cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES= bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES= bash scripts/start-services.sh; fi
 
 # Explicit alias for the lite default above.
 alias emu-up-lite := emu-up
@@ -2436,19 +2462,19 @@ alias emu-up-lite := emu-up
 # Start exactly the named service(s) (+ their depends_on)
 [group('Emulator')]
 emu-up-only +services:
-    cd emulator && COMPOSE_PROFILES= bash scripts/start-services.sh {{services}}
+    cd emulator && COMPOSE_PROFILES= bash scripts/start-services.sh {{ services }}
 
 # Groups: bigtable search graph vector ml inspect full.
 # e.g. `just emu-up-group search` = lite + Elasticsearch.
 # Start lite + a capability group
 [group('Emulator')]
 emu-up-group group nobuild='no':
-    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES='{{group}}' bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES='{{group}}' bash scripts/start-services.sh; fi
+    cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES='{{ group }}' bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES='{{ group }}' bash scripts/start-services.sh; fi
 
 # Start the whole heavy stack (every data service; excludes interactive *-cli).
 [group('Emulator')]
 emu-up-full nobuild='no':
-    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES=full bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES=full bash scripts/start-services.sh; fi
+    cd emulator && if [ '{{ nobuild }}' = 'yes' ]; then COMPOSE_PROFILES=full bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES=full bash scripts/start-services.sh; fi
 
 # One-shot LITE: clean volumes -> prebuild lite images -> up lite -> wait
 [group('Emulator')]
@@ -2460,7 +2486,7 @@ emu-start:
     echo '🧹 Cleaning old volumes...'
     # `down` is profile-gated: without all profiles enabled it only tears down
     # the default (lite) services, orphaning any profiled heavy containers.
-    COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
+    COMPOSE_PROFILES=full,cli {{ PODMAN_COMPOSE }} down -v --remove-orphans
     bash scripts/prebuild-images.sh firebase-emulator postgres
     COMPOSE_PROFILES= bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --postgres 60
@@ -2474,7 +2500,7 @@ emu-start-full:
     cd emulator
     echo '🧹 Cleaning old volumes...'
     # `down` is profile-gated; enable all profiles so every service is removed.
-    COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
+    COMPOSE_PROFILES=full,cli {{ PODMAN_COMPOSE }} down -v --remove-orphans
     bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
     COMPOSE_PROFILES=full bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
@@ -2492,13 +2518,13 @@ emu-check:
 # Wait for emulator services to be ready
 [group('Emulator')]
 emu-wait default='30' a2a='60' mcp='60' postgres='60':
-    cd emulator && bash scripts/wait-for-services.sh --default {{default}} --a2a {{a2a}} --mcp {{mcp}} --postgres {{postgres}}
+    cd emulator && bash scripts/wait-for-services.sh --default {{ default }} --a2a {{ a2a }} --mcp {{ mcp }} --postgres {{ postgres }}
 
 # Pre-build selected emulator images
 [group('Emulator')]
 emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated builds; refusing shared resources' >&2; exit 2; fi
-    cd emulator && bash scripts/prebuild-images.sh {{images}}
+    cd emulator && bash scripts/prebuild-images.sh {{ images }}
 
 # Clean up emulator volumes (deletes all data)
 # COMPOSE_PROFILES=full,cli so the profile-gated `down` removes every service
@@ -2506,7 +2532,7 @@ emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
 [group('Emulator')]
 emu-clean:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation cleanup for isolated runs; refusing shared resources' >&2; exit 2; fi
-    cd emulator && COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
+    cd emulator && COMPOSE_PROFILES=full,cli {{ PODMAN_COMPOSE }} down -v --remove-orphans
 
 # Check emulator port usage before starting
 [group('Emulator')]
@@ -2535,12 +2561,12 @@ emu-gcloud-auth-check:
 # Update emulator deps (uv lock --upgrade + sync)
 [group('Emulator')]
 emu-update:
-    cd emulator && {{UV}} lock --upgrade && {{UV}} sync
+    cd emulator && {{ UV }} lock --upgrade && {{ UV }} sync
 
 # Run emulator tests (uv/pytest, vendored self-contained)
 [group('Emulator')]
 emu-test path='tests/' opts='-v':
-    cd emulator && {{UV_RUN}} pytest '{{path}}' '{{opts}}'
+    cd emulator && {{ UV_RUN }} pytest '{{ path }}' '{{ opts }}'
 
 # Run emulator fast tests (exclude e2e)
 [group('Emulator')]
@@ -2581,7 +2607,7 @@ emu-lint:
     echo '🔍 ty (ADR 0044)...'
     uv run --frozen --group lint ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
-    {{SEMGREP}} --config ../.semgrep/rules/python/ --error .
+    {{ SEMGREP }} --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
     git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
 
@@ -2594,8 +2620,8 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     set -euo pipefail
     command -v bunx >/dev/null 2>&1 || { echo '❌ bunx not found (need bun)'; exit 127; }
     cd emulator/emulate
-    echo "▶ emulate@0.8.0 services={{services}} base=4100 (Ctrl+C to stop)"
-    bunx emulate@0.8.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
+    echo "▶ emulate@0.8.0 services={{ services }} base=4100 (Ctrl+C to stop)"
+    bunx emulate@0.8.0 --service '{{ services }}' --port 4100 --seed emulate.config.yaml
 
 # Stop the emulate API emulators started by `just emu-api` (the host bunx/emulate process; no
 # Podman container is involved, unlike emu-stop / tel-down)
@@ -2623,23 +2649,23 @@ emu-api-stop:
 tel-up:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
     @podman network inspect shared-otel-net >/dev/null 2>&1 || podman network create shared-otel-net
-    cd telemetry && {{PODMAN_COMPOSE}} up -d
+    cd telemetry && {{ PODMAN_COMPOSE }} up -d
 
 # Stop telemetry stack. --remove-orphans also stops containers of an older
 # telemetry/compose.yaml (the five-container stack before ADR 0072).
 [group('Telemetry')]
 tel-down:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
-    cd telemetry && {{PODMAN_COMPOSE}} down --remove-orphans
+    cd telemetry && {{ PODMAN_COMPOSE }} down --remove-orphans
 
 # Show telemetry stack status
 [group('Telemetry')]
 tel-check:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
-    cd telemetry && {{PODMAN_COMPOSE}} ps
+    cd telemetry && {{ PODMAN_COMPOSE }} ps
 
 # Tail telemetry logs (optional service name)
 [group('Telemetry')]
 tel-logs svc='':
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
-    cd telemetry && if [ -n {{quote(svc)}} ]; then {{PODMAN_COMPOSE}} logs -f {{quote(svc)}}; else {{PODMAN_COMPOSE}} logs -f; fi
+    cd telemetry && if [ -n {{ quote(svc) }} ]; then {{ PODMAN_COMPOSE }} logs -f {{ quote(svc) }}; else {{ PODMAN_COMPOSE }} logs -f; fi

@@ -187,7 +187,8 @@ def test_installer_verifies_the_machine_path_onion() -> None:
 def test_justfile_wires_the_service_recipes() -> None:
     text = JUSTFILE.read_text(encoding="utf-8")
     for recipe in ("runner-svc-install", "runner-svc-restart"):
-        m = re.search(rf"^\[([^\]]*)\]\s*\n{recipe}:", text, re.MULTILINE)
+        # every attribute line in front of the recipe, one per line or combined
+        m = re.search(rf"((?:^\[[^\]]*\]\n)+){recipe}:", text, re.MULTILINE)
         assert m is not None, f"justfile must define a [windows] {recipe} recipe."
         assert "windows" in m.group(1), (
             f"{recipe} manages a Windows service; it must be [windows]-gated."

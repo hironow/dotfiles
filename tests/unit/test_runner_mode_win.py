@@ -116,7 +116,8 @@ def test_service_mode_is_the_inverse() -> None:
 def test_justfile_wires_both_modes() -> None:
     text = JUSTFILE.read_text(encoding="utf-8")
     for recipe in ("runner-mode-interactive", "runner-mode-service"):
-        m = re.search(rf"^\[([^\]]*)\]\s*\n{recipe}:", text, re.MULTILINE)
+        # every attribute line in front of the recipe, one per line or combined
+        m = re.search(rf"((?:^\[[^\]]*\]\n)+){recipe}:", text, re.MULTILINE)
         assert m is not None, f"justfile must define {recipe}."
         assert "windows" in m.group(1) and "Disk" in m.group(1), (
             f"{recipe}: [windows]-gated, grouped with the runner recipes."

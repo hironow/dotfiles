@@ -66,7 +66,7 @@ rust-lint *targets=rust_targets:
     #!/usr/bin/env bash
     set -euo pipefail
     cargo fmt --all --check
-    for target in {{targets}}; do
+    for target in {{ targets }}; do
       rustup target add "$target"
       cargo clippy --all-targets --all-features --target "$target" -- -D warnings
     done
