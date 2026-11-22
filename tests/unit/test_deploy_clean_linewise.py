@@ -3,14 +3,14 @@
 Why this guard exists
 ---------------------
 On native Windows, shebang recipes (`#!/usr/bin/env bash`) are OUTSIDE the
-`set windows-shell := ["sh", ...]` protection: just executes `env bash
+the `[windows]` `set shell := ["sh", ...]` protection: just executes `env bash
 <tempfile>`, `env`'s PATH search resolves `bash` to WSL's
 C:\\Windows\\System32\\bash.exe (System32 precedes Git usr\\bin in the
 machine PATH), and WSL bash cannot open the backslashed Windows temp path —
 `just deploy` dies with `/bin/bash: C:Users...deploy: No such file or
 directory` from PowerShell.
 
-Plain (linewise) recipes DO go through `set windows-shell := ["sh", ...]`:
+Plain (linewise) recipes DO go through the `[windows]` `set shell := ["sh", ...]`:
 `sh` is not in System32 so it resolves to Git Bash's sh, whose prelude
 prepends /usr/bin so the inner `bash` resolves to Git Bash's (raw non-login
 msys sh preserves the caller's PATH order and would otherwise let System32's
@@ -54,13 +54,13 @@ def test_recipe_is_linewise_bash_wrapper(justfile_text: str, recipe: str) -> Non
     body = _recipe_body(justfile_text, recipe)
     assert "#!" not in body, (
         f"{recipe} must be linewise (no shebang): shebang recipes bypass "
-        f"`set windows-shell` and resolve `env bash` to WSL's System32 bash "
+        f"the Windows `set shell` and resolve `env bash` to WSL's System32 bash "
         f"from PowerShell, which cannot open the Windows temp script path. "
         f"Keep the body in scripts/{recipe}.sh and invoke it via plain bash."
     )
     assert re.search(rf"@?bash scripts/{recipe}\.sh", body), (
         f"{recipe} must invoke scripts/{recipe}.sh via plain `bash` so the "
-        f"windows-shell sh -> Git Bash chain applies (see #231 / doctor)"
+        f"Windows `set shell` sh -> Git Bash chain applies (see #231 / doctor)"
     )
 
 

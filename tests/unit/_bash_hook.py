@@ -49,7 +49,7 @@ def resolve_bash() -> str:
 
     System32 ships no ``sh.exe``, so resolving ``sh`` and taking its sibling
     ``bash.exe`` lands on Git Bash. This is the same escape hatch the justfile
-    uses via ``set windows-shell`` (see CLAUDE.md, "Windows の shell 選択").
+    uses via the Windows ``set shell`` (see CLAUDE.md, "Windows の shell 選択").
     On POSIX this is a no-op.
     """
     found = shutil.which("bash")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Body of `just clean` (see justfile). Kept OUT of the justfile as a plain
 # script so the recipe stays linewise: shebang recipes bypass
-# `set windows-shell` and resolve `env bash` to WSL's System32 bash from
+# the Windows `set shell` and resolve `env bash` to WSL's System32 bash from
 # PowerShell (tests/unit/test_deploy_clean_linewise.py guards this).
 # Windows native removes only what `just deploy` placed (ADR 0018 subset).
 set -eu

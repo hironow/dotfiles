@@ -1,6 +1,8 @@
 # https://just.systems
 
+[unix]
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
 # Native Windows: WSL's C:\Windows\System32\bash.exe shadows Git Bash for a
 # bare `bash` (CreateProcess searches System32 before PATH), so plain recipes
 # would misrun under WSL. `sh` is NOT in System32, so it resolves to Git Bash's
@@ -14,8 +16,10 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 # prepend inside the recipe shell only, not the discouraged blanket
 # PowerShell PATH prepend. Ignored on non-Windows. Requires Git usr\bin on
 # PATH so `sh` itself is found (see `just doctor`). Guard:
-# tests/unit/test_windows_shell_usr_bin_path.py
-set windows-shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH"; exec /usr/bin/sh -eu -o pipefail -c "$0"']
+# tests/unit/test_windows_shell_usr_bin_path.py. `[windows]` on `set shell`
+# is the manual's way since just 1.56 (`set windows-shell` is deprecated).
+[windows]
+set shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH"; exec /usr/bin/sh -eu -o pipefail -c "$0"']
 
 # External commands. Wrapping every mise-managed tool with `mise exec --`
 # at call time guarantees the mise-pinned version even from

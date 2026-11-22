@@ -3,7 +3,7 @@
 The recipe once pasted its arguments into the command line unquoted, so a
 release path holding a space split in two (PR 3c's design review). On Unix it
 now takes them as positional arguments. Native Windows keeps the pasted form
-in a `[windows]` recipe of the same name, since windows-shell hands a recipe
+in a `[windows]` recipe of the same name, since the Windows `set shell` hands a recipe
 no positional arguments (its -c contract); there `id` and a plain `check`
 path must still pass through (PR 3c's code review). The unit-test workflow's
 windows-jev job runs this file on Windows.

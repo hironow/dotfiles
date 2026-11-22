@@ -737,7 +737,7 @@ def _render_hook_command(
     ``C:/...`` on Windows). On Windows the ``bash`` prefix becomes ``sh``:
     bare ``bash`` resolves to the System32 WSL bash before Git Bash, while
     ``sh`` has no System32 shadow and resolves to Git for Windows' sh (which
-    is bash) — same strategy as the justfile's windows-shell (ADR 0037).
+    is bash) — same strategy as the justfile's Windows `set shell` (ADR 0037).
     """
     hooks_prefix = f'"{agent.directory.as_posix()}/hooks/'
     rendered = command.replace(
