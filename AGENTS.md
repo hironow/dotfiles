@@ -60,6 +60,7 @@ just sync-agents-preview …  # dry-run
   Before startup, it explicitly sets the active engine socket and pins podman-compose.
   Because the socket grants engine control privileges, do not treat it as a security sandbox completely isolated from the host.
   Failures in required tools, connections, builds, or runtime fail the test.
+- **In CI, the dev container tests (`test-just.yaml`) run on pushes to main and on demand, not on pull requests (ADR-0089).** Pull requests get `just check` from `check.yaml` (no container; tools from `.devcontainer/ci-bootstrap.sh --tools-only`) and the unit suite as three shards from `unit-test.yaml`, whose `unit tests + instruction budget` job proves that the shards ran every collected test once. Refresh `tests/durations/unit.json` from the `unit-durations` artifact. `just ci-audit` and `just ci-shard-check` measure CI time and check shard completeness.
 - `tests/*.py` are sandbox and image tests (`test_just_sandbox.py` / `test_devcontainer.py`, etc., enumerated and run by `just test`). Put container-free static checks in `tests/unit/` (picked up by `test-unit` in `just ci`; files placed at root are not picked up by any gate). After adding or renaming a recipe, run **full `just test`**, not `just ci`. Keep sandbox assertions environment-independent (on the mount source side) (memory `feedback_just_test_ci_vs_local`).
 - **semgrep**: Validate `.semgrep/rules/**` with `semgrep --test` (`just semgrep-test`, included in `ci`).
   `.semgrep` contains intentional-violation fixtures and is excluded from ruff in `pyproject.toml`.
