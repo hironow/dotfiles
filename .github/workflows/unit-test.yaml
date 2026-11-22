@@ -184,6 +184,8 @@ jobs:
           merge-multiple: true
       # Each shard's list is compared by its ids: pytest ends the list with a
       # summary line that holds the collection time, so the bytes differ.
+      # --durations-in: the balance divides each shard's time by its runner's
+      # speed, so a slow runner does not read as stale durations (ADR-0089).
       - name: Prove that the shards collected one list and ran every test in it once
         working-directory: tools/ci-audit
         run: >-
@@ -195,6 +197,7 @@ jobs:
           --junit "$RUNNER_TEMP/shards/shard-2.xml"
           --junit "$RUNNER_TEMP/shards/shard-3.xml"
           --max-imbalance 1.5
+          --durations-in ../../tests/durations/unit.json
           --durations-out "$RUNNER_TEMP/unit-durations.json"
       # always(): a run that fails on imbalance is the one whose times a
       # refresh needs. Uploading does not change this job's result.
@@ -427,6 +430,7 @@ jobs:
           --junit "$RUNNER_TEMP/shards/windows-shard-3.xml"
           --junit "$RUNNER_TEMP/shards/windows-shard-4.xml"
           --max-imbalance 1.5
+          --durations-in ../../tests/durations/unit-windows.json
           --durations-out "$RUNNER_TEMP/unit-windows-durations.json"
       # always(): a run that fails on imbalance is the one whose times a
       # refresh needs. Uploading does not change this job's result.

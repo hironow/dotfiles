@@ -33,6 +33,8 @@ def test_matrix_splits_and_gate_agree_on_the_shard_count() -> None:
     # summary line, which holds the collection time.
     assert len(re.findall(r"--collected ", gate)) == count
     assert "cmp " not in gate
+    # a slow runner must not read as stale durations
+    assert "--durations-in ../../tests/durations/unit.json" in gate
     assert f"of {count})" in shard
 
 

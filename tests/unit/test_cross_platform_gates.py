@@ -137,6 +137,7 @@ def test_windows_ci_runs_every_unit_test_in_shards_and_the_5_1_tests():
     assert "go run . shards" in gate
     assert len(re.findall(r"--junit ", gate)) == count
     assert len(re.findall(r"--collected ", gate)) == count
+    assert "--durations-in ../../tests/durations/unit-windows.json" in gate
 
 
 def test_windows_ci_runs_the_go_tests():
