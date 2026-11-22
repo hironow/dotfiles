@@ -20,12 +20,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit:
-    name: unit tests + instruction budget
+  # The unit suite runs as three shards. `just test-unit` runs all of it
+  # (pytest-split with tests/durations/unit.json, least-duration). The gate job
+  # `unit` proves, at the splitter's unit (one JUnit case per collected test id),
+  # that the shards together ran every collected test once.
+  unit-shard:
+    name: unit tests (shard ${{ matrix.group }} of 3)
     # Draft pull requests do not run CI; runs start when the PR is marked
     # ready for review.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,12 +67,58 @@ jobs:
           install -m 0755 "$tmp/prek-x86_64-unknown-linux-gnu/prek" "$HOME/.local/bin/prek"
           "$HOME/.local/bin/prek" --version
 
-      - name: Run unit tests
+      - name: Run this shard of the unit tests
         env:
           # The prek runtime tests fail here instead of skipping.
           DOTFILES_REQUIRE_PREK: "1"
         # The same parallel run as `just test-unit` (pytest-xdist, loadgroup).
-        run: uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
+        run: >-
+          uvx --with pytest-xdist==3.8.0 --with pytest-split==0.11.0
+          pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider
+          --splits 3 --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
+          --durations-path tests/durations/unit.json
+          --junitxml "$RUNNER_TEMP/shard-${{ matrix.group }}.xml"
+          tests/unit/
+
+      # The list of every test the suite collects, for the gate's proof. Every
+      # shard writes it, and the gate fails if two lists differ.
+      - name: List every collected test
+        if: always()
+        run: >-
+          uvx --with pytest-split==0.11.0
+          pytest --collect-only -q -p no:cacheprovider tests/unit/
+          > "$RUNNER_TEMP/collected-${{ matrix.group }}.txt"
+
+      - name: Upload the shard's report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-shard-${{ matrix.group }}
+          path: |
+            ${{ runner.temp }}/shard-${{ matrix.group }}.xml
+            ${{ runner.temp }}/collected-${{ matrix.group }}.txt
+          if-no-files-found: error
+
+  unit-extras:
+    name: unit extras (Python 3.14 corpora, real Go, instruction budget)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # CI は mise 非依存 (mise.toml はローカル開発用)。uv は公式
+      # インストーラで導入。just は recipe-propagation テスト
+      # (tests/unit/test_plugin_check_scope.py) が実行する — ubuntu の
+      # apt パッケージは 1.21 で `[group]` attribute (1.27+) を parse
+      # できないため、uv tool で最新を ~/.local/bin に入れる。
+      # jq / bash はランナーにプリインストール済み。
+      - name: Install uv and just
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/uv" tool install rust-just
 
       # The command guard corpus, its word table, and the agent-hook payload
       # and tool-hooks corpora follow Python 3.14 (Unicode 16.0). The system
@@ -102,12 +156,57 @@ jobs:
         # --frozen: install from the committed root uv.lock, never rewrite it.
         run: uv run --frozen scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
 
+  # The gate keeps the name this job always had. It passes only when every shard
+  # and the extras passed, and the shards together ran every collected test once.
+  unit:
+    name: unit tests + instruction budget
+    needs: [unit-shard, unit-extras]
+    # always(): a skipped or failed need must fail this job, not skip it. A draft
+    # pull request skips the needs, and then this job skips too.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard and the extras passed
+        env:
+          RESULTS: ${{ needs.unit-shard.result }} ${{ needs.unit-extras.result }}
+        run: |
+          echo "results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/ci-audit/go.mod
+          cache-dependency-path: tools/ci-audit/go.sum
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: unit-shard-*
+          path: ${{ runner.temp }}/shards
+          merge-multiple: true
+      - name: Every shard collected the same list
+        run: |
+          cmp "$RUNNER_TEMP/shards/collected-1.txt" "$RUNNER_TEMP/shards/collected-2.txt"
+          cmp "$RUNNER_TEMP/shards/collected-1.txt" "$RUNNER_TEMP/shards/collected-3.txt"
+      - name: Prove that the shards ran every collected test once
+        working-directory: tools/ci-audit
+        run: >-
+          go run . shards
+          --collected "$RUNNER_TEMP/shards/collected-1.txt"
+          --junit "$RUNNER_TEMP/shards/shard-1.xml"
+          --junit "$RUNNER_TEMP/shards/shard-2.xml"
+          --junit "$RUNNER_TEMP/shards/shard-3.xml"
+          --max-imbalance 1.5
+          --durations-out "$RUNNER_TEMP/unit-durations.json"
+      - name: Upload the measured durations
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-durations
+          path: ${{ runner.temp }}/unit-durations.json
+
   go:
     name: Go tests (tools/)
     # The Go modules under tools/, the agent-hook binary's parity and
-    # conformance tests among them. The dev container job also runs them
-    # through `just check` (test-just.yaml); this job gives fast, independent
-    # feedback.
+    # conformance tests among them. `just check` (check.yaml) also runs them;
+    # this job gives fast, independent feedback.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:

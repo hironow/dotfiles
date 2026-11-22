@@ -765,9 +765,9 @@ test:
 # No .pytest_cache: workers writing it create a temporary directory in the
 # checkout that a test's own pytest run could see appear and vanish.
 [group('Test')]
-test-unit:
+test-unit *args:
     @echo '🧪 Running unit tests (host, no containers)...'
-    uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
+    uvx --with pytest-xdist==3.8.0 --with pytest-split==0.11.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider {{ args }} tests/unit/
     @echo '✅ Unit tests finished.'
 
 # Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
