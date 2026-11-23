@@ -103,7 +103,7 @@ jobs:
 
       # One writer per key: shard 1, on main.
       - name: Save the Go cache (main, shard 1)
-        if: github.event_name == 'push' && matrix.group == 1
+        if: (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.group == 1
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -397,7 +397,7 @@ jobs:
           just test-unit --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration --durations-path tests/durations/unit-windows.json --junitxml "$out/windows-shard-${{ matrix.group }}.xml"
       # One writer per key: shard 1, on main.
       - name: Save the Go cache (main, shard 1)
-        if: github.event_name == 'push' && matrix.group == 1
+        if: (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.group == 1
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |

@@ -89,6 +89,10 @@ def test_the_shards_restore_mains_go_cache_and_shard_1_on_main_saves_it(
     assert "restore-keys: unit-go-${{ runner.os }}-${{ runner.arch }}-\n" in job
     save_step = job[job.rindex("\n      - ", 0, save) :]
     # one writer per key: shard 1, on main
-    assert "if: github.event_name == 'push' && matrix.group == 1\n" in save_step
+    # TEMPORARY (measurement only, reverted before merge): the PR saves too
+    assert (
+        "if: (github.event_name == 'push' || github.event_name == 'pull_request')"
+        " && matrix.group == 1\n" in save_step
+    )
     assert 'echo "GOCACHE=$RUNNER_TEMP/go-build"' in job
     assert 'echo "GOMODCACHE=$RUNNER_TEMP/go-mod"' in job
