@@ -283,7 +283,18 @@ def test_formal_gate_runs_pinned_models_then_actual_script_simulation(
         for row in tools[:3]
     )
     audit = json.loads((sandbox / "pytest.json").read_text(encoding="utf-8"))
-    assert audit["args"][:5] == ["run", "--frozen", "--group", "dev", "pytest"]
+    # one worker per core, as `just test-unit` runs the same file (the
+    # simulation is about half of check-except-go's time when serial)
+    assert audit["args"][:7] == [
+        "run",
+        "--frozen",
+        "--group",
+        "dev",
+        "--with",
+        "pytest-xdist==3.8.0",
+        "pytest",
+    ]
+    assert audit["args"][7:9] == ["-n", "auto"]
     assert "tests/unit/test_podman_gc_simulation.py" in audit["args"]
     assert not (sandbox / "podman.log").exists()
 

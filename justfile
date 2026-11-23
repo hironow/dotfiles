@@ -1071,7 +1071,8 @@ spec-check:
       {{ QUINT }} test "$spec" --backend typescript --max-samples 100
       {{ QUINT }} run "$spec" --backend typescript --invariant Safety --max-samples 1000 --max-steps 12 --seed 565 --verbosity 1
     done
-    {{ UV_RUN }} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
+    # One worker per core, as `just test-unit` runs the same file.
+    {{ UV_RUN }} --group dev --with pytest-xdist==3.8.0 pytest -n auto -q tests/unit/test_podman_gc_simulation.py
 
 # check: strict gate, never writes. `just ci`, `just check-all`, and CI's
 # check.yaml run it; CI runs its three parts (check-except-go, go-lint,
