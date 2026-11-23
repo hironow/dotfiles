@@ -50,8 +50,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      # Go's build cache, the module cache and golangci-lint's cache, seeded
+      # from main (docs/agents/ci-speed.md): pull requests restore main's
+      # entry and write none. Every cache here is content-addressed, so an
+      # older entry found by the restore key is safe.
+      - name: Point the Go caches at the runner's temp directory
+        run: |
+          {
+            echo "GOCACHE=$RUNNER_TEMP/go-build"
+            echo "GOMODCACHE=$RUNNER_TEMP/go-mod"
+            echo "GOLANGCI_LINT_CACHE=$RUNNER_TEMP/golangci-lint"
+          } >> "$GITHUB_ENV"
+      - name: Restore main's Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/go-build
+            ${{ runner.temp }}/go-mod
+            ${{ runner.temp }}/golangci-lint
+          key: go-lint-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/mise/image-tools.toml', '.golangci.yaml', '**/go.sum') }}
+          restore-keys: go-lint-${{ runner.os }}-${{ runner.arch }}-
       - name: Run just go-lint
         run: just go-lint
+      - name: Save the Go cache (main only)
+        if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/go-build
+            ${{ runner.temp }}/go-mod
+            ${{ runner.temp }}/golangci-lint
+          key: go-lint-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/mise/image-tools.toml', '.golangci.yaml', '**/go.sum') }}
 
   go-test:
     name: just go-test
@@ -67,8 +96,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash .devcontainer/ci-bootstrap.sh --tools-only
+      # Go's build cache, the module cache and golangci-lint's cache, seeded
+      # from main (docs/agents/ci-speed.md): pull requests restore main's
+      # entry and write none. Every cache here is content-addressed, so an
+      # older entry found by the restore key is safe.
+      - name: Point the Go caches at the runner's temp directory
+        run: |
+          {
+            echo "GOCACHE=$RUNNER_TEMP/go-build"
+            echo "GOMODCACHE=$RUNNER_TEMP/go-mod"
+            echo "GOFLAGS=-count=1"
+          } >> "$GITHUB_ENV"
+      - name: Restore main's Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/go-build
+            ${{ runner.temp }}/go-mod
+          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/mise/image-tools.toml', '**/go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-${{ runner.arch }}-
       - name: Run just go-test
         run: just go-test
+      - name: Save the Go cache (main only)
+        if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/go-build
+            ${{ runner.temp }}/go-mod
+          key: go-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/mise/image-tools.toml', '**/go.sum') }}
 
   check:
     name: just check (no container)

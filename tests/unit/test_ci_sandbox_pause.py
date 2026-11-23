@@ -207,3 +207,46 @@ def test_the_file_logs_macos_code_runs_on_macos() -> None:
     assert vet
     assert test
     assert job.index("actions/setup-go@") < vet.start() < test.start()
+
+
+CACHE_SHA = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"  # actions/cache v6.1.0
+
+
+@pytest.mark.parametrize(
+    ("job_id", "inputs"),
+    [
+        ("go-lint", "'config/mise/image-tools.toml', '.golangci.yaml', '**/go.sum'"),
+        ("go-test", "'config/mise/image-tools.toml', '**/go.sum'"),
+    ],
+)
+def test_the_go_jobs_restore_mains_cache_and_only_main_saves_it(
+    job_id: str, inputs: str
+) -> None:
+    # docs/agents/ci-speed.md: seed caches from the default branch; a pull
+    # request restores them and writes none. Both caches are content-addressed,
+    # so an older entry found by the restore key is safe.
+    job = _job(
+        (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8"), job_id
+    )
+    restore = job.index(f"uses: actions/cache/restore@{CACHE_SHA} # v6.1.0")
+    recipe = job.index(f"run: just {job_id}\n")
+    save = job.index(f"uses: actions/cache/save@{CACHE_SHA} # v6.1.0")
+    assert restore < recipe < save
+    key = f"key: {job_id}-${{{{ runner.os }}}}-${{{{ runner.arch }}}}-${{{{ hashFiles({inputs}) }}}}"
+    assert job.count(key) == 2, "restore and save use the same key"
+    assert (
+        f"restore-keys: {job_id}-${{{{ runner.os }}}}-${{{{ runner.arch }}}}-\n" in job
+    )
+    save_step = job[job.rindex("\n      - ", 0, save) :]
+    assert "if: github.event_name == 'push'\n" in save_step
+    assert 'echo "GOCACHE=$RUNNER_TEMP/go-build"' in job
+    assert 'echo "GOMODCACHE=$RUNNER_TEMP/go-mod"' in job
+
+
+def test_go_test_never_takes_a_test_result_from_the_cache() -> None:
+    # Some tests read files outside their module, which Go's test cache does
+    # not track: only compiled packages may come from the cache.
+    job = _job(
+        (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8"), "go-test"
+    )
+    assert 'echo "GOFLAGS=-count=1"' in job
