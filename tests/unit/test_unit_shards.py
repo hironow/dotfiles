@@ -59,12 +59,13 @@ def test_the_durations_file_covers_the_suite() -> None:
 CACHE_SHA = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"  # actions/cache v6.1.0
 
 
+# Windows only: measured on PR #680 with three cold and three warm runs,
+# alternating, the cache cut the slowest Windows shard in every pair
+# (141 -> 118, 137 -> 121, 145 -> 121 s); on Linux it did not in one pair
+# (75 -> 84 s), so Linux has no cache step.
 @pytest.mark.parametrize(
     ("job_id", "test_step"),
-    [
-        ("unit-shard", "- name: Run this shard of the unit tests"),
-        ("windows-unit-shard", "- name: Unit tests, this shard"),
-    ],
+    [("windows-unit-shard", "- name: Unit tests, this shard")],
 )
 def test_the_shards_restore_mains_go_cache_and_shard_1_on_main_saves_it(
     job_id: str, test_step: str
@@ -92,3 +93,7 @@ def test_the_shards_restore_mains_go_cache_and_shard_1_on_main_saves_it(
     assert "if: github.event_name == 'push' && matrix.group == 1\n" in save_step
     assert 'echo "GOCACHE=$RUNNER_TEMP/go-build"' in job
     assert 'echo "GOMODCACHE=$RUNNER_TEMP/go-mod"' in job
+
+
+def test_the_linux_shards_have_no_go_cache_step() -> None:
+    assert "actions/cache/" not in _job("unit-shard")
