@@ -144,8 +144,10 @@ jobs:
       - name: Agent-hook's real Go tests, with the module's Go
         env:
           AGENT_HOOKS_STRICT_GO: "1"
+        # One worker per core: the installed-release tests share one
+        # xdist_group, and the doctor test runs beside them.
         run: >-
-          uvx pytest -q -ra
+          uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup
           tests/unit/test_agent_hook_doctor.py::test_real_hookrelease_rebuilds_a_real_temporary_release
           tests/unit/test_agent_hooks_test_installed.py
 

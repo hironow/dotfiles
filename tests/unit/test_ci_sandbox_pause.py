@@ -250,3 +250,18 @@ def test_go_test_never_takes_a_test_result_from_the_cache() -> None:
         (ROOT / ".github/workflows/check.yaml").read_text(encoding="utf-8"), "go-test"
     )
     assert 'echo "GOFLAGS=-count=1"' in job
+
+
+def test_the_real_go_tests_run_one_worker_per_core() -> None:
+    # The doctor's real-hookrelease test and the installed-release tests build
+    # agent-hook from scratch (each uses its own GOCACHE). Serially they were
+    # most of the unit extras job; the installed-release tests share one
+    # xdist_group, so loadgroup keeps them on one worker and the doctor test
+    # runs beside them.
+    job = _job(UNIT, "unit-extras")
+    step = job[job.index("- name: Agent-hook's real Go tests") :]
+    step = step[: step.index("\n      - ", 1)] if "\n      - " in step[1:] else step
+    assert 'AGENT_HOOKS_STRICT_GO: "1"' in step
+    assert (
+        "uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup" in step
+    )
