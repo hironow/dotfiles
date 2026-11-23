@@ -112,6 +112,10 @@ def test_windows_ci_runs_every_unit_test_in_shards_and_the_5_1_tests():
     runs = _windows_test_job(shard)
     (groups,) = re.findall(r"group: \[([\d, ]+)\]", shard)
     count = len(groups.split(","))
+    # 6: each shard holds about 270 s of test time, about 80 s on a runner
+    # (measured 2026-11-23 with 4 shards: 340-450 s each, 93-128 s wall).
+    # Separate runners, not more workers on one: the tests use every core.
+    assert count == 6
     (unit,) = [c for c in runs if c.startswith("just test-unit ")]
     assert f"--splits {count} --group ${{{{ matrix.group }}}}" in unit
     assert "--durations-path tests/durations/unit-windows.json" in unit

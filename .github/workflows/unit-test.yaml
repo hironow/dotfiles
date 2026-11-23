@@ -308,16 +308,17 @@ jobs:
   # of the scripts that run on Windows PowerShell 5.1 in production. The gate
   # `windows-unit` proves that the shards ran every collected test once.
   windows-unit-shard:
-    name: Unit tests on Windows (shard ${{ matrix.group }} of 4)
+    name: Unit tests on Windows (shard ${{ matrix.group }} of 6)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
-    # The whole suite took 4m58s in one job on 2026-11-22; a quarter of it
-    # plus setup is about 1m30s. Set to about twice the measured time.
-    timeout-minutes: 6
+    # Six shards of about 270 s of test time each (measured 2026-11-23: four
+    # shards took 93-128 s, 340-450 s of test time each). About 80 s a shard
+    # plus setup; set to about twice that.
+    timeout-minutes: 4
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4]
+        group: [1, 2, 3, 4, 5, 6]
     # GitHub runs bash with -eo pipefail, and Git's /usr/bin (gpg, sh,
     # cygpath) is on PATH, as in the Git Bash a Windows host tests from.
     defaults:
@@ -344,7 +345,7 @@ jobs:
       - name: Unit tests, this shard
         run: |
           out="$(cygpath -m "$RUNNER_TEMP")"
-          just test-unit --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration --durations-path tests/durations/unit-windows.json --junitxml "$out/windows-shard-${{ matrix.group }}.xml"
+          just test-unit --splits 6 --group ${{ matrix.group }} --splitting-algorithm least_duration --durations-path tests/durations/unit-windows.json --junitxml "$out/windows-shard-${{ matrix.group }}.xml"
       # The list of every test the suite collects here, for the gate's proof.
       # PYTHONUTF8 makes the list UTF-8 like the JUnit report; the test run
       # above keeps Windows' default encoding, which the suite must pass under.
@@ -425,10 +426,14 @@ jobs:
           --collected "$RUNNER_TEMP/shards/windows-collected-2.txt"
           --collected "$RUNNER_TEMP/shards/windows-collected-3.txt"
           --collected "$RUNNER_TEMP/shards/windows-collected-4.txt"
+          --collected "$RUNNER_TEMP/shards/windows-collected-5.txt"
+          --collected "$RUNNER_TEMP/shards/windows-collected-6.txt"
           --junit "$RUNNER_TEMP/shards/windows-shard-1.xml"
           --junit "$RUNNER_TEMP/shards/windows-shard-2.xml"
           --junit "$RUNNER_TEMP/shards/windows-shard-3.xml"
           --junit "$RUNNER_TEMP/shards/windows-shard-4.xml"
+          --junit "$RUNNER_TEMP/shards/windows-shard-5.xml"
+          --junit "$RUNNER_TEMP/shards/windows-shard-6.xml"
           --max-imbalance 1.5
           --durations-in ../../tests/durations/unit-windows.json
           --durations-out "$RUNNER_TEMP/unit-windows-durations.json"
