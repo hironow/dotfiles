@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/latency"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logsink"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/toolhookcorpus"
 )
 
@@ -27,6 +29,9 @@ func execute(config options, cases []latency.Case) ([]latency.Row, error) {
 		if err := os.Mkdir(path, 0o700); err != nil {
 			return nil, err
 		}
+	}
+	if err := prepareFileLog(state); err != nil {
+		return nil, err
 	}
 	// Both sides share one state directory, one Python environment for the
 	// formatter's `uv run`, and one ruff cache, all temporary: the binary's
@@ -52,6 +57,22 @@ func execute(config options, cases []latency.Case) ([]latency.Row, error) {
 	}
 	m := measurement{config: config, runner: shellRunner{project: project, env: env}, files: files, state: state}
 	return m.run(cases)
+}
+
+// prepareFileLog makes the binary's log directory and salt under state with
+// the binary's own code. The binary writes its line after the answer and drops
+// it past the logging deadline; making these on its first run can pass that
+// deadline. With them ready, every run only appends its line.
+func prepareFileLog(state string) error {
+	sink, err := logsink.OpenFileSink(state, os.Getuid())
+	if err != nil {
+		return fmt.Errorf("prepare the binary's file log: %w", err)
+	}
+	defer sink.Close()
+	if _, ok := sink.Salt(); !ok {
+		return errors.New("prepare the binary's file log: no salt")
+	}
+	return nil
 }
 
 func absoluteCommands(config *options) error {
