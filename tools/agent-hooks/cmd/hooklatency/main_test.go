@@ -59,10 +59,16 @@ func TestCLIWithRealProcesses(t *testing.T) {
 	}
 	// The old side passes and records the log count it can see. In round 3
 	// the binary runs first, so the final old run sees every binary line.
+	// Its first run, before any binary run, also records whether the
+	// binary's log directory and salt are already there.
 	script := `#!/bin/sh
 cat >/dev/null
+own="$XDG_STATE_HOME"/dotfiles/agent-hooks
+if [ ! -e first-state ]; then
+    if [ -d "$own/logs" ] && [ -f "$own/salt" ]; then echo ready; else echo empty; fi > first-state
+fi
 count=0
-for log in "$XDG_STATE_HOME"/dotfiles/agent-hooks/logs/*.jsonl; do
+for log in "$own"/logs/*.jsonl; do
     [ -f "$log" ] || continue
     while IFS= read -r line; do count=$((count + 1)); done < "$log"
 done
@@ -99,6 +105,13 @@ printf '%s\n' "$RUFF_CACHE_DIR" > measured-ruff-cache
 	count, err := os.ReadFile(filepath.Join(project, "log-count"))
 	if err != nil || string(count) != "8\n" {
 		t.Fatalf("log count = %q (%v), want 2 cases * (3 rounds + 1 warm-up) = 8", count, err)
+	}
+	// The binary's first run would make its log directory and salt, which
+	// can pass the logging deadline and drop that run's line. The
+	// measurement makes them before any run.
+	first, err := os.ReadFile(filepath.Join(project, "first-state"))
+	if err != nil || string(first) != "ready\n" {
+		t.Errorf("state before the first run = %q (%v), want ready: the log directory and salt made before any run", first, err)
 	}
 	state, err := os.ReadFile(filepath.Join(project, "measured-state"))
 	if err != nil {
