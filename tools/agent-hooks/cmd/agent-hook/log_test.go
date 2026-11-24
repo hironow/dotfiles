@@ -16,6 +16,7 @@ import (
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/harnesses"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logline"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logsink"
 )
 
 // runIn runs the built binary with its state directory (XDG_STATE_HOME) set
@@ -51,6 +52,39 @@ func runBinaryIn(t *testing.T, bin, state string, stdin []byte, args ...string) 
 	return exit, stdout.String(), stderr.String()
 }
 
+// preparedState is a state directory whose file log already exists: its
+// directories and salt made by logsink, as the binary makes them. A run logs
+// only after it answers, within launch's 250 ms logging deadline, and drops
+// the line when the deadline passes: logging never delays the answer. Making
+// the directories and the salt is the slow part of a first run (measured on
+// an idle Mac: about 20 ms typical, up to 400 ms, against at most 15 ms when
+// they exist); on busy CI runners the first run passed the deadline and left
+// no line (the test took 0.26 s and 0.46 s, 2026-11-23). A test that needs a
+// run's line starts here, so the timed run only appends. logsink's own tests
+// cover making the directories and the salt.
+func preparedState(t *testing.T) string {
+	t.Helper()
+	state := t.TempDir()
+	base, ok := logsink.Base(func(key string) (string, bool) {
+		if key == "XDG_STATE_HOME" {
+			return state, true
+		}
+		return "", false
+	})
+	if !ok {
+		t.Fatal("no state directory")
+	}
+	sink, err := logsink.OpenFileSink(base, os.Getuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sink.Close()
+	if _, ok := sink.Salt(); !ok {
+		t.Fatal("logsink made no salt")
+	}
+	return state
+}
+
 func skipOnWindows(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -60,7 +94,7 @@ func skipOnWindows(t *testing.T) {
 
 func TestEachRunLogsOneLineInTheStateDirectory(t *testing.T) {
 	skipOnWindows(t)
-	state := t.TempDir()
+	state := preparedState(t)
 	payload, err := harnesses.FS.ReadFile("claude/fixtures/pre-bash.json")
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +138,7 @@ func TestEachRunLogsOneLineInTheStateDirectory(t *testing.T) {
 
 func TestAgentHookLogSummaryCountsTheDaysLines(t *testing.T) {
 	skipOnWindows(t)
-	state := t.TempDir()
+	state := preparedState(t)
 	payload, err := harnesses.FS.ReadFile("claude/fixtures/pre-bash.json")
 	if err != nil {
 		t.Fatal(err)
