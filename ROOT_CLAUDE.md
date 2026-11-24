@@ -17,8 +17,9 @@ the rules in these instructions) gets an independent review **before** you show
 it. A plan that only fixes typos, comments, or formatting needs none. Never skip
 a required review, and never review a plan yourself in the context that wrote
 it. Codex is the preferred reviewer. If Codex is unavailable, start an
-independent subagent instead. Full steps, the three lenses, and commands:
-docs/agents/plan-review.md.
+independent subagent instead. Brief the reviewer with the requirements, accept
+only findings that show a bug or a broken requirement, and stop after three
+rounds. Full steps, the three lenses, and commands: docs/agents/plan-review.md.
 
 ## ASCII diagrams in answers
 
