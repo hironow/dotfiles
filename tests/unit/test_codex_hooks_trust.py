@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import queue
+import shlex
 import signal
 import subprocess
 import sys
@@ -342,15 +343,15 @@ def test_a_codex_step_past_its_timeout_is_killed_with_its_children(
     import sync_agents
 
     pid_file = tmp_path / "child.pid"
-    step = tmp_path / "slow_step.py"
+    step = tmp_path / "slow_step.sh"
     step.write_text(
-        "import pathlib, subprocess, time\n"
-        "child = subprocess.Popen(['sleep', '60'])\n"
-        f"pathlib.Path({str(pid_file)!r}).write_text(str(child.pid), encoding='utf-8')\n"
-        "print('started', flush=True)\n"
-        "time.sleep(60)\n",
+        f"sleep 60 &\necho $! > {shlex.quote(str(pid_file))}\necho started\nsleep 60\n",
         encoding="utf-8",
     )
+    # The step runs under sh, not Python. A Python step once used up the
+    # 1 s timeout starting up under load, before it said "started". sh
+    # starts in milliseconds, so the timeout counts the step's own wait.
+    monkeypatch.setattr(sys, "executable", "/bin/sh")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(
         sync_agents, "CODEX_STEPS", ((str(step), "slow step failed", "run it"),)
