@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0088](0088-ci-speed-standard-for-every-language.md)
-- **consultation-trace**: the owner shared a discussion on adversarial reviews on 2026-11-23 and asked for Claude's view; Claude recommended this record with two changes and one addition; the owner answered "ではおすすめで、進めてください" (translated: then go ahead with your recommendation); the owner accepted the record on 2026-11-25 ("ADR-0091 を approveします"), quoted in the pull request that settled it
+- **consultation-trace**: the owner shared a discussion on adversarial reviews on 2026-11-23 and asked for Claude's view; Claude recommended this record with two changes and one addition; the owner answered "ではおすすめで、進めてください" (translated: then go ahead with your recommendation); the owner accepted the record on 2026-11-25 ("ADR-0091 を approveします"), quoted in [PR #685](https://github.com/hironow/dotfiles/pull/685)
 
 ## Plain summary
 
@@ -81,5 +81,5 @@ Restore the earlier `docs/agents/plan-review.md` and the overlay sentence from g
 ## Decision (2026-11-25)
 
 - [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), 2026-11-25 02:31 JST. After the rules had run on four pull requests (#681 to #684), the owner wrote "ADR-0091 を approveします" (translated: I approve ADR-0091). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in the pull request that settled the record.
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-25 02:31 JST. After the rules had run on four pull requests (#681 to #684), the owner wrote "ADR-0091 を approveします" (translated: I approve ADR-0091). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #685](https://github.com/hironow/dotfiles/pull/685).
 - Action: none beyond this record; the rules are already in `docs/agents/plan-review.md` and the Claude overlay, distributed to every agent home on 2026-11-24.
