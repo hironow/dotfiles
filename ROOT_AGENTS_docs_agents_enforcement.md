@@ -56,9 +56,12 @@ tail.
   normal permission flow; the Codex wrapper forwards it, because Codex reads it
   only as the carrier of the rewrite and grants no approval with it. Details:
   docs/agents/rtk.md.
-- `format-after-edit.sh` (PostToolUse Write|Edit): runs `ruff format` +
-  `ruff check --fix` on the edited Python file, and `gofmt -w` on the edited Go
-  file (single file only).
+- The formatter (PostToolUse Write|Edit: `ruff format` + `ruff check --fix`
+  on the edited Python file, `gofmt -w` on the edited Go file) is not
+  registered: `"registered": false` in `tools/agent-hooks/manifest.json`
+  (dotfiles ADR-0095). Format with the project's own gate instead. To turn it
+  back on, set `registered` to true and restore its PostToolUse block in
+  `.claude/settings.hooks.json`.
 
 ## Avoiding false positives in Bash commands
 

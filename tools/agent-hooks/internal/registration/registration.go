@@ -17,12 +17,18 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 )
 
-// Hook is the manifest metadata a registration needs.
+// Hook is the manifest metadata a registration needs. Registered false keeps
+// the hook's code, support and block but leaves it out of every fragment, so
+// no agent runs it; absent means true.
 type Hook struct {
-	ID      string `json:"id"`
-	Event   string `json:"event"`
-	Failure string `json:"failure"`
+	ID         string `json:"id"`
+	Event      string `json:"event"`
+	Failure    string `json:"failure"`
+	Registered *bool  `json:"registered,omitempty"`
 }
+
+// IsRegistered reports whether the fragment registers the hook.
+func (h Hook) IsRegistered() bool { return h.Registered == nil || *h.Registered }
 
 // Loss is one support cell that is not supported on the requested OS.
 type Loss struct {
@@ -127,9 +133,6 @@ func renderFragment(def definition.Definition, hooks []Hook, launcher definition
 	blocks := map[string][]nativeBlock{}
 	for _, block := range def.Registration.Blocks {
 		native := def.Registration.Events[block.Event]
-		if _, seen := blocks[native]; !seen {
-			events = append(events, native)
-		}
 		rendered := nativeBlock{Matcher: block.Matcher, Hooks: []jsontext.Value{}}
 		for _, id := range block.Hooks {
 			spec, ok := specs[id]
@@ -141,12 +144,23 @@ func renderFragment(def definition.Definition, hooks []Hook, launcher definition
 			if spec.Failure == "closed" && spec.Event != "pre" {
 				return nil, fmt.Errorf("hook %q fails closed on %s; only a pre hook can block", id, spec.Event)
 			}
+			if !spec.IsRegistered() {
+				continue
+			}
 			values := definition.RegistrationValues{Binary: binary, Harness: def.Name, Event: block.Event, Hook: id}
 			entry, err := launcher.Render(spec.Failure == "closed", values, quoting)
 			if err != nil {
 				return nil, err
 			}
 			rendered.Hooks = append(rendered.Hooks, jsontext.Value(entry))
+		}
+		// A block left with no registered hook goes, and an event left with
+		// no block goes with it.
+		if len(rendered.Hooks) == 0 {
+			continue
+		}
+		if _, seen := blocks[native]; !seen {
+			events = append(events, native)
 		}
 		blocks[native] = append(blocks[native], rendered)
 	}

@@ -98,6 +98,9 @@ type hookSpec struct {
 	Event           string `json:"event"`
 	Failure         string `json:"failure"`
 	DeadlineSeconds int    `json:"deadlineSeconds"`
+	// Registered false leaves the hook out of every registration; the binary
+	// still runs it when called (selftest, corpora). Absent means true.
+	Registered *bool `json:"registered,omitempty"`
 }
 
 // The failure modes of manifest.json.

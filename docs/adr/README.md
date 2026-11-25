@@ -119,6 +119,7 @@ and what outlived it.
 | 0092 | [Documentation is generated for humans, code is the spec, a provable glossary proves its words, and Markdown is not tested](./0092-generated-docs-code-as-spec-provable-glossary.md) | Accepted (2026-11-25); partial supersession of 0078 (D8), 0080 (D7), 0090 (D1); partly superseded by [0093](./0093-tests-check-code-not-file-text.md) (D6) | 2026-11-25 | `ROOT_AGENTS.md`, `ROOT_AGENTS_docs_agents_docs-discipline.md`, `ROOT_AGENTS_docs_agents_naming.md`, `ROOT_AGENTS_docs_agents_testing.md`, `ROOT_AGENTS_docs_agents_formal-methods.md`, `ROOT_AGENTS_docs_agents_project-structure.md` |
 | 0093 | [Tests check what code does, never what a file says; file policies are lint rules](./0093-tests-check-code-not-file-text.md) | Accepted (2026-11-26); partial supersession of 0092 (D6) and 0052 (Decision 1, repo-lint's `go run`) | 2026-11-25 | `ROOT_AGENTS.md`, `ROOT_AGENTS_docs_agents_testing.md` |
 | 0094 | [Vendor the semgrep-guardrails rules into dotfiles](./0094-vendor-semgrep-guardrails.md) | Accepted (2026-11-26) | 2026-11-25 | `.semgrep/rules/guardrails/`, `justfile`, `plugins/autoreview/` |
+| 0095 | [A hook can be declared unregistered; the formatter is unregistered](./0095-agent-hook-unregistered-formatter.md) | Proposed | 2026-11-26 | `tools/agent-hooks/manifest.json`, `tools/agent-hooks/internal/registration/`, `.claude/settings.hooks.json`, `scripts/agent_hook_doctor.py` |
 
 ## Reading order for newcomers
 
@@ -228,3 +229,4 @@ and what outlived it.
 - 2026-11-25: Proposed [ADR-0094](./0094-vendor-semgrep-guardrails.md). The semgrep-guardrails rules move from the `guardrails/semgrep` submodule to `.semgrep/rules/guardrails/`; `just semgrep-test` checks them; the old repository is archived after the merge.
 - 2026-11-26: Accepted [ADR-0093](./0093-tests-check-code-not-file-text.md). ADR-0092 D6 is widened to every file; ADR-0052 Decision 1 gets a limited distribution exception for `tools/repo-lint`, recorded as ADR-0061's is (owner's ruling); the status lines of ADR-0041, ADR-0045 and ADR-0089 say which of their guards moved to lint rules.
 - 2026-11-26: Accepted [ADR-0094](./0094-vendor-semgrep-guardrails.md) as written. The rules moved in #691, and the owner archived hironow/semgrep-guardrails.
+- 2026-11-26: Proposed [ADR-0095](./0095-agent-hook-unregistered-formatter.md). A manifest hook can say `"registered": false`: `agent-hook render` leaves it out while its code and tests stay. The formatter is the first; `.claude/settings.hooks.json` drops its block too.
