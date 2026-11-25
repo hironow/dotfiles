@@ -4,6 +4,6 @@
     {"id": "files-guard", "event": "pre", "failure": "closed", "deadlineSeconds": 10},
     {"id": "secrets-guard", "event": "pre", "failure": "closed", "deadlineSeconds": 10},
     {"id": "rtk", "event": "pre", "failure": "open", "deadlineSeconds": 10},
-    {"id": "formatter", "event": "post", "failure": "open", "deadlineSeconds": 20}
+    {"id": "formatter", "event": "post", "failure": "open", "deadlineSeconds": 20, "registered": false}
   ]
 }

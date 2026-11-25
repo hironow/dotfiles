@@ -183,9 +183,29 @@ def test_loss_lines_and_missing_formatter_tools_are_informational() -> None:
     assert _lines(facts, "loss") == [
         ("INFO", ".claude: pending Example: no captured payload")
     ]
+    # This home does not register the formatter, so a missing uv or gofmt
+    # changes nothing it runs.
+    assert _lines(facts, "tools") == []
+    assert _lines(check.Facts(tools=frozenset()), "tools") == []
+
+
+def test_missing_formatter_tools_are_reported_where_the_formatter_runs() -> None:
+    formatter = {
+        "matcher": "Write|Edit",
+        "hooks": [
+            {
+                "type": "command",
+                "command": PROGRAM,
+                "args": ["claude", "post", "--hook", "formatter"],
+            }
+        ],
+    }
+    managed = {**FRAGMENT["hooks"], "PostToolUse": [formatter]}
+    facts = check.Facts(homes=(_wired(managed=managed),), tools=frozenset())
     assert len(_lines(facts, "tools")) == 2
     assert all(level == "INFO" for level, _ in _lines(facts, "tools"))
-    assert _lines(check.Facts(tools=frozenset()), "tools") == []
+    facts = check.Facts(homes=(_wired(managed=managed),))
+    assert _lines(facts, "tools") == []
 
 
 @pytest.mark.parametrize(

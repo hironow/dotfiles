@@ -164,7 +164,7 @@ Therefore, unlike Claude, registrations are not replaced.
 
 - Groups that still match what the declaration wants are left in place. Codex continues to trust them.
 - Only changed groups are emptied in place, and new groups are placed in an empty group with the same matcher (preferring a group of the same kind just emptied), or appended at the end if none exists. This applies equally when script fragments or agent-hook templates change.
-- The three agent-hook guards (files-guard, secrets-guard, command-guard) are added alongside the scripts; rtk and formatter stay on scripts.
+- The three agent-hook guards (files-guard, secrets-guard, command-guard) are added alongside the scripts; rtk stays on scripts. The formatter is not registered anywhere (`"registered": false` in `tools/agent-hooks/manifest.json`, ADR-0095), and `.claude/settings.hooks.json` has no formatter block.
 - If render's guards do not include exactly one of each of these three, treat it as if there is no release (keep existing guards if wired, and stop install).
 - User-owned groups keep both their position and contents. Groups are never deleted.
 - If a plan would violate these rules, that home stops (`stopped: placement: ...`).

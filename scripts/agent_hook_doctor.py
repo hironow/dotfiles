@@ -415,7 +415,11 @@ def report(facts: Facts) -> list[Line]:
                     f"release {release.path}: cannot check here: {reason}",
                 )
             )
-    if any(home.binaries for home in facts.homes):
+    # Only a home that registers the formatter runs it; the manifest can leave
+    # it unregistered, and then a missing uv or gofmt changes nothing.
+    if any(
+        home.binaries and _registers_formatter(home.managed) for home in facts.homes
+    ):
         for tool, suffix in (("uv", ".py"), ("gofmt", ".go")):
             if tool not in facts.tools:
                 lines.append(
@@ -425,6 +429,7 @@ def report(facts: Facts) -> list[Line]:
                         f"{tool} missing on PATH: the formatter leaves {suffix} files as they are",
                     )
                 )
+    if any(home.binaries for home in facts.homes):
         for log in facts.logs:
             homes = tuple(
                 home.name
@@ -685,6 +690,19 @@ def _log(path: str) -> Log:
     except (ValueError, TypeError) as exc:
         return Log(path, replace(outcome, reason=f"output does not parse: {exc}"))
     return Log(path, outcome, LogSummary(**doc))
+
+
+def _registers_formatter(hooks: object) -> bool:
+    """Whether a home's managed hooks run agent-hook's formatter."""
+    if not isinstance(hooks, dict):
+        return False
+    for blocks in hooks.values():
+        for block in blocks if isinstance(blocks, list) else ():
+            for entry in block.get("hooks", ()) if isinstance(block, dict) else ():
+                args = entry.get("args") if isinstance(entry, dict) else None
+                if isinstance(args, list) and args[-2:] == ["--hook", "formatter"]:
+                    return True
+    return False
 
 
 def gather(home: Path) -> Facts:

@@ -123,12 +123,6 @@ CODEX_FRAGMENT = {
                 "hooks": [_hook('bash "$CODEX_HOME/hooks/rtk-hook-codex.sh"')],
             },
         ],
-        "PostToolUse": [
-            {
-                "matcher": "Write|Edit",
-                "hooks": [_hook('bash "$CODEX_HOME/hooks/format-after-edit.sh"')],
-            }
-        ],
     }
 }
 
@@ -143,8 +137,22 @@ def test_the_codex_fragment_is_rendered_from_the_claude_source() -> None:
 
 def test_a_hook_removed_from_the_source_leaves_codex_too() -> None:
     source = _claude_source()
-    del source["hooks"]["PostToolUse"]
-    assert "PostToolUse" not in codex_fragment_from_claude(source)["hooks"]
+    source["hooks"]["PreToolUse"] = [
+        group
+        for group in source["hooks"]["PreToolUse"]
+        if "rtk-hook-claude.sh" not in json.dumps(group)
+    ]
+    rendered = json.dumps(codex_fragment_from_claude(source))
+    assert "rtk-hook-codex.sh" not in rendered
+    assert "guard-codex.sh" in rendered
+
+
+def test_the_formatter_is_not_registered_for_codex() -> None:
+    # The manifest marks the formatter unregistered; Codex takes its hooks
+    # from this source, so it must not run format-after-edit.sh either.
+    assert "format-after-edit.sh" not in json.dumps(
+        codex_fragment_from_claude(_claude_source())
+    )
 
 
 def test_an_unknown_hook_command_stops_the_render() -> None:
