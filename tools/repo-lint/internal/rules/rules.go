@@ -96,7 +96,12 @@ type report struct {
 }
 
 func (r *report) add(format string, args ...any) {
-	r.out = append(r.out, Finding{Path: r.path, Rule: r.rule, Message: fmt.Sprintf(format, args...)})
+	r.addAt(r.path, format, args...)
+}
+
+// addAt adds a finding for another path than the report's.
+func (r *report) addAt(path, format string, args ...any) {
+	r.out = append(r.out, Finding{Path: path, Rule: r.rule, Message: fmt.Sprintf(format, args...)})
 }
 
 // at walks nested tables by key.

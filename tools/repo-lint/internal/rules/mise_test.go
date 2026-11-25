@@ -99,6 +99,39 @@ func findingsOf(t *testing.T, r Rule, in Inputs) []Finding {
 	return r.Check(in)
 }
 
+// ruleCase changes accepted inputs so that the rule must report a finding
+// whose message mentions expect.
+type ruleCase struct {
+	name   string
+	change func(Inputs)
+	expect string
+}
+
+// runCases checks that r accepts base() and reports each case.
+func runCases(t *testing.T, r Rule, base func() Inputs, cases []ruleCase) {
+	t.Helper()
+	if got := findingsOf(t, r, base()); len(got) != 0 {
+		t.Fatalf("%s rejects the accepted inputs: %v", r.ID, got)
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := base()
+			c.change(in)
+			var joined strings.Builder
+			for _, f := range findingsOf(t, r, in) {
+				if f.Rule != r.ID {
+					t.Errorf("finding names rule %q, want %q", f.Rule, r.ID)
+				}
+				joined.WriteString(f.Message)
+				joined.WriteString("\n")
+			}
+			if !strings.Contains(joined.String(), c.expect) {
+				t.Fatalf("findings %q do not mention %q", joined.String(), c.expect)
+			}
+		})
+	}
+}
+
 type miseCase struct {
 	name   string
 	file   string // hostConfig or imageConfig
@@ -109,29 +142,11 @@ type miseCase struct {
 
 func runMiseCases(t *testing.T, r Rule, cases []miseCase) {
 	t.Helper()
-	if got := findingsOf(t, r, miseInputs()); len(got) != 0 {
-		t.Fatalf("%s rejects the accepted config: %v", r.ID, got)
-	}
+	changes := make([]ruleCase, 0, len(cases))
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			in := miseInputs()
-			set(in[c.file], c.value, c.keys...)
-			got := findingsOf(t, r, in)
-			if len(got) == 0 {
-				t.Fatalf("%s accepted %s", r.ID, c.name)
-			}
-			var joined strings.Builder
-			for _, f := range got {
-				if f.Rule != r.ID {
-					t.Errorf("finding names rule %q, want %q", f.Rule, r.ID)
-				}
-				joined.WriteString(f.Message + "\n")
-			}
-			if !strings.Contains(joined.String(), c.expect) {
-				t.Errorf("findings %q do not mention %q", joined.String(), c.expect)
-			}
-		})
+		changes = append(changes, ruleCase{c.name, func(in Inputs) { set(in[c.file], c.value, c.keys...) }, c.expect})
 	}
+	runCases(t, r, miseInputs, changes)
 }
 
 func TestMiseAgentToolsRunOnEveryOS(t *testing.T) {
