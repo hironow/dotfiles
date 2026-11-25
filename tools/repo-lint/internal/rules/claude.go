@@ -18,42 +18,51 @@ var (
 	constantFalse = regexp.MustCompile(`^\s*(?:\$\{\{\s*false\s*\}\}|false)\s*$`)
 )
 
-// commandLines is each line of a shell script that the shell reads as the
-// start of a command. A backslash and a newline join two lines; a line that
-// starts inside a quoted string is text, not a command; a # comment ends at
-// the end of its line. Heredocs and other shell syntax are not read.
+// commandLines is each logical line of a shell script that the shell reads as
+// the start of a command. Outside single quotes and comments, a backslash and
+// a newline join two lines, and a backslash makes the next character part of
+// the word. A line that starts inside a quoted string is text, not a command.
+// A # starts a comment only at the start of a word, and the comment ends at
+// the newline, even after a backslash. Heredocs and other syntax are not read.
 func commandLines(script string) []string {
-	script = strings.ReplaceAll(script, "\\\n", "")
 	var lines []string
-	var quote, prev rune
-	lineStart, startsQuoted, escaped, comment := 0, false, false, false
-	for i, c := range script {
-		if c == '\n' {
-			if !startsQuoted {
-				lines = append(lines, script[lineStart:i])
-			}
-			lineStart, startsQuoted, escaped, comment, prev = i+1, quote != 0, false, false, c
-			continue
-		}
+	var line strings.Builder
+	var quote rune
+	startsQuoted, escaped, comment, wordStart := false, false, false, true
+	for _, c := range script {
 		switch {
-		case comment:
 		case escaped:
-			escaped = false
+			escaped, wordStart = false, false
+			if c != '\n' {
+				line.WriteRune('\\')
+				line.WriteRune(c)
+			}
+			continue
+		case c == '\n':
+			if !startsQuoted {
+				lines = append(lines, line.String())
+			}
+			line.Reset()
+			startsQuoted, comment, wordStart = quote != 0, false, true
+			continue
+		case comment:
 		case c == '\\' && quote != '\'':
 			escaped = true
+			continue
 		case quote != 0:
 			if c == quote {
 				quote = 0
 			}
 		case c == '\'' || c == '"':
 			quote = c
-		case c == '#' && (i == lineStart || unicode.IsSpace(prev)):
+		case c == '#' && wordStart:
 			comment = true
 		}
-		prev = c
+		line.WriteRune(c)
+		wordStart = quote == 0 && !comment && unicode.IsSpace(c)
 	}
-	if !startsQuoted && lineStart < len(script) {
-		lines = append(lines, script[lineStart:])
+	if !startsQuoted && line.Len() > 0 {
+		lines = append(lines, line.String())
 	}
 	return lines
 }
