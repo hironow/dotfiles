@@ -1,0 +1,26 @@
+rules:
+  - id: error-handling.ignored-error-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] The error return value is assigned to `_`, silently discarding it. The
+      caller has no idea the operation failed and proceeds with invalid state. In Go,
+      ignoring errors is the #1 source of silent data corruption.
+      [HOW] Handle the error explicitly: `if err != nil { return fmt.Errorf("context: %w", err) }`.
+      If the error truly cannot happen, add a comment explaining why:
+      `_ = op() // safe: <reason>`.
+    pattern: $X, _ = $FUNC(...)
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/skills/error-handling
+
+  - id: error-handling.ignored-error-short-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] The error return value is assigned to `_`, silently discarding it.
+      [HOW] Handle the error: `val, err := $FUNC(...); if err != nil { return err }`.
+    pattern: $X, _ := $FUNC(...)
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/skills/error-handling

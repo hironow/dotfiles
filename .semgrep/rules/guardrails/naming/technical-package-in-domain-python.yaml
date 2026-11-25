@@ -1,0 +1,15 @@
+rules:
+  - id: naming.technical-dir-import-in-domain-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Importing from a technical classification directory inside domain layer
+      (entities/, value_objects/, services/). Domain packages should be named after
+      business concepts (order, customer, pricing), not DDD building block types.
+      Technical naming scatters related concepts and hides domain structure.
+      [HOW] Reorganize: `domain.entities.Order` → `domain.order.Order`,
+      `domain.services.PricingService` → `domain.pricing.PricingPolicy`.
+    pattern-regex: "(?:from|import)\\s+\\S*domain\\.(?:entities|entity|value_objects|valueobjects|vo|aggregates|services|interfaces|impl|dto|dtos|types|core)\\S*"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/skills/ddd-module-pattern

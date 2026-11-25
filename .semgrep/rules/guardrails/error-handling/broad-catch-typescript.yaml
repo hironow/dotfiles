@@ -1,0 +1,16 @@
+rules:
+  - id: error-handling.empty-catch-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Empty `catch` block silently swallows errors. The failure becomes invisible,
+      making debugging nearly impossible. Callers believe the operation succeeded when
+      it actually failed.
+      [HOW] At minimum, log the error: `catch (e) { console.error(e); }`.
+      Better: handle it explicitly or re-throw. For domain logic, use Result types
+      (e.g., `neverthrow`) instead of try/catch for expected error cases.
+    pattern: |
+      try { ... } catch ($ERR) { }
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/skills/error-handling

@@ -1,0 +1,29 @@
+rules:
+  - id: first-class-collection.raw-array-field-domain-typescript
+    languages: [typescript]
+    severity: INFO
+    message: >-
+      [WHY] Domain class has a raw array typed field. Raw collection fields expose
+      internal structure, let callers iterate and aggregate externally, and scatter
+      domain logic across the codebase. The "First Class Collection" pattern says:
+      wrap domain collections in dedicated types that encapsulate business operations.
+      [HOW] Create a dedicated collection class:
+      `class Orders { private constructor(private readonly values: readonly Order[]) {} }`
+      with domain methods like `totalAmount()`, `pending()`, `add(order)` (returning
+      new Orders). Replace the raw array field with the wrapper type.
+    pattern-regex: "(?:public\\s+|readonly\\s+|private\\s+)?\\w+\\s*:\\s*(?:readonly\\s+)?\\w+\\[\\]"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+        - "**/dto/**"
+        - "**/dtos/**"
+    metadata:
+      category: first-class-collection
+      rule-origin: ai-tools/okite-ai/skills/first-class-collection

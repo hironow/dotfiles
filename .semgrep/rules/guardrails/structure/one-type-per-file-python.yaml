@@ -1,0 +1,46 @@
+rules:
+  - id: structure.multiple-classes-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] This file defines multiple module-level classes (`$NAME1` and `$NAME2`).
+      In Python, every module-level class is effectively public. Co-locating multiple
+      classes bloats the file, obscures responsibility, and makes Git history harder
+      to trace per-type.
+      [HOW] Move `$NAME2` to its own module named after the class
+      (e.g., order_repository.py). Private helper classes (prefixed with `_`) may stay.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $NAME1(...):
+                  ...
+              ...
+              class $NAME2(...):
+                  ...
+          - pattern: |
+              class $NAME1:
+                  ...
+              ...
+              class $NAME2:
+                  ...
+          - pattern: |
+              class $NAME1(...):
+                  ...
+              ...
+              class $NAME2:
+                  ...
+          - pattern: |
+              class $NAME1:
+                  ...
+              ...
+              class $NAME2(...):
+                  ...
+      - metavariable-regex:
+          metavariable: $NAME1
+          regex: ^[A-Z]
+      - metavariable-regex:
+          metavariable: $NAME2
+          regex: ^[A-Z]
+    metadata:
+      category: structure
+      rule-origin: ai-tools/AGENTS.md - 1ファイルにつき1つの型

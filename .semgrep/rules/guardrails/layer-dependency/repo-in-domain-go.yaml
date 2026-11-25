@@ -1,0 +1,28 @@
+rules:
+  - id: repository-placement.repo-interface-in-domain-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Repository interface `$NAME` is defined in the domain layer. In Clean
+      Architecture, repository interfaces belong in the usecase layer as Output Ports.
+      Placing them in the domain layer creates physical proximity that encourages
+      domain entities to depend on persistence — the domain should only contain pure
+      business rules, not know about storage/retrieval concepts.
+      [HOW] Move the interface to the usecase/application layer (e.g.,
+      `usecase/order/order_repository.go`). The domain layer references nothing about
+      persistence; the usecase layer orchestrates domain + repository.
+    patterns:
+      - pattern: type $NAME interface { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*Repository$
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: repository-placement
+      rule-origin: ai-tools/okite-ai/skills/repository-placement

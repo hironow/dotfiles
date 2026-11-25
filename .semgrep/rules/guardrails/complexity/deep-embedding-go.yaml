@@ -1,0 +1,27 @@
+rules:
+  - id: complexity.deep-embedding-3-levels-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Struct `$C` embeds `$B` which embeds `$A`, creating a 3+ level embedding
+      chain. Deep embedding makes method resolution unpredictable (promoted methods from
+      multiple levels), tightly couples the entire chain, and signals over-abstraction
+      (a "Less Is More" anti-pattern).
+      [HOW] Prefer explicit field composition: give `$C` a named field of type `$B`
+      instead of embedding. This makes dependencies visible and prevents accidental
+      method promotion. If 3+ levels are truly needed, reconsider the domain model.
+    pattern: |
+      type $A struct { ... }
+      ...
+      type $B struct {
+          $A
+          ...
+      }
+      ...
+      type $C struct {
+          $B
+          ...
+      }
+    metadata:
+      category: complexity
+      rule-origin: ai-tools/AGENTS.md - Less Is More (継承階層が3+レベル)

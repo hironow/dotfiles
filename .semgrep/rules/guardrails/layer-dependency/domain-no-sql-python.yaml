@@ -1,0 +1,20 @@
+rules:
+  - id: clean-architecture.sql-in-domain-python
+    languages: [python]
+    severity: ERROR
+    message: >-
+      [WHY] SQL string literal found in domain layer. Domain must NOT contain SQL or
+      DB access code. This couples business rules to a specific storage technology.
+      [HOW] Move SQL to repository implementation in adapter/infrastructure layer.
+      Domain layer: entities, value objects, domain services only.
+    pattern-regex: "(?i)(?:SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|ALTER TABLE|DROP TABLE)\\s"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture/references/layer-responsibilities.md

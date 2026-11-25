@@ -1,0 +1,21 @@
+rules:
+  - id: repository-placement.repo-interface-in-domain-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Repository interface is defined in the domain layer. In Clean Architecture,
+      repository interfaces belong in the usecase layer as Output Ports. Their presence
+      in the domain layer tempts domain entities to depend on persistence concepts.
+      [HOW] Move the interface to `usecase/` or `application/` directory. Domain types
+      should reference only other domain types (entities, value objects, domain events).
+    pattern-regex: "(?:export\\s+)?interface\\s+\\w+Repository\\s*\\{"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: repository-placement
+      rule-origin: ai-tools/okite-ai/skills/repository-placement

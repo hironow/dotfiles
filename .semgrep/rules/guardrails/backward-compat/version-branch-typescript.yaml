@@ -1,0 +1,35 @@
+rules:
+  - id: backward-compat.version-branch-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Version-based branching (`if (version < ...)`) scattered in business
+      logic is a backward-compatibility anti-pattern. These branches accumulate
+      over time, increasing complexity and test surface. Without a deprecation
+      policy and removal timeline, they become permanent dead code.
+      [HOW] Isolate compatibility logic in a dedicated adapter layer (Strangler
+      Fig pattern). Set a deprecation SLO with a concrete removal date.
+      Track usage metrics to know when the old path can be removed.
+    pattern-regex: "if\\s*\\(\\s*version\\s*[<>=!]+"
+    metadata:
+      category: backward-compat
+      rule-origin: ai-tools/okite-ai/skills/backward-compat-governance
+
+  - id: backward-compat.legacy-adapter-proliferation-typescript
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >-
+      [WHY] Class name contains "Legacy" or "Old" prefix/suffix, suggesting a
+      backward-compatibility wrapper. Without a removal timeline, these wrappers
+      become permanent additions that increase maintenance cost.
+      [HOW] Add a removal deadline comment (`// REMOVE BY: YYYY-MM-DD`) and track
+      usage. Apply the Strangler Fig pattern: route traffic to the new path
+      incrementally, then remove the adapter when usage reaches zero.
+    patterns:
+      - pattern: class $NAME { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^(?:Legacy|Old)[A-Z]|[A-Z].*(?:Legacy|Old)(?:Adapter|Wrapper|Compat)$
+    metadata:
+      category: backward-compat
+      rule-origin: ai-tools/okite-ai/skills/backward-compat-governance

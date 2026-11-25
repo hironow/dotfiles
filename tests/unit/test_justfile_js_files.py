@@ -33,6 +33,7 @@ _OTHER_GATES = {
     "config/pi/extensions/": "just js-lint, js-typecheck, js-build",
     "tests/unit/jev_sonnet_fallback.test.ts": "just js-lint, js-typecheck, js-test",
     "site/vendor/": "tests/unit/test_site_vendor.py (SHA-256 of npm's bytes)",
+    ".semgrep/": "just semgrep-test (Semgrep rule fixtures)",
 }
 
 

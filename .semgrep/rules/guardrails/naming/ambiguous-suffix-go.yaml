@@ -1,0 +1,44 @@
+rules:
+  - id: naming.ambiguous-suffix-struct-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Type `$NAME` uses a prohibited suffix (Manager/Util/Facade/Service/Runtime/Engine).
+      These suffixes attract unrelated responsibilities, causing the type to grow into a
+      "god object" with blurred boundaries. The name alone should convey what the type IS,
+      not vaguely what it DOES.
+      [HOW] Replace with a responsibility-specific name:
+      Data storage → Registry/Catalog/Store,
+      Selection/routing → Policy/Selector/Router,
+      Coordination → Coordinator/Dispatcher/Controller,
+      Creation → Factory/Builder,
+      Transformation → Adapter/Bridge/Mapper,
+      Execution → Executor/Scheduler/Evaluator.
+      Exception: names derived from external frameworks/APIs need not be renamed.
+    patterns:
+      - pattern: type $NAME struct { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Manager|Util|Facade|Service|Runtime|Engine)$
+    metadata:
+      category: naming
+      rule-origin: ai-tools/AGENTS.md - 曖昧なサフィックスを避ける
+
+  - id: naming.ambiguous-suffix-interface-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Interface `$NAME` uses a prohibited suffix (Manager/Util/Facade/Service/Runtime/Engine).
+      Ambiguous interface names hide the contract: callers cannot infer what operations are
+      valid or which layer this belongs to.
+      [HOW] Rename to express the interface's contract precisely. Go convention favors
+      single-method interfaces named after the verb (Reader, Writer, Closer). For richer
+      contracts, use responsibility-based suffixes: Store, Policy, Router, Coordinator, etc.
+    patterns:
+      - pattern: type $NAME interface { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Manager|Util|Facade|Service|Runtime|Engine)$
+    metadata:
+      category: naming
+      rule-origin: ai-tools/AGENTS.md - 曖昧なサフィックスを避ける

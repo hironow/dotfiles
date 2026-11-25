@@ -1,0 +1,28 @@
+rules:
+  - id: first-class-collection.raw-list-field-domain-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Domain class has a `list` typed field. Raw collection fields in domain
+      models expose internal structure, let callers iterate/filter/aggregate externally,
+      and scatter domain logic. The "First Class Collection" pattern wraps collections
+      in dedicated types that own the business operations.
+      [HOW] Create a dedicated collection class:
+      `@dataclass(frozen=True) class Orders: _values: tuple[Order, ...]`
+      with domain methods like `total_amount()`, `pending()`. Use `tuple` instead of
+      `list` for immutability. Make the original field use the wrapper type.
+    pattern-regex: ":\\s*list\\[\\w+\\]"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+      exclude:
+        - "**/test_*"
+        - "**/*_test.py"
+        - "**/dto/**"
+    metadata:
+      category: first-class-collection
+      rule-origin: ai-tools/okite-ai/skills/first-class-collection

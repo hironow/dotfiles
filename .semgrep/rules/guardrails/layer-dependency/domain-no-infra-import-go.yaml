@@ -1,0 +1,70 @@
+rules:
+  - id: clean-architecture.domain-imports-infrastructure-go
+    languages: [go]
+    severity: ERROR
+    message: >-
+      [WHY] Domain layer is importing from the infrastructure layer. In Clean Architecture,
+      dependencies must point inward: Infrastructure → Adapter → UseCase → Domain.
+      The domain layer must have ZERO external dependencies — it contains only business
+      rules, entities, and value objects. Importing infrastructure code (DB, HTTP, config,
+      logging frameworks) into the domain violates the Dependency Rule and makes business
+      logic untestable without infrastructure.
+      [HOW] Define an interface (Output Port) in the domain or usecase layer, and implement
+      it in the infrastructure/adapter layer. Use dependency injection to provide the
+      implementation at runtime.
+    patterns:
+      - pattern-regex: "\"[^\"]*(?:infrastructure|infra)(?:/[^\"]*)\""
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture
+
+  - id: clean-architecture.domain-imports-adapter-go
+    languages: [go]
+    severity: ERROR
+    message: >-
+      [WHY] Domain layer is importing from the adapter layer. In Clean Architecture,
+      the domain must not depend on any outer layer (adapter, infrastructure). Adapters
+      translate between external systems and the domain — the domain should not know
+      about these translations.
+      [HOW] If the domain needs to call an external system, define an interface (Output
+      Port) in the domain/usecase layer. Implement it in the adapter layer.
+    patterns:
+      - pattern-regex: "\"[^\"]*(?:adapter|controller|gateway|handler|presenter|repository/impl)(?:/[^\"]*)\""
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture
+
+  - id: clean-architecture.domain-imports-usecase-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Domain layer is importing from the usecase layer. In Clean Architecture,
+      the domain is the innermost layer and must not depend on usecase (application)
+      logic. Domain entities define business rules; usecases orchestrate them.
+      [HOW] Move the shared logic to the domain layer, or extract an interface.
+    patterns:
+      - pattern-regex: "\"[^\"]*(?:usecase|usecases|application|service)(?:/[^\"]*)\""
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture

@@ -1,0 +1,20 @@
+rules:
+  - id: naming.junk-drawer-package-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Package `$PKG` uses a "junk drawer" name (util/utils/helper/helpers/common/
+      misc/shared/base/core). These names attract unrelated code because they have no
+      bounded responsibility. The package grows into a dependency magnet with low
+      cohesion and high coupling — an anti-pattern flagged by both "Less Is More" and
+      "Package Design" principles.
+      [HOW] Rename to reflect the actual domain concept or technical responsibility.
+      For example: `util` containing string helpers → `stringconv`,
+      `common` containing auth logic → `authentication`. If naming is hard, the
+      package likely mixes multiple concerns and should be split.
+    pattern-regex: "^package\\s+(util|utils|helper|helpers|common|misc|shared|base|core|lib)\\s*$"
+    metadata:
+      category: naming
+      rule-origin: >-
+        ai-tools/okite-ai/skills/package-design (anti-pattern: 雑多な util/common)
+        + AGENTS.md (曖昧なサフィックスを避ける: Util)

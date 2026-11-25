@@ -1,0 +1,18 @@
+rules:
+  - id: domain-primitives.multiple-str-params-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Function has 3+ consecutive `str` parameters. When multiple arguments
+      share the same type, the interpreter cannot detect if they are swapped. This
+      is the "primitive obsession" anti-pattern — a leading cause of silent bugs
+      (e.g., passing email where name was expected).
+      [HOW] Use NewType or domain classes: `Email = NewType('Email', str)` or
+      `@dataclass(frozen=True) class Email: value: str`. Even lightweight typing
+      prevents accidental swaps. See: "when-to-wrap-primitives" — Criterion 2.
+    pattern: |
+      def $FUNC(..., $A: str, $B: str, $C: str, ...):
+          ...
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/when-to-wrap-primitives

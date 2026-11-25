@@ -1,0 +1,42 @@
+rules:
+  - id: immutability.no-param-slice-append-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] `append($PARAM, ...)` on a parameter slice may silently mutate the caller's
+      underlying array when spare capacity exists. This causes hard-to-trace bugs because
+      the mutation depends on runtime capacity, not visible code structure.
+      [HOW] Create an explicit copy before appending:
+      `newItems := make([]T, len($PARAM)); copy(newItems, $PARAM); return append(newItems, ...)`
+      Or use `slices.Clone($PARAM)` (Go 1.21+) for clarity.
+    patterns:
+      - pattern: |
+          return append($PARAM, ...)
+      - pattern-inside: |
+          func $FUNC(..., $PARAM []$TYPE, ...) []$TYPE2 {
+              ...
+          }
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-pointer-field-mutation-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Mutating a pointer parameter's field `$PARAM.$FIELD` changes the caller's
+      data in place. This breaks referential transparency, makes the function harder to
+      test, and introduces hidden coupling between caller and callee.
+      [HOW] Accept the struct by value and return a new struct:
+      `func UpdateX(x X, ...) X { return X{Field: newVal, ...} }`
+      If the struct is large and copying is expensive, document the mutation explicitly.
+    patterns:
+      - pattern: |
+          $PARAM.$FIELD = $VAL
+      - pattern-inside: |
+          func $FUNC(..., $PARAM *$TYPE, ...) $RET {
+              ...
+          }
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨

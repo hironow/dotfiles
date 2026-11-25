@@ -1,0 +1,36 @@
+rules:
+  - id: domain-primitives.multiple-string-params-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Function has 3+ consecutive `string` parameters. When multiple parameters
+      share the same primitive type, the compiler cannot detect if they are swapped.
+      This is the "primitive obsession" anti-pattern — a leading cause of silent bugs
+      (e.g., passing email where name was expected).
+      [HOW] Wrap each parameter in a domain-specific type:
+      `func CreateUser(name UserName, email Email, phone Phone)`.
+      Even a lightweight newtype (`type Email string`) prevents accidental swaps.
+      See: "when-to-wrap-primitives" — Criterion 2: 取り違えリスク.
+    pattern: |
+      func $FUNC(..., $A string, $B string, $C string, ...) {
+          ...
+      }
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/when-to-wrap-primitives
+
+  - id: domain-primitives.multiple-int-params-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Function has 3+ consecutive integer parameters. The compiler cannot
+      detect if arguments are swapped (e.g., width/height/depth). This is the
+      "primitive obsession" anti-pattern.
+      [HOW] Wrap each parameter in a domain-specific type to prevent mix-ups.
+    pattern: |
+      func $FUNC(..., $A int, $B int, $C int, ...) {
+          ...
+      }
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/when-to-wrap-primitives

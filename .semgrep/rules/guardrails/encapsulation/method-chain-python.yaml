@@ -1,0 +1,16 @@
+rules:
+  - id: demeter.method-chain-3-levels-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Triple method chain `$A.$B().$C().$D()` violates the Law of Demeter
+      (Principle of Least Knowledge). This "Train Wreck" couples the caller to the
+      internal structure of intermediate objects, making the code fragile to changes.
+      [HOW] Add a delegation method on the direct neighbor. For example, replace
+      `order.get_customer().get_address().get_city()` with `order.shipping_city()`.
+      Exceptions: builder/fluent APIs, standard library string chains like
+      `text.strip().lower()`, and iterator/generator chains.
+    pattern: $A.$B().$C().$D()
+    metadata:
+      category: demeter
+      rule-origin: ai-tools/okite-ai/skills/law-of-demeter

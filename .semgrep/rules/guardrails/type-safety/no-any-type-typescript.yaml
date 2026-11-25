@@ -1,0 +1,55 @@
+rules:
+  - id: naming.no-any-type-parameter-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Parameter typed as `any` bypasses TypeScript's type system entirely. The
+      compiler cannot catch type mismatches, missing properties, or wrong arguments.
+      The design-principles rule states: "NEVER use `any` type in TypeScript interfaces."
+      [HOW] Replace with a specific type, a union type, or `unknown` (which forces
+      runtime type checking before use). For generic cases, use generics (`<T>`).
+      Example: `function process(data: any)` → `function process(data: unknown)` or
+      `function process<T>(data: T)`.
+    pattern: |
+      function $FUNC(..., $PARAM: any, ...) { ... }
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/.kiro/settings/rules/design-principles.md
+
+  - id: naming.no-any-type-variable-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Variable typed as `any` bypasses TypeScript's type system. Design principles
+      mandate: "NEVER use `any` type."
+      [HOW] Replace with a specific type, `unknown`, or let TypeScript infer the type.
+    pattern: |
+      let $VAR: any = ...
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/.kiro/settings/rules/design-principles.md
+
+  - id: naming.no-any-type-const-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Constant typed as `any` bypasses TypeScript's type system.
+      [HOW] Replace with the actual type or use `as const` for literal types.
+    pattern: |
+      const $VAR: any = ...
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/.kiro/settings/rules/design-principles.md
+
+  - id: naming.no-any-type-return-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Function returning `any` defeats type safety for all callers. Every consumer
+      of this function loses type checking.
+      [HOW] Return a specific type, a union, or a generic `<T>`.
+    pattern: |
+      function $FUNC(...): any { ... }
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/.kiro/settings/rules/design-principles.md

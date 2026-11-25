@@ -1,0 +1,14 @@
+rules:
+  - id: naming.junk-drawer-module-import-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Importing from a "junk drawer" module (util/utils/helper/helpers/common/
+      misc/shared/lib). These module names attract unrelated code with no bounded
+      responsibility, becoming dependency magnets with low cohesion.
+      [HOW] Extract focused modules named after their responsibility. Example:
+      `import { formatDate } from './utils'` → `import { formatDate } from './date-formatting'`.
+    pattern-regex: "(?:import|from)\\s+['\"](?:\\./|\\.\\./)*(utils?|helpers?|common|misc|shared|lib)/?"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/skills/package-design

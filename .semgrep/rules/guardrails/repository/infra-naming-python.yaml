@@ -1,0 +1,59 @@
+rules:
+  - id: repository-design.infra-suffix-in-repo-name-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Repository class `$NAME` contains an infrastructure term (Table/Dto/Entity/
+      Record/Row). Repository names must follow `AggregateRoot + Repository` convention.
+      Names from DB tables or DTOs leak infrastructure concerns into domain vocabulary.
+      [HOW] Rename to `<AggregateName>Repository`. Example:
+      `OrdersTableRepository` → `OrderRepository`.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $NAME:
+                  ...
+          - pattern: |
+              class $NAME(...):
+                  ...
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Table|Dto|DTO|Entity|Record|Row)Repository$
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.db-operation-method-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses a DB operation name (insert/update/select/upsert).
+      Repositories should use collection semantics, not SQL semantics.
+      [HOW] Rename: `insert_` → `store`/`add`, `update_` → `store`/`put`,
+      `select_` → `find_by_`, `upsert_` → `store`.
+    pattern-regex: "def\\s+(?:insert|update|select|upsert)_\\w+\\(self"
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.domain-logic-method-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses a domain operation name. Repositories handle only
+      I/O (store/find/delete). Domain logic belongs in the aggregate.
+      [HOW] Move logic to the aggregate: `user.leave(); repo.store(user)`.
+    pattern-regex: "def\\s+(?:activate|cancel|approve|leave|reject|suspend|resume|rename|complete|close|archive|publish|deactivate)\\w*\\(self"
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design

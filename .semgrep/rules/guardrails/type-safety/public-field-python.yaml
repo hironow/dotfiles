@@ -1,0 +1,27 @@
+rules:
+  - id: domain-primitives.raw-string-field-dataclass-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Dataclass `$TYPE` stores a domain concept ($FIELD) as a raw `str`.
+      Primitive fields bypass domain validation — invalid values can be constructed
+      without the type system catching it. This is "primitive obsession".
+      [HOW] Create a domain-specific type with a smart constructor:
+      `@dataclass(frozen=True) class Email: _value: str` with
+      `@classmethod def parse(cls, s: str) -> 'Email'` that validates at construction.
+      Or use NewType for lightweight type distinction:
+      `Email = NewType('Email', str)`.
+      See: "Secure by Design" — Domain Primitives.
+    patterns:
+      - pattern: |
+          @dataclass
+          class $TYPE:
+              ...
+              $FIELD: str
+              ...
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (email|name|phone|address|url|token|password|secret)
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/domain-primitives-and-always-valid

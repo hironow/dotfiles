@@ -1,0 +1,21 @@
+rules:
+  - id: complexity.deep-inheritance-3-levels-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Class `$C` extends `$B` which extends `$A`, creating a 3+ level inheritance
+      hierarchy. Deep class hierarchies make behavior unpredictable (`super` chains),
+      tightly couple all levels, and are a classic sign of over-abstraction flagged by
+      the "Less Is More" rule.
+      [HOW] Favor composition over inheritance. Have `$C` hold an instance of `$B` as a
+      field, or share an interface/type. Apply the 3-time rule: only abstract when the
+      pattern has genuinely appeared 3+ times.
+    pattern: |
+      class $A { ... }
+      ...
+      class $B extends $A { ... }
+      ...
+      class $C extends $B { ... }
+    metadata:
+      category: complexity
+      rule-origin: ai-tools/AGENTS.md - Less Is More (継承階層が3+レベル)

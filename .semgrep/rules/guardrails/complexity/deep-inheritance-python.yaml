@@ -1,0 +1,24 @@
+rules:
+  - id: complexity.deep-inheritance-3-levels-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Class `$C` inherits from `$B` which inherits from `$A`, creating a 3+ level
+      inheritance hierarchy. Deep inheritance makes behavior hard to predict (method
+      resolution order surprises), tightly couples all levels, and is a classic sign of
+      over-abstraction flagged by the "Less Is More" rule.
+      [HOW] Favor composition over inheritance. Have `$C` hold an instance of `$B` (or
+      share a protocol/ABC) rather than extending it. Apply the 3-time rule: only abstract
+      when the pattern has genuinely appeared 3+ times.
+    pattern: |
+      class $A:
+          ...
+      ...
+      class $B($A):
+          ...
+      ...
+      class $C($B):
+          ...
+    metadata:
+      category: complexity
+      rule-origin: ai-tools/AGENTS.md - Less Is More (継承階層が3+レベル)

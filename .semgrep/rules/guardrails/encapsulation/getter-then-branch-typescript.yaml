@@ -1,0 +1,15 @@
+rules:
+  - id: tell-dont-ask.getter-comparison-if-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Pattern `if (obj.getX() == val)` is a "Tell, Don't Ask" violation. The
+      caller asks for internal state and makes a decision that the object should own.
+      If this condition appears in multiple callers, it duplicates and drifts.
+      [HOW] Add a query method to the object: e.g., replace
+      `if (order.getStatus() === 'PENDING')` with `if (order.isPending())`.
+      Even better: `order.processIfPending()`.
+    pattern-regex: "if\\s*\\(\\w+\\.get[A-Z]\\w*\\(\\)\\s*[=!]==?\\s*"
+    metadata:
+      category: tell-dont-ask
+      rule-origin: ai-tools/okite-ai/skills/tell-dont-ask

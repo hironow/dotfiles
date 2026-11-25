@@ -1,0 +1,65 @@
+rules:
+  - id: repository-design.infra-suffix-in-repo-name-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Repository type `$NAME` contains an infrastructure term (Table/Dto/Entity/
+      Record/Row). Repository names must follow `AggregateRoot + Repository` convention
+      (e.g., `OrderRepository`). Names derived from DB tables or DTOs leak infrastructure
+      concerns into the domain vocabulary and confuse the aggregate boundary.
+      [HOW] Rename to `<AggregateName>Repository`. For example:
+      `OrdersTableRepository` → `OrderRepository`,
+      `UserDtoRepository` → `UserRepository`.
+    patterns:
+      - pattern-either:
+          - pattern: type $NAME interface { ... }
+          - pattern: type $NAME struct { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Table|Dto|DTO|Entity|Record|Row)Repository$
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.db-operation-method-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses a DB operation name (Insert/Update/Select/Upsert).
+      Repositories abstract persistence as a collection of aggregates — their methods
+      should use collection semantics (Store/FindById/Delete), not SQL semantics.
+      DB-specific names couple the interface to a particular storage technology.
+      [HOW] Rename to collection operations:
+      `Insert` → `Store` or `Add`,
+      `Update` → `Store` or `Put`,
+      `Select` → `FindById` or `FindBy*`,
+      `Upsert` → `Store`.
+    pattern-regex: "func\\s+\\([^)]+\\)\\s+(?:Insert|Update|Select|Upsert)[A-Z]?\\w*\\("
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.domain-logic-method-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses a domain operation name (Activate/Cancel/Approve/
+      Leave/Rename). Repositories are responsible only for I/O (Store/Find/Delete).
+      Domain logic must live in the aggregate, and the repository just persists the result.
+      [HOW] Move the domain logic to the aggregate method, then call
+      `repository.Store(aggregate)`. For example:
+      `repo.Cancel(orderId)` → `order.Cancel(); repo.Store(order)`.
+    pattern-regex: "func\\s+\\([^)]+\\)\\s+(?:Activate|Cancel|Approve|Leave|Reject|Suspend|Resume|Rename|Complete|Close|Archive|Publish|Deactivate)[A-Z]?\\w*\\("
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design

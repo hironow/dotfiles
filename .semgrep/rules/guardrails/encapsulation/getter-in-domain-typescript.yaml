@@ -1,0 +1,29 @@
+rules:
+  - id: breach-encapsulation.getter-method-domain-typescript
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >-
+      [WHY] Method `get*()` on a domain entity exposes internal state as a getter.
+      Getters encourage "Ask" patterns (get state → decide externally → act) which
+      scatter business logic across callers instead of keeping it in the entity.
+      [HOW] If the getter is truly needed (persistence, serialization, testing), rename
+      to `breachEncapsulationOf*()` to signal that encapsulation is being broken.
+      If used for business logic, move the logic into the entity as a Tell method.
+      Value Objects (readonly, no identity) may keep simple accessors.
+    pattern-regex: "(?:public\\s+)?get[A-Z]\\w*\\(\\)"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+        - "**/vo/**"
+        - "**/value/**"
+        - "**/valueobject/**"
+    metadata:
+      category: breach-encapsulation
+      rule-origin: ai-tools/okite-ai/skills/breach-encapsulation-naming

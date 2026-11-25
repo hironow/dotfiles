@@ -1,0 +1,31 @@
+rules:
+  - id: repository-placement.repo-class-in-domain-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Repository class/ABC `$NAME` is defined in the domain layer. Repository
+      interfaces belong in the usecase layer as Output Ports. In the domain layer,
+      their presence encourages domain entities to call persistence methods directly.
+      [HOW] Move the ABC/Protocol to `usecase/` or `application/` layer. The domain
+      layer should contain only business rules, value objects, and entities.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $NAME(...):
+                  ...
+          - pattern: |
+              class $NAME:
+                  ...
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*Repository$
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: repository-placement
+      rule-origin: ai-tools/okite-ai/skills/repository-placement
