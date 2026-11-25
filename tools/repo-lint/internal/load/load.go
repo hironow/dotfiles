@@ -74,7 +74,9 @@ func (f Files) one(in rules.Input) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", in.Path, err)
 		}
-		return string(data), nil
+		// A Windows checkout may have CRLF line ends (core.autocrlf); the
+		// rules read the text as git stores it.
+		return strings.ReplaceAll(string(data), "\r\n", "\n"), nil
 	case rules.JSON:
 		data, err := os.ReadFile(path) //nolint:gosec // G304: as above.
 		if err != nil {

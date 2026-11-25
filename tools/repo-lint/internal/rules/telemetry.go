@@ -19,8 +19,9 @@ var (
 	lgtmImage    = regexp.MustCompile(`^docker\.io/grafana/otel-lgtm:\d+\.\d+\.\d+$`)
 	loopbackPort = regexp.MustCompile(`^127\.0\.0\.1:(\d+):(\d+)$`)
 	seconds      = regexp.MustCompile(`^\d+s$`)
-	// precommitTelemetry is telemetry/ as one alternative of the prek exclude.
-	precommitTelemetry = regexp.MustCompile(`(?m)^\s*telemetry/`)
+	// precommitTelemetry is telemetry/ at the start of a prek exclude pattern
+	// or of one of its alternatives.
+	precommitTelemetry = regexp.MustCompile(`(?m)(?:^|[\^(|])\s*telemetry/`)
 )
 
 // lgtmPorts is every port of the otel-lgtm image, sorted.
@@ -168,6 +169,14 @@ func rootLintCoversTelemetry() Rule {
 			}
 			if exclude, _ := str(in[precommitPath], "exclude"); precommitTelemetry.MatchString(exclude) {
 				r.addAt(precommitPath, "the exclude leaves telemetry/ out")
+			}
+			for _, repo := range tables(in[precommitPath], "repos") {
+				for _, hook := range tables(repo, "hooks") {
+					if exclude, _ := str(hook, "exclude"); precommitTelemetry.MatchString(exclude) {
+						hookID, _ := str(hook, "id")
+						r.addAt(precommitPath, "the exclude of hook %s leaves telemetry/ out", hookID)
+					}
+				}
 			}
 			return r.out
 		},

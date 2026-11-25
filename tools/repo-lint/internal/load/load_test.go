@@ -52,6 +52,17 @@ func TestFilesReadsTextAndJSON(t *testing.T) {
 	}
 }
 
+// A Windows checkout with core.autocrlf=true has CRLF line ends; a rule's
+// line regexps see the same text as on Linux.
+func TestFilesReadsCRLFTextAsLF(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "Dockerfile", "FROM a AS b\r\nRUN c\r\n")
+	got, err := Files{Root: root}.Load(rules.Input{Path: "Dockerfile", Format: rules.Text})
+	if err != nil || got != "FROM a AS b\nRUN c\n" {
+		t.Fatalf("text = %#v, %v", got, err)
+	}
+}
+
 func TestFilesAsksYQForTOMLAndYAMLAsJSON(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "config/x.toml", "a = 1\n")

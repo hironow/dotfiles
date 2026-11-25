@@ -86,5 +86,11 @@ func TestRootLintCoversTelemetry(t *testing.T) {
 		{"prek exclude", func(in Inputs) {
 			in[precommitPath] = map[string]any{"exclude": "(?x)^(\n  emulator/|\n  telemetry/|\n)\n"}
 		}, "exclude"},
+		{"one hook's exclude", func(in Inputs) {
+			in[precommitPath].(map[string]any)["repos"] = []any{map[string]any{"hooks": []any{
+				map[string]any{"id": "check-json"},
+				map[string]any{"id": "check-yaml", "exclude": "(?x)^(\n  telemetry/|\n  x/\n)"},
+			}}}
+		}, "check-yaml"},
 	})
 }

@@ -13,13 +13,10 @@ const (
 	allDockerfiles = "**/Dockerfile*"
 )
 
-var (
-	// registryHost is a domain of two or more dot-joined components with an
-	// optional port: dependabot-core's REGISTRY in
-	// docker/lib/dependabot/shared/shared_file_parser.rb.
-	registryHost = regexp.MustCompile(`^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?$`)
-	fromLine     = regexp.MustCompile(`(?mi)^FROM\s+(?:--platform=\S+\s+)?(\S+)`)
-)
+// registryHost is a domain of two or more dot-joined components with an
+// optional port: dependabot-core's REGISTRY in
+// docker/lib/dependabot/shared/shared_file_parser.rb.
+var registryHost = regexp.MustCompile(`^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?$`)
 
 // heldPythonUpdates is what the docker ignore skips for a python base image.
 var heldPythonUpdates = []string{"version-update:semver-major", "version-update:semver-minor"}
@@ -54,12 +51,42 @@ func ignoredUpdates(entry map[string]any) map[string][]string {
 	return out
 }
 
-// watched reports whether an entry's directory glob matches dir.
+// watched reports whether one of an entry's directories matches dir, a
+// slash-separated path relative to the repository root ("." for the root).
 func watched(dirs []string, dir string) bool {
 	return slices.ContainsFunc(dirs, func(d string) bool {
-		ok, _ := path.Match(strings.TrimPrefix(d, "/"), dir)
-		return ok
+		return dirMatch(segments(d), segments(dir))
 	})
+}
+
+// segments splits a directory into its names; the root has none.
+func segments(dir string) []string {
+	dir = strings.Trim(dir, "/")
+	if dir == "" || dir == "." {
+		return nil
+	}
+	return strings.Split(dir, "/")
+}
+
+// dirMatch matches a Dependabot directory glob by name: `*` and the other
+// path.Match patterns match one name, and `**` matches any number of names.
+func dirMatch(pattern, names []string) bool {
+	if len(pattern) == 0 {
+		return len(names) == 0
+	}
+	if pattern[0] == "**" {
+		for i := 0; i <= len(names); i++ {
+			if dirMatch(pattern[1:], names[i:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(names) == 0 {
+		return false
+	}
+	ok, _ := path.Match(pattern[0], names[0])
+	return ok && dirMatch(pattern[1:], names[1:])
 }
 
 // dependabotPythonHeld: the compiled dependencies of emulator/a2a-inspector
@@ -97,8 +124,8 @@ func dependabotPythonHeld() Rule {
 					continue
 				}
 				text, _ := files[file].(string)
-				for _, m := range fromLine.FindAllStringSubmatch(text, -1) {
-					name := dependabotName(m[1])
+				for _, s := range dockerStages(text) {
+					name := dependabotName(s.image)
 					if path.Base(name) != "python" {
 						continue
 					}

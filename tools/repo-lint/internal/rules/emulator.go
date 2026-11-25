@@ -23,7 +23,10 @@ var (
 	publishedPort = regexp.MustCompile(`^127\.0\.0\.1:(?:\$\{\w+:-(\d+)\}|(\d+)):\d+$`)
 	envLocalhost  = regexp.MustCompile(`(?m)^export (\w+)=localhost:(\d+)\s*$`)
 	goBuilder     = regexp.MustCompile(`(?m)^FROM docker\.io/library/golang:(\S+?)-`)
-	spannerBase   = regexp.MustCompile(`(?m)^FROM gcr\.io/cloud-spanner-emulator/emulator:\d+\.\d+\.\d+ AS spanner$`)
+	// stageLine is a Dockerfile FROM line: its image and, with AS, the stage
+	// name.
+	stageLine    = regexp.MustCompile(`(?mi)^FROM[ \t]+(?:--platform=\S+[ \t]+)?(\S+)(?:[ \t]+AS[ \t]+(\S+))?[ \t]*$`)
+	spannerImage = regexp.MustCompile(`^gcr\.io/cloud-spanner-emulator/emulator:\d+\.\d+\.\d+$`)
 	// runtimeConfig is an instruction that changes the upstream image's
 	// configuration.
 	runtimeConfig = regexp.MustCompile(`(?mi)^(USER|ENTRYPOINT|CMD|WORKDIR|ENV|EXPOSE|VOLUME|HEALTHCHECK)\b`)
@@ -233,6 +236,29 @@ func emulatorGoBuilders() Rule {
 	}
 }
 
+// stage is one build stage of a Dockerfile: the image of its FROM line, its
+// name (lower case; "" without AS), and the text up to the next FROM line.
+type stage struct {
+	image, name, body string
+}
+
+func dockerStages(text string) []stage {
+	lines := stageLine.FindAllStringSubmatchIndex(text, -1)
+	out := make([]stage, 0, len(lines))
+	for i, m := range lines {
+		end := len(text)
+		if i+1 < len(lines) {
+			end = lines[i+1][0]
+		}
+		s := stage{image: text[m[2]:m[3]], body: text[m[1]:end]}
+		if m[4] >= 0 {
+			s.name = strings.ToLower(text[m[4]:m[5]])
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 // emulatorHealthDockerfile: the health images add a probe to the upstream
 // spanner and pgadapter images and change nothing else.
 func emulatorHealthDockerfile() Rule {
@@ -245,40 +271,52 @@ func emulatorHealthDockerfile() Rule {
 			r := &report{rule: id, path: healthDockerfile}
 			text, _ := in[healthDockerfile].(string)
 			goVersion, _ := str(in[imageConfig], "tools", "go")
-			for _, want := range []string{
-				"FROM docker.io/library/golang:" + goVersion + "-alpine AS builder",
-				"CGO_ENABLED=0",
-				"go build -mod=readonly -trimpath -o /tcp-healthcheck .",
-				"FROM gcr.io/cloud-spanner-pg-adapter/pgadapter AS pgadapter",
-			} {
+			for _, want := range []string{"CGO_ENABLED=0", "go build -mod=readonly -trimpath -o /tcp-healthcheck ."} {
 				if !strings.Contains(text, want) {
 					r.add("the Dockerfile must contain %q", want)
 				}
 			}
-			if !spannerBase.MatchString(text) {
-				r.add("the spanner stage must be FROM gcr.io/cloud-spanner-emulator/emulator:<x.y.z> AS spanner")
+			stages := dockerStages(text)
+			named := func(name string) (int, bool) {
+				i := slices.IndexFunc(stages, func(s stage) bool { return s.name == name })
+				if i < 0 {
+					r.add("the Dockerfile has no %s stage", name)
+				}
+				return i, i >= 0
 			}
-			if _, runtime, ok := strings.Cut(text, " AS spanner\n"); ok {
-				stage, _, _ := strings.Cut(runtime, "FROM ")
-				if strings.TrimSpace(stage) != probeCopy {
+			builder := "docker.io/library/golang:" + goVersion + "-alpine"
+			if i, ok := named("builder"); ok && stages[i].image != builder {
+				r.add("the builder stage must be FROM %s, the image Go", builder)
+			}
+			if i, ok := named("spanner"); ok {
+				if !spannerImage.MatchString(stages[i].image) {
+					r.add("the spanner stage must be FROM gcr.io/cloud-spanner-emulator/emulator:<x.y.z>, not %s", stages[i].image)
+				}
+				if strings.TrimSpace(stages[i].body) != probeCopy {
 					r.add("the spanner stage must only copy the probe: %s", probeCopy)
 				}
-				for _, m := range runtimeConfig.FindAllString(runtime, -1) {
-					r.add("the runtime stages keep the upstream image configuration; remove %s", m)
+				for _, runtime := range stages[i:] {
+					for _, m := range runtimeConfig.FindAllString(runtime.body, -1) {
+						r.add("the runtime stages keep the upstream image configuration; remove %s", m)
+					}
 				}
 			}
-			if _, stage, ok := strings.Cut(text, " AS pgadapter\n"); ok {
+			if i, ok := named("pgadapter"); ok {
+				const pgadapter = "gcr.io/cloud-spanner-pg-adapter/pgadapter"
+				if stages[i].image != pgadapter {
+					r.add("the pgadapter stage must be FROM %s, not %s", pgadapter, stages[i].image)
+				}
 				for _, want := range []string{
 					"apt-get install -y --no-install-recommends postgresql-client",
 					"command -v pg_isready",
 					"pg_isready --version",
 					"rm -rf /var/lib/apt/lists/*",
 				} {
-					if !strings.Contains(stage, want) {
+					if !strings.Contains(stages[i].body, want) {
 						r.add("the pgadapter stage must run %q", want)
 					}
 				}
-				for _, m := range pgadapterAdds.FindAllString(stage, -1) {
+				for _, m := range pgadapterAdds.FindAllString(stages[i].body, -1) {
 					r.add("the pgadapter stage only installs postgresql-client; remove %q", m)
 				}
 			}

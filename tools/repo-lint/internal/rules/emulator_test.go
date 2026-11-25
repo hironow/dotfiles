@@ -144,6 +144,15 @@ func TestHealthDockerfileAddsOnlyTheProbes(t *testing.T) {
 		{"download tool", edit("&& command -v pg_isready", "&& curl -fsS https://example.invalid && command -v pg_isready"), "curl"},
 		{"no version check", edit(" && pg_isready --version \\\n", " \\\n"), "pg_isready --version"},
 		{"apt lists kept", edit(" \\\n && rm -rf /var/lib/apt/lists/*", ""), "apt/lists"},
+		{"pgadapter stage emptied behind a trailing space", func(in Inputs) {
+			head, _, _ := strings.Cut(healthDockerfileText, " AS pgadapter\n")
+			in[healthDockerfile] = head + " AS pgadapter \n"
+		}, "postgresql-client"},
+		{"spanner stage named with a trailing space", edit(" AS spanner\n", " AS spanner \nRUN true\n"), "only copy the probe"},
+		{"no pgadapter stage", func(in Inputs) {
+			head, _, _ := strings.Cut(healthDockerfileText, "FROM gcr.io/cloud-spanner-pg-adapter")
+			in[healthDockerfile] = head
+		}, "pgadapter stage"},
 	})
 }
 

@@ -97,6 +97,14 @@ func TestDependabotHoldsEveryPythonImageOnItsMinor(t *testing.T) {
 		{"an image from another registry", func(in Inputs) {
 			dockerfiles(in)["emulator/x/Dockerfile"] = "FROM registry.local:5000/team/python:3.12\n"
 		}, `"team/python"`},
+		{"an image under a recursive directory glob", func(in Inputs) {
+			docker(in)["directories"] = []any{"/emulator/**"}
+			dockerfiles(in)["emulator/nested/worker/Dockerfile"] = "FROM python:3.14\n"
+		}, `"python"`},
+		{"an image in the root directory", func(in Inputs) {
+			docker(in)["directories"] = []any{"/"}
+			dockerfiles(in)["Dockerfile"] = "FROM python:3.14\n"
+		}, `"python"`},
 		{"minor bumps let through", func(in Inputs) {
 			set(docker(in)["ignore"].([]any)[0], []any{"version-update:semver-major"}, "update-types")
 		}, "library/python"},

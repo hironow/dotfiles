@@ -12,9 +12,9 @@ import (
 // Format says how the shell decodes an input before a rule reads it.
 type Format string
 
-// The formats. Text is the file as a string; the others are the value the
-// file's JSON form decodes to (map[string]any, []any, string, float64, bool,
-// nil).
+// The formats. Text is the file as a string with LF line ends; the others are
+// the value the file's JSON form decodes to (map[string]any, []any, string,
+// float64, bool, nil).
 const (
 	Text Format = "text"
 	JSON Format = "json"
