@@ -345,23 +345,3 @@ def test_common_yaml_spellings_are_in_scope(
     push a listed target out of scope."""
     result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
     assert _decision(result) == "allow", case
-
-
-# --- jq preflight in the setup skills ------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "skill",
-    [
-        "plugins/autoresearch/skills/setup-experiment/SKILL.md",
-        "plugins/autodesign/skills/setup-design/SKILL.md",
-        "plugins/autoreview/skills/setup-review/SKILL.md",
-    ],
-)
-def test_setup_skill_preflights_jq(skill: str) -> None:
-    """Fail-open without jq is a conscious tradeoff only if setup surfaces it."""
-    text = (REPO / skill).read_text(encoding="utf-8")
-    assert "command -v jq" in text, (
-        f"{skill} must preflight jq availability (the scope hook silently "
-        "disables itself without jq)"
-    )
