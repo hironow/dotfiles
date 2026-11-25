@@ -77,13 +77,35 @@ or agent: they must learn it first, and a search for it finds nothing.
   one. Look for a glossary skill among the installed skills, and use it to
   choose better terms and write their definitions: the `domain-modeling`
   skill, the `ubiquitous-language` skill, or the `provable-glossary` skill.
-  When none of them fits, the `find-skills` skill finds others.
+  When none of them fits, the `find-skills` skill finds others. The project's
+  own domain terms then go into its provable glossary (below).
 - **An existing term is not exempt.** Follow a term already in the repo only
   when it is an established term, or one the human approved (a glossary or an
   ADR records it). When you meet a private term that nobody approved, ask the
   human then and there, and do not spread it into new names, docs, or answers.
   Leave existing identifiers and APIs as they are until the human decides: a
   rename can break callers.
+
+## Domain terms live in the provable glossary
+
+The code is the spec. A project's own domain terms (the concepts of the
+business or the field it serves) are defined, and their claims proved, in the
+project's provable glossary, which the `provable-glossary` skill builds and
+keeps. The docs for humans are generated from the glossary and the code
+(docs/agents/docs-discipline.md), so humans and agents read the same words.
+
+- Code is a mapping of the glossary. The core names each domain type,
+  function, and value with a glossary term, and the glossary records where the
+  code implements each term (the skill's code anchors).
+- Add a new domain term to the glossary, with its definition and claims,
+  before it appears in code. A term that the glossary holds is a term the
+  human approved (see "An existing term is not exempt").
+- A project without a glossary starts one with the skill when it adds its
+  first new domain term.
+- An established technical term (retry, cache, idempotency key) needs no
+  glossary entry; the rules above cover it.
+- Leave existing names as they are until the human decides. A rename is a
+  structural commit of its own (below).
 
 ## Keep names consistent
 

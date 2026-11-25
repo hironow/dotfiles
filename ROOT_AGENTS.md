@@ -58,7 +58,8 @@ its reason so you can apply it to cases a check does not list.
   `corepack pnpm`. The reason is the same: lockfiles go out of sync.
 - **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
   root. No `justfile` in subdirectories, and no `make`. One entry point means
-  one place to look.
+  one place to look. The one exception is the provable glossary's module:
+  the root `justfile` may load `glossary/mod.just` with `mod glossary`.
 - **Use Podman 5+ with podman-compose for containers.** Both are
   required installed permanent CLIs and exempt from the seven-day cooldown.
   Never fall back to a Docker engine. Set
@@ -184,8 +185,22 @@ proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill.
 - **Write in plain language, in every language.** Put the main point first, use
   short sentences, the active voice, and common words. This covers docs, code
   comments, commit and PR text, and answers.
-- `docs/*.md` describe the system as it is **now**. No history, no TODOs, no
-  roadmap. An outdated doc is a bug: update docs in the same commit as the code.
+- **Documentation is for humans, and it is generated.** Documents that explain
+  the system (`docs/*.md`, the body of a README) are generated from the code
+  and the glossary, never written by hand. A README keeps only a few
+  hand-written lines: what the project is, and where its docs come from.
+  Agents read the code as the spec, not the docs. Instruction files and
+  working records are not documentation (docs/agents/docs-discipline.md).
+- **Code is the spec, and the glossary proves its words.** A project's own
+  domain terms are defined and proved in its provable glossary (the
+  `provable-glossary` skill). Code is a mapping of that glossary: the core
+  names its types, functions, and values with its terms, so humans and agents
+  use the same words. A new domain term goes into the glossary before it goes
+  into code (docs/agents/naming.md).
+- **Do not test Markdown.** No test checks what a Markdown file says: its
+  wording, its sections, or whether a rule is in it. Lint, link checks, size
+  limits, and the check that generated docs match their generator stay
+  (docs/agents/testing.md).
 - `docs/intent.md` says why we are doing this work now. A human writes it;
   never guess it, ask. `docs/handover.md` says where we are and what comes
   next; update it every session.
