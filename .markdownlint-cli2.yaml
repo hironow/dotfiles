@@ -20,7 +20,6 @@ ignores:
   - templates/**
   - emulator/**
   - gcloud/**
-  - guardrails/**
   - knowledge-work-plugins/**
   - protocols/**
   - skills/**

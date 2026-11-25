@@ -16,7 +16,6 @@ extend-exclude = [
     ".semgrep",
     "emulator",
     "gcloud",
-    "guardrails",
     "knowledge-work-plugins",
     "payments",
     "protocols",

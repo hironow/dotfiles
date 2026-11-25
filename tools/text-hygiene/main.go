@@ -18,7 +18,7 @@ import (
 
 // Match the existing prek global exclusion expression, plus the retired
 // fixers' vendor exclusion. In particular, changelogs.md is a prefix match.
-var excluded = regexp.MustCompile(`^(emulator/|gcloud/|guardrails/|knowledge-work-plugins/|protocols/|skills/|/private/|output/|node_modules/|\.venv/|tools/rttm/\.venv/|docs/changelogs\.md|site/vendor/)`)
+var excluded = regexp.MustCompile(`^(emulator/|gcloud/|knowledge-work-plugins/|protocols/|skills/|/private/|output/|node_modules/|\.venv/|tools/rttm/\.venv/|docs/changelogs\.md|site/vendor/)`)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
