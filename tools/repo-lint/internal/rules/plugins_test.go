@@ -109,6 +109,10 @@ func TestMarketplaceEntriesMatchTheirPluginManifests(t *testing.T) {
 		{"another name", func(in Inputs) { entry(in)["name"] = "grill" }, "grill"},
 		{"another version", func(in Inputs) { entry(in)["version"] = "0.3.1" }, "0.3.1"},
 		{"no version on one side", func(in Inputs) { delete(entry(in), "version") }, "version"},
+		{"an entry that is not an object", func(in Inputs) {
+			mk := in[marketplacePath].(map[string]any)
+			mk["plugins"] = append(mk["plugins"].([]any), nil)
+		}, "not an object"},
 		{"no name on either side", func(in Inputs) {
 			delete(entry(in), "name")
 			in[pluginManifests].(map[string]any)["plugins/grilling/.claude-plugin/plugin.json"] = map[string]any{"version": "0.3.0"}
@@ -159,6 +163,12 @@ func TestEGMIsOnePinnedBundleForEveryAgent(t *testing.T) {
 		{"codex moved back by a later commented assignment", func(in Inputs) {
 			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.0\"  # stale\n"
 		}, "EGM_SOURCE"},
+		{"codex moved back inside a block", func(in Inputs) {
+			in[piInstaller] = in[piInstaller].(string) + "if True:\n    EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.0\"\n"
+		}, "EGM_SOURCE"},
+		{"the package moved by an augmented assignment", func(in Inputs) {
+			in[piInstaller] = in[piInstaller].(string) + "EGM_PACKAGE += \"-fork\"\n"
+		}, "EGM_PACKAGE"},
 		{"codex taken from an expression", func(in Inputs) {
 			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = EGM_PACKAGE + \"@v0.1.0\"\n"
 		}, "EGM_SOURCE"},
@@ -169,6 +179,16 @@ func TestEGMIsOnePinnedBundleForEveryAgent(t *testing.T) {
 			in[skillLock] = map[string]any{"skills": []any{map[string]any{"installed_dir": "egm", "source": "google/elephant-goldfish-model"}}}
 		}, "skill-lock"},
 	})
+}
+
+func TestEGMReadsAnAnnotatedCommentedConstant(t *testing.T) {
+	in := pluginInputs()
+	in[piInstaller] = "EGM_PACKAGE: str = \"git:github.com/google/elephant-goldfish-model\"  # the repo\n" +
+		"EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.1\"\n" +
+		"if source == EGM_SOURCE:\n    pass\n"
+	if got := findingsOf(t, egmPinnedBundle(), in); len(got) != 0 {
+		t.Fatalf("findings %v", got)
+	}
 }
 
 func TestTheEGMReviewerIsReadOnlyAndStartsFresh(t *testing.T) {

@@ -29,9 +29,11 @@ var (
 	releaseTag = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
 	// namedSkill is how the instructions name a skill: the `x` skill, or the
 	// `plugin:x` skill.
-	namedSkill     = regexp.MustCompile("\\bthe `([a-z0-9][a-z0-9:-]*)` skill\\b")
-	egmPackageLine = regexp.MustCompile(`(?m)^EGM_PACKAGE\b.*$`)
-	egmSourceLine  = regexp.MustCompile(`(?m)^EGM_SOURCE\b.*$`)
+	namedSkill = regexp.MustCompile("\\bthe `([a-z0-9][a-z0-9:-]*)` skill\\b")
+	// egmPackageAssign and egmSourceAssign are a line, at any indentation,
+	// that assigns the name: plain, annotated or augmented, never `==`.
+	egmPackageAssign = regexp.MustCompile(`(?m)^[ \t]*EGM_PACKAGE\b[^=\n]*=(?:[^=\n].*)?$`)
+	egmSourceAssign  = regexp.MustCompile(`(?m)^[ \t]*EGM_SOURCE\b[^=\n]*=(?:[^=\n].*)?$`)
 	// stringConstant is a module-level assignment of a string literal, with
 	// an optional type annotation and trailing comment.
 	stringConstant = regexp.MustCompile(`^\w+\s*(?::\s*\w+\s*)?=\s*"([^"\\]*)"\s*(?:#.*)?$`)
@@ -130,7 +132,14 @@ func marketplaceMatchesManifests() Rule {
 				r.add("metadata.pluginRoot is prepended to relative plugin sources; keep only explicit ./ path sources")
 			}
 			manifests, _ := in[pluginManifests].(map[string]any)
-			for _, entry := range tables(in[marketplacePath], "plugins") {
+			items, _ := at(in[marketplacePath], "plugins")
+			list, _ := items.([]any)
+			for _, item := range list {
+				entry, isObject := item.(map[string]any)
+				if !isObject {
+					r.add("a plugins entry is not an object: %v", item)
+					continue
+				}
 				name, named := str(entry, "name")
 				source, _ := str(entry, "source")
 				if !named {
@@ -250,11 +259,11 @@ func egmPinnedBundle() Rule {
 				r.addAt(piPackages, "pi-packages.json must pin %s, the tag of the Claude marketplace", want)
 			}
 			text, _ := in[piInstaller].(string)
-			pkg, pkgOK := lastConstant(egmPackageLine, text)
-			src, srcOK := lastConstant(egmSourceLine, text)
+			pkg, pkgOK := onlyConstant(egmPackageAssign, text)
+			src, srcOK := onlyConstant(egmSourceAssign, text)
 			switch {
 			case !pkgOK || !srcOK:
-				r.addAt(piInstaller, "the last EGM_PACKAGE and EGM_SOURCE lines must each assign a string constant")
+				r.addAt(piInstaller, "EGM_PACKAGE and EGM_SOURCE must each be assigned once, at module level, to a string constant")
 			case src != pkg+"@"+tag:
 				r.addAt(piInstaller, "EGM_SOURCE %q must be %s@%s, the tag of the Claude marketplace", src, pkg, tag)
 			}
@@ -263,15 +272,17 @@ func egmPinnedBundle() Rule {
 	}
 }
 
-// lastConstant is the string a module holds once imported, read from the last
-// line that line matches; false when that line is anything but a string
-// constant, so a value this rule cannot read never passes.
-func lastConstant(line *regexp.Regexp, text string) (string, bool) {
-	all := line.FindAllString(text, -1)
-	if len(all) == 0 {
+// onlyConstant is the string a module holds once imported when the name is
+// assigned exactly once, at module level, to a string constant. Any other
+// shape (a second assignment, one inside a block, an expression) is false, so
+// a value this rule cannot read never passes. Rebinding the name another way
+// (an import, globals()) is not read.
+func onlyConstant(assign *regexp.Regexp, text string) (string, bool) {
+	all := assign.FindAllString(text, -1)
+	if len(all) != 1 || all[0][0] == ' ' || all[0][0] == '\t' {
 		return "", false
 	}
-	m := stringConstant.FindStringSubmatch(all[len(all)-1])
+	m := stringConstant.FindStringSubmatch(all[0])
 	if m == nil {
 		return "", false
 	}
