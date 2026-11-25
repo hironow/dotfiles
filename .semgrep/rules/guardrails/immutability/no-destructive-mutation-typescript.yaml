@@ -1,0 +1,142 @@
+rules:
+  - id: immutability.no-array-push-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.push(...)` mutates the array in place. Any other reference to
+      this array will see the change, causing unpredictable side effects.
+      [HOW] Create a new array: `const newArr = [...$X, item]`.
+    pattern: $X.push(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-pop-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.pop()` mutates the array in place and returns the removed element.
+      [HOW] Create a new array without the last element: `const newArr = $X.slice(0, -1)`.
+    pattern: $X.pop()
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-unshift-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.unshift(...)` mutates the array in place by prepending elements.
+      [HOW] Create a new array: `const newArr = [item, ...$X]`.
+    pattern: $X.unshift(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-splice-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.splice(...)` mutates the array in place by removing/inserting elements.
+      [HOW] Use `$X.toSpliced(...)` (ES2023) or combine slice + spread to build a new array:
+      `const newArr = [...$X.slice(0, start), ...items, ...$X.slice(end)]`.
+    pattern: $X.splice(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-fill-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.fill(...)` mutates the array in place by overwriting elements.
+      [HOW] Create a new filled array: `const newArr = $X.map(() => value)` or
+      `Array.from({length: n}, () => value)`.
+    pattern: $X.fill(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-copywithin-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.copyWithin(...)` mutates the array in place by copying elements within it.
+      [HOW] Create a copy first: `const newArr = [...$X]; newArr.copyWithin(...)`.
+    pattern: $X.copyWithin(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-sort-inplace-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.sort(...)` mutates the array in place. Callers sharing a reference to the
+      same array will unexpectedly see a different order.
+      [HOW] Use `$X.toSorted(...)` (ES2023) or `[...$X].sort(...)` to sort a copy.
+    pattern: $X.sort(...)
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-array-reverse-inplace-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `$X.reverse()` mutates the array in place.
+      [HOW] Use `$X.toReversed()` (ES2023) or `[...$X].reverse()` to reverse a copy.
+    pattern: $X.reverse()
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-delete-property-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] `delete $X.$PROP` mutates the object in place by removing a property.
+      Other code holding a reference to the object will lose the property.
+      [HOW] Use destructuring to create a new object without the property:
+      `const { $PROP, ...rest } = $X`.
+    pattern: delete $X.$PROP
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-param-property-mutation-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Assigning to `$PARAM.$FIELD` inside a function mutates the caller's object.
+      This breaks the expectation that a function only returns a result without side effects.
+      [HOW] Return a new object with the spread operator:
+      `return { ...$PARAM, $FIELD: $VAL }`.
+    pattern: |
+      function $FUNC(..., $PARAM, ...) {
+          ...
+          $PARAM.$FIELD = $VAL
+          ...
+      }
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-nested-property-mutation-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Nested mutation `$PARAM.$A.$B = $VAL` modifies a deeply nested property of the
+      caller's object. This is especially dangerous because the mutation is hidden behind
+      multiple levels of indirection.
+      [HOW] Return a new object with nested spread:
+      `return { ...$PARAM, $A: { ...$PARAM.$A, $B: $VAL } }`.
+    pattern: |
+      function $FUNC(..., $PARAM, ...) {
+          ...
+          $PARAM.$A.$B = $VAL
+          ...
+      }
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨

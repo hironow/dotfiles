@@ -1,0 +1,15 @@
+rules:
+  - id: naming.technical-dir-import-in-domain-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Importing from a technical classification directory inside domain layer
+      (entities/, value-objects/, services/). Domain modules should be named after
+      business concepts (order, customer, pricing), not DDD building block types.
+      Technical naming scatters related concepts and hides domain structure.
+      [HOW] Reorganize: `domain/entities/Order` → `domain/order/Order`,
+      `domain/services/PricingService` → `domain/pricing/PricingPolicy`.
+    pattern-regex: "(?:import|from)\\s+['\"](?:\\./|\\.\\./)*(domain/(?:entities|entity|value-objects|valueobjects|vo|aggregates|services|interfaces|impl|dto|dtos|types|core))(?:/[^'\"]*)?['\"]"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/skills/ddd-module-pattern

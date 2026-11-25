@@ -1,0 +1,37 @@
+rules:
+  - id: error-handling.bare-except-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Bare `except:` catches everything including KeyboardInterrupt and
+      SystemExit, masking bugs and preventing graceful shutdown. Recovery logic
+      cannot be specific when the error type is unknown.
+      [HOW] Catch specific exceptions: `except ValueError:` or `except (IOError, OSError):`.
+      For genuine catch-all, use `except Exception:` which still allows system exits.
+    pattern: |
+      try:
+          ...
+      except:
+          ...
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/skills/error-handling
+
+  - id: error-handling.broad-exception-catch-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `except Exception` catches all application exceptions indiscriminately.
+      This hides the actual failure, prevents callers from making informed recovery
+      decisions, and often masks bugs.
+      [HOW] Catch the specific exception types you can actually recover from:
+      `except (ConnectionError, TimeoutError):`. For ドメインロジック, use Result/Either
+      patterns (e.g., `returns` or `result` library) instead of exceptions.
+    pattern: |
+      try:
+          ...
+      except Exception:
+          ...
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/skills/error-handling

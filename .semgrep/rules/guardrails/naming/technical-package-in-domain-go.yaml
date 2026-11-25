@@ -1,0 +1,21 @@
+rules:
+  - id: naming.technical-package-in-domain-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Package uses a technical classification name inside the domain layer. Names
+      like "entities", "valueobjects", "services" are technology-driven packaging that
+      scatters related domain concepts across folders. Domain packages should be named
+      after business concepts (order, customer, pricing) so the package list reads as
+      a domain glossary.
+      [HOW] Rename to a domain concept. For example:
+      `domain/entities/` → `domain/order/`, `domain/customer/`
+      `domain/services/` → `domain/pricing/`, `domain/billing/`
+      Group by business concept, not by DDD building block type.
+    pattern-regex: "^package\\s+(entities|entity|valueobjects|vo|aggregates|services|interfaces|impl|dto|dtos|types|core)\\s*$"
+    paths:
+      include:
+        - "**/domain/**"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/skills/ddd-module-pattern

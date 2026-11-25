@@ -1,0 +1,26 @@
+rules:
+  - id: error-handling.throw-string-literal-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Throwing a raw string literal creates a "stringly-typed error" that cannot
+      be caught by type, lacks stack traces, and makes error handling brittle. The
+      error-handling steering rule: "Throw typed business errors, avoid stringly-typed errors."
+      [HOW] Throw a typed Error subclass: `throw new ValidationError('message')` or
+      return a Result type. Define error classes per domain concept with discriminated
+      union types for exhaustive handling.
+    pattern: throw "..."
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/.kiro/settings/templates/steering-custom/error-handling.md
+
+  - id: error-handling.throw-template-literal-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Throwing a template literal creates an untyped error without stack trace.
+      [HOW] Throw a typed Error subclass instead.
+    pattern: throw `...`
+    metadata:
+      category: error-handling
+      rule-origin: ai-tools/okite-ai/.kiro/settings/templates/steering-custom/error-handling.md

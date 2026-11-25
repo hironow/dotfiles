@@ -31,8 +31,9 @@ semgrep --version
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh"
 ```
 
-If `resolve-guardrails.sh` fails, prompt the user to initialize the
-`guardrails/semgrep` submodule.
+If `resolve-guardrails.sh` fails, tell the user that the rules live at
+`.semgrep/rules/guardrails/` in hironow/dotfiles, and that the plugin finds
+them in the current repository or in the dotfiles checkout that holds it.
 
 Also verify `jq` is available — the out-of-scope edit guard
 (check-scope.sh) requires it and silently disables itself (fail-open)

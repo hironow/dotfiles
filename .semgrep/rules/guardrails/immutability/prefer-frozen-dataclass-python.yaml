@@ -1,0 +1,25 @@
+rules:
+  - id: immutability.prefer-frozen-dataclass-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Mutable dataclasses allow field reassignment after construction, which
+      breaks value-object semantics and makes instances unhashable by default.
+      [HOW] Use `@dataclass(frozen=True)` to make instances immutable and hashable.
+      To create modified copies, use `dataclasses.replace(instance, field=new_val)`.
+    patterns:
+      - pattern: |
+          @dataclass
+          class $NAME:
+              ...
+      - pattern-not: |
+          @dataclass(frozen=True)
+          class $NAME:
+              ...
+      - pattern-not: |
+          @dataclass(frozen=True, ...)
+          class $NAME:
+              ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨

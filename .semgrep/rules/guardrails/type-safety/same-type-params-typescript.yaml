@@ -1,0 +1,18 @@
+rules:
+  - id: domain-primitives.multiple-string-params-typescript
+    languages: [typescript]
+    severity: INFO
+    message: >-
+      [WHY] Function has 3+ consecutive `string` parameters. When multiple arguments
+      share the same type, the compiler cannot detect if they are swapped. This is
+      the "primitive obsession" anti-pattern — a leading cause of silent bugs.
+      [HOW] Use branded types: `type Email = string & { __brand: 'Email' }` or
+      wrapper classes with private constructors. Even a branded type prevents
+      accidental swaps at compile time. See: "when-to-wrap-primitives" — Criterion 2.
+    pattern: |
+      function $FUNC(..., $A: string, $B: string, $C: string, ...) {
+          ...
+      }
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/when-to-wrap-primitives

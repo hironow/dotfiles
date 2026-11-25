@@ -35,6 +35,9 @@ VENDORED = {
     "site/vendor/**": "tests/unit/test_site_vendor.py (SHA-256 of npm's bytes)",
     "config/pi/extensions/rtk.ts": "just js-build, and rtk's own corpus",
 }
+# Semgrep rule fixtures break the rules on purpose; just semgrep-test checks them,
+# and JS_FILES leaves them out of oxlint (ruff skips .semgrep/ the same way).
+RULE_FIXTURES = ".semgrep/"
 OWN_FILES = (
     "site/copy.js",
     "config/pi/extensions/jev-sonnet-fallback.ts",
@@ -136,7 +139,11 @@ def test_only_vendored_bytes_are_ignored() -> None:
 
 def test_every_tracked_js_file_is_linted_or_vendored() -> None:
     tracked = _tracked_js()
-    own = sorted(path for path in tracked if not _is_vendored(path))
+    own = sorted(
+        path
+        for path in tracked
+        if not _is_vendored(path) and not path.startswith(RULE_FIXTURES)
+    )
     assert own == sorted(OWN_FILES), own
 
 
@@ -157,6 +164,7 @@ def test_oxlint_is_handed_the_tracked_files_only() -> None:
     extensions = ("ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts")
     assert js_files.split() == [
         *(f"'*.{extension}'" for extension in extensions),
+        "':(top,exclude).semgrep/**'",
         "':!vendor/**'",
     ]
 

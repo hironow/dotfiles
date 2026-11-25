@@ -74,8 +74,10 @@ UV_RUN_SCRIPT := "mise exec -- uv run"
 # relative to it (--work-tree=.. keeps it so inside a git hook, where GIT_DIR
 # is set). site/vendor holds third-party bytes that
 # tests/unit/test_site_vendor.py checks instead. oxlint and bun check read
-# every tracked JS/TS file that is ours (the js-* recipes below).
-JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!vendor/**'"
+# every tracked JS/TS file that is ours (the js-* recipes below). .semgrep/
+# holds Semgrep rule fixtures that break the rules on purpose (ruff skips it
+# for the same reason); semgrep-test checks them.
+JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':(top,exclude).semgrep/**' ':!vendor/**'"
 # The gcloud components installed here, one id per line, as `dump` records them
 # and `add-gcloud` compares against. A component with an update waiting is
 # installed too ("Update Available"). Exact matches: `state.name:` matches
@@ -127,6 +129,14 @@ semgrep-test:
         ;;
     esac
     {{ SEMGREP }} --test --config .semgrep/rules/ .semgrep/rules/
+    # The guardrails rules (ADR-0094) keep their fixtures under tests/, not
+    # beside each rule, so `--test` pairs none of them: validate the rules,
+    # and require their fixtures to give findings, as their own repo did.
+    {{ SEMGREP }} --validate --metrics=off --config .semgrep/rules/guardrails/
+    count="$({{ SEMGREP }} --metrics=off --quiet --json --config .semgrep/rules/guardrails/ .semgrep/rules/guardrails/tests/ \
+      | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["results"]))')"
+    echo "guardrails fixture findings: $count"
+    [ "$count" -gt 0 ] || { echo 'guardrails rules gave no finding on their fixtures' >&2; exit 1; }
     just agent-baseline-test
 
 # Check the agent-baseline scaffold in a throwaway repo (called by semgrep-test,

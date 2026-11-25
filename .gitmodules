@@ -107,10 +107,6 @@
 	path = protocols/MCP-Apps
 	url = git@github.com:modelcontextprotocol/ext-apps.git
 	update = none
-[submodule "guardrails/semgrep"]
-	path = guardrails/semgrep
-	url = git@github.com:hironow/semgrep-guardrails.git
-	update = none
 [submodule "gcloud/gemini-cloud-assist-mcp"]
 	path = gcloud/gemini-cloud-assist-mcp
 	url = git@github.com:GoogleCloudPlatform/gemini-cloud-assist-mcp.git

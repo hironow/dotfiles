@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 # Submodules whose instruction files the owner writes, so Claude may load them.
-OWNER_WRITTEN = {"guardrails/semgrep"}
+OWNER_WRITTEN: set[str] = set()
 
 INSTRUCTION_FILE = re.compile(
     r"(^|/)(CLAUDE|CLAUDE\.local|AGENTS|GEMINI)\.md$|(^|/)\.claude/rules/"

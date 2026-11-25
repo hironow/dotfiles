@@ -1,0 +1,16 @@
+rules:
+  - id: tell-dont-ask.getter-if-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Calling a getter method and branching on its result is a "Tell, Don't Ask"
+      violation. You are asking the object for its state and making a decision externally.
+      This scatters logic that belongs to the object across callers, breaking encapsulation
+      and creating duplication.
+      [HOW] Move the condition into the object as a predicate method:
+      `if obj.is_active():` or delegate the action entirely:
+      `obj.do_action_if_applicable()`.
+    pattern-regex: "if\\s+\\w+\\.get_\\w+\\(\\)\\s*[=!><]"
+    metadata:
+      category: tell-dont-ask
+      rule-origin: ai-tools/okite-ai/skills/tell-dont-ask

@@ -1,0 +1,42 @@
+rules:
+  - id: parse-dont-validate.validate-returns-void-typescript
+    languages: [typescript]
+    severity: INFO
+    message: >-
+      [WHY] Function `$FUNC` validates input but returns `void`, discarding the
+      validated result. The caller retains the original untyped value with no
+      compile-time proof that validation passed. This forces redundant re-validation
+      and allows "shotgun parsing" throughout the codebase.
+      [HOW] Convert to a "parse" function that returns a branded/validated type:
+      `function parseEmail(s: string): Email { ... }`. Use branded types
+      (`type Email = string & { __brand: 'Email' }`) or wrapper classes to encode
+      the validation guarantee in the type system.
+    patterns:
+      - pattern: |
+          function $FUNC(...): void { ... }
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^validate[A-Z]
+    metadata:
+      category: parse-dont-validate
+      rule-origin: ai-tools/okite-ai/skills/parse-dont-validate
+
+  - id: parse-dont-validate.check-returns-boolean-typescript
+    languages: [typescript, javascript]
+    severity: INFO
+    message: >-
+      [WHY] Function `$FUNC` returns a boolean to indicate validity, but the caller
+      still holds the raw unvalidated value after the check. The validation result
+      is lost at the type level.
+      [HOW] Convert to a parse function or type guard. For TypeScript, use a type
+      predicate: `function isEmail(s: string): s is Email` (narrowing), or better,
+      return the validated type: `function parseEmail(s: string): Email | null`.
+    patterns:
+      - pattern: |
+          function $FUNC(...): boolean { ... }
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^(validate|check|isValid)[A-Z]
+    metadata:
+      category: parse-dont-validate
+      rule-origin: ai-tools/okite-ai/skills/parse-dont-validate

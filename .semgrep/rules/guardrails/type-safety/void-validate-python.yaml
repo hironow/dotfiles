@@ -1,0 +1,48 @@
+rules:
+  - id: parse-dont-validate.validate-returns-none-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Function `$FUNC` validates input but returns None, discarding the
+      validated result. The caller retains the original unvalidated value with no
+      type-level proof that validation passed. This invites redundant checks and
+      "shotgun parsing" (validation scattered throughout the codebase).
+      [HOW] Convert to a "parse" function that returns a validated type:
+      `def parse_email(s: str) -> Email` that raises on invalid input, or returns
+      `Optional[Email]` / `Result[Email, Error]`. The returned type encodes the
+      validation guarantee. See: Alexis King "Parse, don't validate".
+    patterns:
+      - pattern-either:
+          - pattern: |
+              def $FUNC(...) -> None:
+                  ...
+          - pattern: |
+              def $FUNC(...):
+                  ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^validate_
+    metadata:
+      category: parse-dont-validate
+      rule-origin: ai-tools/okite-ai/skills/parse-dont-validate
+
+  - id: parse-dont-validate.check-returns-bool-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Function `$FUNC` returns a bool to indicate validity, but discards
+      the actual parsing result. After `if check_email(s): ...`, the caller
+      still holds the raw `s` with no typed guarantee that it is valid.
+      [HOW] Convert to a parse function that returns the validated type on success
+      (e.g., `def parse_email(s: str) -> Email`). The bool becomes implicit: if
+      the function returns, the value is valid.
+    patterns:
+      - pattern: |
+          def $FUNC(...) -> bool:
+              ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^(check_|is_valid_|validate_)
+    metadata:
+      category: parse-dont-validate
+      rule-origin: ai-tools/okite-ai/skills/parse-dont-validate

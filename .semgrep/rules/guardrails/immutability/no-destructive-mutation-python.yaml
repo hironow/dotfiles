@@ -1,0 +1,154 @@
+rules:
+  - id: immutability.no-list-append-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.append(...)` mutates the caller's list. Shared references to the same
+      list will see the change, causing unpredictable side effects.
+      [HOW] Return a new list: `return [*$PARAM, item]`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.append(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-extend-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.extend(...)` mutates the caller's list in place.
+      [HOW] Return a new list: `return [*$PARAM, *other]`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.extend(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-insert-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.insert(...)` mutates the caller's list in place.
+      [HOW] Return a new list using slicing: `return [*$PARAM[:i], item, *$PARAM[i:]]`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.insert(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-remove-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.remove(...)` mutates the caller's list in place.
+      [HOW] Return a new filtered list: `return [x for x in $PARAM if x != val]`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.remove(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-clear-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.clear()` destroys the caller's collection contents in place.
+      [HOW] Return a new empty collection instead: `return []` or `return {}`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.clear()
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-reverse-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.reverse()` mutates the list in place.
+      [HOW] Return a new reversed list: `return list(reversed($PARAM))` or `return $PARAM[::-1]`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.reverse()
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-list-sort-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.sort()` mutates the list in place. The caller's data order changes
+      silently, which is especially dangerous when multiple consumers share the reference.
+      [HOW] Return a new sorted list: `return sorted($PARAM)`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.sort(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-dict-mutation-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM[$KEY] = $VAL` mutates the caller's dict in place. Other code holding
+      a reference to the same dict will see the change unexpectedly.
+      [HOW] Return a new dict: `return {**$PARAM, key: val}`.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM[$KEY] = $VAL
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-dict-update-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.update(...)` merges keys into the caller's dict in place.
+      [HOW] Return a new merged dict: `return {**$PARAM, **other}` or `return $PARAM | other` (Python 3.9+).
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.update(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨
+
+  - id: immutability.no-dict-pop-param-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] `$PARAM.pop(...)` removes a key/element from the caller's collection in place.
+      [HOW] For dicts: `return {k: v for k, v in $PARAM.items() if k != key}`.
+      For lists: use slicing to create a new list without the element.
+    pattern: |
+      def $FUNC(..., $PARAM, ...):
+          ...
+          $PARAM.pop(...)
+          ...
+    metadata:
+      category: immutability
+      rule-origin: ai-tools/AGENTS.md - イミュータブルを推奨

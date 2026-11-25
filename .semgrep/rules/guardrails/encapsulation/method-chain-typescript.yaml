@@ -1,0 +1,16 @@
+rules:
+  - id: demeter.method-chain-3-levels-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Triple method chain `$A.$B().$C().$D()` violates the Law of Demeter.
+      This "Train Wreck" pattern couples the caller to the internal structure of
+      intermediate objects. Any change to an intermediate object's API breaks this code.
+      [HOW] Introduce a delegation method on the immediate neighbor. For example,
+      replace `order.getCustomer().getAddress().getCity()` with
+      `order.getShippingCity()`. Exceptions: builder/fluent APIs returning `this`,
+      Promise chains, and array method chains (`.filter().map().reduce()`).
+    pattern: $A.$B().$C().$D()
+    metadata:
+      category: demeter
+      rule-origin: ai-tools/okite-ai/skills/law-of-demeter

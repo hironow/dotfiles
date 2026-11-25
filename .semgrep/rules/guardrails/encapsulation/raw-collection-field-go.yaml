@@ -1,0 +1,37 @@
+rules:
+  - id: first-class-collection.raw-slice-field-domain-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Exported struct `$TYPE` in the domain layer has a public slice field `$FIELD`.
+      Raw collection fields expose internal structure and invite callers to iterate,
+      filter, and aggregate externally — scattering domain logic. The "First Class
+      Collection" pattern says: if a collection has domain meaning, wrap it in a
+      dedicated type that encapsulates the iteration and business operations.
+      [HOW] Create a dedicated type: `type $FIELDs struct { values []$ELEM }` with
+      domain methods (e.g., `TotalAmount()`, `FilterByStatus()`). Make the original
+      field private and replace it with the wrapper type. The wrapper returns new
+      instances on modification (immutability).
+    patterns:
+      - pattern: |
+          type $TYPE struct {
+              ...
+              $FIELD []$ELEM
+              ...
+          }
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^[A-Z]
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: ^[A-Z]
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: first-class-collection
+      rule-origin: ai-tools/okite-ai/skills/first-class-collection

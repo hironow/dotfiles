@@ -1,0 +1,67 @@
+rules:
+  - id: repository-design.infra-suffix-in-repo-name-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Repository type `$NAME` contains an infrastructure term (Table/Dto/Entity/
+      Record/Row). Repository names must follow `AggregateRoot + Repository` convention.
+      Infrastructure-derived names leak persistence details into domain vocabulary.
+      [HOW] Rename to `<AggregateName>Repository`. Example:
+      `OrderDtoRepository` → `OrderRepository`.
+    patterns:
+      - pattern-either:
+          - pattern: class $NAME { ... }
+          - pattern: class $NAME extends $BASE { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Table|Dto|DTO|Entity|Record|Row)Repository$
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.infra-suffix-in-repo-interface-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Repository interface name contains an infrastructure term. Repository
+      names must follow `AggregateRoot + Repository` convention.
+      [HOW] Rename to `<AggregateName>Repository`.
+    pattern-regex: "interface\\s+[A-Z]\\w*(?:Table|Dto|DTO|Entity|Record|Row)Repository"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.db-operation-method-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses SQL semantics (insert/update/select/upsert).
+      Repositories should use collection semantics.
+      [HOW] Rename: `insert` → `store`/`add`, `update` → `store`/`put`,
+      `select` → `findById`/`findBy*`, `upsert` → `store`.
+    pattern-regex: "(?:async\\s+)?(?:insert|update|select|upsert)[A-Z]\\w*\\("
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design
+
+  - id: repository-design.domain-logic-method-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Repository method uses a domain operation name. Repositories handle only
+      I/O. Domain logic belongs in the aggregate.
+      [HOW] Move logic to aggregate: `order.cancel(); repo.store(order)`.
+    pattern-regex: "(?:async\\s+)?(?:activate|cancel|approve|leave|reject|suspend|resume|rename|complete|close|archive|publish|deactivate)[A-Z]?\\w*\\("
+    paths:
+      include:
+        - "**/*repository*"
+        - "**/*Repository*"
+        - "**/*repo*"
+    metadata:
+      category: repository-design
+      rule-origin: ai-tools/okite-ai/skills/repository-design

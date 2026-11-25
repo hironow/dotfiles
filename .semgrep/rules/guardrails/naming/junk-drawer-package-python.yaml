@@ -1,0 +1,14 @@
+rules:
+  - id: naming.junk-drawer-module-import-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Importing from a "junk drawer" module (util/utils/helper/helpers/common/
+      misc/shared). These module names attract unrelated code with no bounded
+      responsibility. They grow into dependency magnets with low cohesion.
+      [HOW] Extract focused modules named after their responsibility. Example:
+      `from utils import format_date` → `from date_formatting import format_date`.
+    pattern-regex: "(?:from|import)\\s+(?:\\w+\\.)*(?:util|utils|helper|helpers|common|misc|shared)(?:\\.\\w+)*"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/okite-ai/skills/package-design

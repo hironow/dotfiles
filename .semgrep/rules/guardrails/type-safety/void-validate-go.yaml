@@ -1,0 +1,19 @@
+rules:
+  - id: parse-dont-validate.validate-returns-error-only-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Function `$FUNC` validates input but returns only an error, discarding
+      the validated result. After calling this function, the caller still holds the
+      original unvalidated value with no type-level proof that validation passed.
+      This forces redundant re-validation and allows "shotgun parsing" (validation
+      scattered throughout the codebase).
+      [HOW] Convert to a "parse" function that returns a validated type:
+      `func Parse$X(input string) (ValidatedType, error)`. The returned type encodes
+      the validation guarantee, so downstream code can trust it without re-checking.
+      See: Alexis King "Parse, don't validate".
+    patterns:
+      - pattern-regex: "func\\s+(validate|Validate)[A-Za-z]*\\([^)]*\\)\\s+error\\s*\\{"
+    metadata:
+      category: parse-dont-validate
+      rule-origin: ai-tools/okite-ai/skills/parse-dont-validate

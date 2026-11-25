@@ -1,0 +1,42 @@
+rules:
+  - id: clean-architecture.domain-imports-infrastructure-python
+    languages: [python]
+    severity: ERROR
+    message: >-
+      [WHY] Domain layer is importing from the infrastructure layer. In Clean
+      Architecture, the domain is the innermost layer with ZERO external dependencies.
+      Importing infrastructure (DB drivers, HTTP clients, config, logging frameworks)
+      couples business logic to implementation details, making it untestable and rigid.
+      [HOW] Define an abstract class or Protocol in the domain/usecase layer as an
+      Output Port. Implement it in the infrastructure layer. Inject the implementation
+      via constructor parameters.
+    pattern-regex: "(?:from|import)\\s+\\S*(?:infrastructure|infra)\\S*"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture
+
+  - id: clean-architecture.domain-imports-adapter-python
+    languages: [python]
+    severity: ERROR
+    message: >-
+      [WHY] Domain layer is importing from the adapter/controller layer. The domain
+      must not depend on any outer layer.
+      [HOW] Define a Protocol/ABC in the domain layer. Implement in the adapter layer.
+    pattern-regex: "(?:from|import)\\s+\\S*(?:adapter|adapters|controller|controllers|gateway|gateways|handler|handlers|presenter|presenters)\\S*"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture

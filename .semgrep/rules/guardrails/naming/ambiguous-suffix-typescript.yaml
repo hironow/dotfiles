@@ -1,0 +1,56 @@
+rules:
+  - id: naming.ambiguous-suffix-class-typescript
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      [WHY] Class `$NAME` uses a prohibited suffix (Manager/Util/Facade/Service/Runtime/Engine).
+      These suffixes attract unrelated responsibilities, blurring the class boundary and
+      making dependencies unpredictable.
+      [HOW] Replace with a responsibility-specific name:
+      Data storage → Registry/Catalog/Store,
+      Selection/routing → Policy/Selector/Router,
+      Coordination → Coordinator/Dispatcher/Controller,
+      Creation → Factory/Builder,
+      Transformation → Adapter/Bridge/Mapper,
+      Execution → Executor/Scheduler/Evaluator.
+      Exception: names from external frameworks/libraries need not be renamed.
+    patterns:
+      - pattern: class $NAME { ... }
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Manager|Util|Facade|Service|Runtime|Engine)$
+    metadata:
+      category: naming
+      rule-origin: ai-tools/AGENTS.md - 曖昧なサフィックスを避ける
+
+  - id: naming.ambiguous-suffix-interface-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Interface uses a prohibited suffix (Manager/Util/Facade/Service/Runtime/Engine).
+      An ambiguous interface name hides the contract, making it impossible for consumers
+      to understand what operations and dependencies are expected.
+      [HOW] Rename to express the specific responsibility. Use suffixes like Store, Policy,
+      Router, Coordinator, Factory, Adapter, Executor.
+    pattern-regex: "interface\\s+[A-Z]\\w*(?:Manager|Util|Facade|Service|Runtime|Engine)\\s*\\{"
+    metadata:
+      category: naming
+      rule-origin: ai-tools/AGENTS.md - 曖昧なサフィックスを避ける
+
+  - id: naming.ambiguous-suffix-type-alias-typescript
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      [WHY] Type alias `$NAME` uses a prohibited suffix (Manager/Util/Facade/Service/Runtime/Engine).
+      Even type aliases carry semantic weight in a codebase. An ambiguous name undermines
+      the readability that type-level documentation provides.
+      [HOW] Rename to express what the type represents in domain terms. Use responsibility-based
+      suffixes: Config, Options, State, Result, Params, etc.
+    patterns:
+      - pattern: type $NAME = $TYPE
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^[A-Z].*(?:Manager|Util|Facade|Service|Runtime|Engine)$
+    metadata:
+      category: naming
+      rule-origin: ai-tools/AGENTS.md - 曖昧なサフィックスを避ける

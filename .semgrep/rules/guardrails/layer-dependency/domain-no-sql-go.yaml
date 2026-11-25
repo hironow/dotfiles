@@ -1,0 +1,23 @@
+rules:
+  - id: clean-architecture.sql-in-domain-go
+    languages: [go]
+    severity: ERROR
+    message: >-
+      [WHY] SQL string literal found in domain layer. The layer-responsibilities rule
+      states: domain layer must NOT contain DB connections, SQL, or framework-dependent
+      code. SQL in the domain couples business rules to a specific storage technology,
+      making them untestable without a database.
+      [HOW] Move SQL to the repository implementation in the interface-adapter layer.
+      The domain layer should only contain entities, value objects, domain services,
+      and domain events — no persistence logic.
+    pattern-regex: "(?i)(?:SELECT|INSERT|UPDATE|DELETE|CREATE TABLE|ALTER TABLE|DROP TABLE)\\s"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+    metadata:
+      category: clean-architecture
+      rule-origin: ai-tools/okite-ai/skills/clean-architecture/references/layer-responsibilities.md

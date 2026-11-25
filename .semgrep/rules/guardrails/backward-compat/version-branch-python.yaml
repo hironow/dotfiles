@@ -1,0 +1,14 @@
+rules:
+  - id: backward-compat.version-branch-python
+    languages: [python]
+    severity: WARNING
+    message: >-
+      [WHY] Version-based branching scattered in business logic is a backward-
+      compatibility anti-pattern. These branches accumulate, increase complexity,
+      and become permanent without a deprecation policy.
+      [HOW] Isolate compatibility logic in a dedicated adapter layer. Set a
+      deprecation SLO with removal date. Track usage metrics.
+    pattern-regex: "if\\s+version\\s*[<>=!]+"
+    metadata:
+      category: backward-compat
+      rule-origin: ai-tools/okite-ai/skills/backward-compat-governance

@@ -139,7 +139,6 @@ def test_empty_repo_passes(hygiene_tool: Path, tmp_path: Path) -> None:
     [
         "emulator/a.txt",
         "gcloud/a.txt",
-        "guardrails/a.txt",
         "knowledge-work-plugins/a.txt",
         "protocols/a.txt",
         "skills/a.txt",

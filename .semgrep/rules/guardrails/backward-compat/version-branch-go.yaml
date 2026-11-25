@@ -1,0 +1,14 @@
+rules:
+  - id: backward-compat.version-branch-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Version-based branching scattered in business logic is a backward-
+      compatibility anti-pattern. These branches accumulate without a deprecation
+      policy and become permanent dead code.
+      [HOW] Isolate compatibility logic in a dedicated adapter layer. Set a removal
+      timeline and track usage.
+    pattern-regex: "if\\s+version\\s*[<>=!]+"
+    metadata:
+      category: backward-compat
+      rule-origin: ai-tools/okite-ai/skills/backward-compat-governance

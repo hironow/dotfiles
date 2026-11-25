@@ -1,0 +1,29 @@
+rules:
+  - id: domain-primitives.public-string-field-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Exported struct `$TYPE` has a public `string` field `$FIELD`. Raw primitive
+      fields bypass domain validation — anyone can set an invalid value (empty string,
+      SQL injection payload, wrong format) without the compiler catching it. This is the
+      "primitive obsession" anti-pattern.
+      [HOW] Wrap the primitive in a domain-specific type with a smart constructor:
+      create `type $FIELD struct { value string }` with `func New$FIELD(s string) ($FIELD, error)`
+      that validates at construction time. Make the field private and expose only the
+      validated type. See: "Secure by Design" — Domain Primitives.
+    patterns:
+      - pattern: |
+          type $TYPE struct {
+              ...
+              $FIELD string
+              ...
+          }
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^[A-Z]
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: ^[A-Z].*(Email|Name|Phone|Address|Url|URL|Token|Password|Secret)$
+    metadata:
+      category: domain-primitives
+      rule-origin: ai-tools/okite-ai/skills/domain-primitives-and-always-valid

@@ -1,0 +1,16 @@
+rules:
+  - id: demeter.method-chain-3-levels-go
+    languages: [go]
+    severity: WARNING
+    message: >-
+      [WHY] Triple method chain `$A.$B().$C().$D()` violates the Law of Demeter.
+      This "Train Wreck" pattern couples the caller to the internal structure of
+      intermediate objects. If any middle object changes its API, this code breaks.
+      [HOW] Introduce a delegation method on the immediate neighbor. For example,
+      replace `order.GetCustomer().GetAddress().GetCity()` with
+      `order.GetShippingCity()` which internally delegates through the chain.
+      Exceptions: builder/fluent APIs returning `this`, and stream/iterator chains.
+    pattern: $A.$B().$C().$D()
+    metadata:
+      category: demeter
+      rule-origin: ai-tools/okite-ai/skills/law-of-demeter

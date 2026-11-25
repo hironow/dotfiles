@@ -1,0 +1,30 @@
+rules:
+  - id: breach-encapsulation.getter-method-domain-go
+    languages: [go]
+    severity: INFO
+    message: >-
+      [WHY] Method `Get$PROP` on a domain entity exposes internal state as a simple
+      getter. In Go, domain entity getters encourage "Ask" patterns (get state → decide
+      externally → act) which scatter logic across callers instead of keeping it in the
+      entity. The "breach encapsulation" naming convention makes getters intentionally
+      awkward so developers think twice before using them.
+      [HOW] If the getter is truly needed (persistence, serialization, testing), rename
+      to `BreachEncapsulationOf$PROP()` to signal that encapsulation is being broken.
+      If used for business logic, move the logic into the entity as a Tell method instead.
+      Value Objects (immutable, no identity) may keep simple accessors.
+    pattern-regex: "func\\s+\\([^)]+\\)\\s+Get[A-Z]\\w*\\("
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+      exclude:
+        - "**/*_test.go"
+        - "**/vo/**"
+        - "**/value/**"
+        - "**/valueobject/**"
+    metadata:
+      category: breach-encapsulation
+      rule-origin: ai-tools/okite-ai/skills/breach-encapsulation-naming

@@ -1,0 +1,29 @@
+rules:
+  - id: breach-encapsulation.getter-method-domain-python
+    languages: [python]
+    severity: INFO
+    message: >-
+      [WHY] Method `get_*` on a domain entity exposes internal state as a getter.
+      In domain models, getters encourage "Ask" patterns (get → decide → act) which
+      scatter business logic across callers. The "breach encapsulation" naming convention
+      makes getters intentionally awkward so developers think twice.
+      [HOW] If the getter is truly needed (persistence, serialization, testing), rename
+      to `breach_encapsulation_of_*()`. If used for business logic, move the logic into
+      the entity as a Tell method. Value Objects (frozen dataclasses) may keep accessors.
+    pattern-regex: "def\\s+get_[a-z]\\w*\\(self"
+    paths:
+      include:
+        - "**/domain/**"
+        - "**/model/**"
+        - "**/models/**"
+        - "**/entity/**"
+        - "**/entities/**"
+      exclude:
+        - "**/test_*"
+        - "**/*_test.py"
+        - "**/vo/**"
+        - "**/value/**"
+        - "**/valueobject/**"
+    metadata:
+      category: breach-encapsulation
+      rule-origin: ai-tools/okite-ai/skills/breach-encapsulation-naming
