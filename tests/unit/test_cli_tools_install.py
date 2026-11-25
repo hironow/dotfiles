@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -22,33 +21,6 @@ TOOLS = [
     ("aqua:mikefarah/yq", "yq"),
     ("aqua:wader/fq", "fq"),
 ]
-
-
-def test_mq_is_platform_scoped_and_every_raw_asset_has_a_checksum() -> None:
-    mq = tomllib.loads(CONFIG.read_text(encoding="utf-8"))["tools"][
-        "github:harehare/mq"
-    ]
-    assert set(mq["os"]) == {
-        "macos/arm64",
-        "linux/x64",
-        "linux/arm64",
-        "windows/x64",
-        "windows/arm64",
-    }
-    assert mq["rename_exe"] == "mq"
-    assets = {
-        "macos-arm64": "mq-aarch64-apple-darwin",
-        "linux-x64": "mq-x86_64-unknown-linux-gnu",
-        "linux-arm64": "mq-aarch64-unknown-linux-gnu",
-        "windows-x64": "mq-x86_64-pc-windows-msvc.exe",
-        "windows-arm64": "mq-aarch64-pc-windows-msvc.exe",
-    }
-    assert set(mq["platforms"]) == {target.replace("/", "-") for target in mq["os"]}
-    for platform, options in mq["platforms"].items():
-        # Host-expanded os()/arch() templates produce incorrect cross-platform
-        # locks; explicit platform assets also exclude helper CLIs and packages.
-        assert options["asset_pattern"] == assets[platform]
-        assert re.fullmatch(r"sha256:[0-9a-f]{64}", options["checksum"])
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell stub and symlink fixture")

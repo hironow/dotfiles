@@ -1126,6 +1126,8 @@ check-except-go:
     {{ SEMGREP }} --config .semgrep/rules/meta/ --error .
     @echo '🔎 Workflow policies (semgrep, ADR-0093)...'
     {{ SEMGREP }} --config .semgrep/rules/workflow/ --error .github/workflows/ justfile
+    @echo '🔎 mise config policies (semgrep, ADR-0093)...'
+    {{ SEMGREP }} --config .semgrep/rules/mise/ --error config/mise/config.toml
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
@@ -1136,6 +1138,8 @@ check-except-go:
     @{{ UV_RUN }} scripts/check_storage_bounds.py
     @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
     @mise exec -- go run tools/text-hygiene/main.go
+    @echo '🔎 Repository policies across files (tools/repo-lint, ADR-0093)...'
+    @just repo-lint
 
 # ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
 # fix through the 7-day hold with an absolute cutoff that never expires on its
@@ -1420,6 +1424,15 @@ check-mcp-node-runner:
 [group('lint')]
 mise-versions-check:
     @mise exec -- go run tools/mise-versions/main.go check
+
+# The repository's file policies that a Semgrep rule cannot hold: a value read
+# from a file's structure, or values compared across files (tools/repo-lint,
+# ADR-0093). TOML and YAML are read through the pinned yq. `--list` names each
+# rule and why it exists.
+[doc('Lint: repository policies across files (tools/repo-lint)')]
+[group('lint')]
+repo-lint *args:
+    mise exec -- go -C tools/repo-lint run . --root ../.. {{ args }}
 
 # Regenerate those regions from that one source (the single writer). Idempotent.
 # A tool version bump is: edit config/mise/image-tools.toml, run this, commit.

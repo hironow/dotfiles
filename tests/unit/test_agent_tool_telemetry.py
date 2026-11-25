@@ -25,7 +25,6 @@ from __future__ import annotations
 import json
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,21 +41,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import ai_tools_check
 import jev_headroom as hr
-
-
-def _mise() -> dict:
-    return tomllib.loads((ROOT / "config/mise/config.toml").read_text(encoding="utf-8"))
-
-
-def test_mise_installs_rtk_and_headroom_everywhere() -> None:
-    tools = _mise()["tools"]
-    assert "rtk" in tools
-    headroom = tools["pypi:headroom-ai"]
-    # `headroom wrap` starts the proxy; the bare package ships no proxy server
-    assert "proxy" in headroom["extras"]
-    for name in ("rtk", "pypi:headroom-ai"):
-        spec = tools[name]
-        assert not (isinstance(spec, dict) and "os" in spec), f"{name} is OS-gated"
 
 
 def test_claude_sessions_and_hooks_get_the_telemetry_off() -> None:

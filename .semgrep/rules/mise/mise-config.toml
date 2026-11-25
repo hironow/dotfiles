@@ -1,0 +1,9 @@
+[settings.upgrade]
+# Pruning is on demand.
+# ruleid: mise-auto-prune-keeps-its-reason
+auto_prune = false
+
+[other]
+# Reclaim old versions with `just disk-gc` when nothing holds them.
+# ok: mise-auto-prune-keeps-its-reason
+auto_prune = false

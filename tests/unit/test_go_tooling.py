@@ -10,17 +10,11 @@ from __future__ import annotations
 
 import re
 import subprocess
-import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 _GO_DIRECTIVE = re.compile(r"^go (\d+)(?:\.(\d+))?(?:\.(\d+))?$")
 _FLOOR = (1, 27)
-_BAKED_MISE = REPO / ".devcontainer" / "features" / "dotfiles-tools" / "install.sh"
-_BAKED_MISE_HEREDOC = re.compile(
-    r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF",
-    re.DOTALL,
-)
 
 
 def _git_ls(pattern: str) -> list[Path]:
@@ -120,31 +114,6 @@ def test_just_check_wires_go_lint() -> None:
     assert re.search(r"\bgo-lint\b|golangci-lint\s+run", joined), (
         "just check must run the Go lint gate"
     )
-
-
-def _baked_mise_tools() -> dict:
-    text = _BAKED_MISE.read_text(encoding="utf-8")
-    match = _BAKED_MISE_HEREDOC.search(text)
-    assert match, "install.sh must bake /etc/mise/config.toml"
-    parsed = tomllib.loads(match.group(1))
-    tools = parsed["tools"]
-    assert isinstance(tools, dict), "baked mise [tools] must be a table"
-    return tools
-
-
-def test_baked_mise_pins_go_and_golangci_lint() -> None:
-    """Sandbox `just check` runs go-lint; the one-shot image has no project
-    mise.toml, so /etc/mise must already pin Go and golangci-lint."""
-    tools = _baked_mise_tools()
-    source = tomllib.loads(
-        (REPO / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )["tools"]
-    for name in ("go", "aqua:golangci/golangci-lint"):
-        assert name in source, f"SSOT must declare {name} for sandbox just check"
-        assert tools.get(name) == source[name], (
-            f"bake {name} from image-tools.toml so sandbox just check can run "
-            f"go-lint: expected {source[name]!r}, got {tools.get(name)!r}"
-        )
 
 
 def test_emu_fmt_uses_golangci_not_go_fmt() -> None:

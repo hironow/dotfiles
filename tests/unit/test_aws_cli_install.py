@@ -18,51 +18,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 MAC_SHA = "ec350e9e8e9ceb49ccd2cb7fcdc69f3b6a424f83dbae64f3dc6499157a5eca07"
-LINUX_SHA = {
-    "x64": "7a121264f2637a3b90767aaf5bdd43ee88b8c925a931d0479fa2ce22b1a2fa76",
-    "arm64": "5763332bdcb432c19ee122545856fd350c3bb306753212deedcfccc76f4d20c3",
-}
 
 
 def aws_spec() -> dict:
     return tomllib.loads(
         (ROOT / "config/mise/config.toml").read_text(encoding="utf-8")
     )["tools"]["http:aws"]
-
-
-def test_official_aws_pin_platforms_and_no_shared_extraction() -> None:
-    spec = aws_spec()
-    assert spec["version"] == "2.39.6"
-    assert set(spec["os"]) == {"macos/x64", "macos/arm64", "linux/x64", "linux/arm64"}
-    # mise's documented bool option accepts strings; the frozen-version parser
-    # intentionally accepts only strings, tables and string arrays in [tools].
-    assert spec["shared_extraction"] == "false"
-    assert "{{" not in spec["postinstall"], "no unavailable Tera tools context"
-
-
-@pytest.mark.parametrize("arch", ["x64", "arm64"])
-def test_mac_package_is_the_verified_universal_release(arch: str) -> None:
-    opts = aws_spec()["platforms"]["macos-" + arch]
-    assert opts["url"] == "https://awscli.amazonaws.com/AWSCLIV2-2.39.6.pkg"
-    assert opts["checksum"] == "sha256:" + MAC_SHA
-    assert opts["format"] == "raw"
-    assert opts["bin_path"] == "payload"
-    assert aws_spec()["bin"] == "aws"
-    assert MAC_SHA in aws_spec()["postinstall"]
-
-
-@pytest.mark.parametrize("arch,cpu", [("x64", "x86_64"), ("arm64", "aarch64")])
-def test_linux_uses_signed_gnu_archive_without_install_script(
-    arch: str, cpu: str
-) -> None:
-    opts = aws_spec()["platforms"]["linux-" + arch]
-    assert (
-        opts["url"] == f"https://awscli.amazonaws.com/awscli-exe-linux-{cpu}-2.39.6.zip"
-    )
-    assert opts["checksum"] == "sha256:" + LINUX_SHA[arch]
-    assert opts["format"] == "zip"
-    assert opts["bin_path"] == "aws/dist"
-    assert "windows" not in " ".join(aws_spec()["os"])
 
 
 def executable(path: Path, text: str) -> None:
