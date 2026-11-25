@@ -74,6 +74,10 @@ func TestDevcontainerReachesOneExplicitEngineFromOfficialParts(t *testing.T) {
 		{"wider trust", func(in Inputs) { containerEnv(in)["MISE_TRUSTED_CONFIG_PATHS"] = "/" }, "MISE_TRUSTED_CONFIG_PATHS"},
 		{"mise data under home", func(in Inputs) { containerEnv(in)["MISE_DATA_DIR"] = "/root/.local/share/mise" }, "MISE_DATA_DIR"},
 		{"no mise shims", func(in Inputs) { containerEnv(in)["PATH"] = "/usr/bin:/bin" }, "/opt/mise/shims"},
+		{"the old shims too", func(in Inputs) {
+			containerEnv(in)["PATH"] = "/root/.local/share/mise/shims:/opt/mise/shims:/usr/bin"
+		}, "/root/.local/share/mise/shims"},
+		{"another Debian release", func(in Inputs) { dc(in)["image"] = "mcr.microsoft.com/devcontainers/base:bookworm" }, "image"},
 		{"quint under home", func(in Inputs) { containerEnv(in)["QUINT_HOME"] = "/root/.quint" }, "QUINT_HOME"},
 		{"the profile without quint", func(in Inputs) {
 			in[featureInstall] = strings.Replace(featureScriptWithProfile, "export QUINT_HOME=/opt/quint\nPROFILE", "PROFILE", 1)

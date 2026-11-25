@@ -71,6 +71,18 @@ func justFmtPinned() Rule {
 			case m[1] != want:
 				r.add("JUST_FMT is %q; it must be %q, the pinned just", m[1], want)
 			}
+			// `fmt` writes and `check-except-go` checks, both justfiles, both
+			// with the pinned formatter.
+			for _, use := range []struct{ recipe, flags string }{{"fmt", "--fmt"}, {"check-except-go", "--fmt --check"}} {
+				body, _ := recipeBody(text, use.recipe)
+				lines := strings.Split(body, "\n")
+				for _, j := range []string{"justfile", "templates/agent-baseline/justfile"} {
+					call := "{{ JUST_FMT }} --justfile " + j + " " + use.flags
+					if !slices.ContainsFunc(lines, func(l string) bool { return strings.TrimSpace(l) == call }) {
+						r.add("recipe %s must run `%s`", use.recipe, call)
+					}
+				}
+			}
 			return r.out
 		},
 	}
@@ -95,20 +107,35 @@ func repoClaudeMdImportsAgents() Rule {
 	}
 }
 
-// iniKeys is each active `key=value` of an INI file, by key; a commented line
-// is not active.
+// iniKeys is each active `key=value` of an INI file, by `section.key` (a key
+// before any section has no prefix); a commented line is not active.
 func iniKeys(text string) map[string]string {
 	out := map[string]string{}
+	section := ""
 	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || line[0] == '#' || line[0] == ';' || line[0] == '[' {
+		switch {
+		case line == "" || line[0] == '#' || line[0] == ';':
+			continue
+		case line[0] == '[':
+			section = strings.TrimSpace(strings.Trim(line, "[]")) + "."
 			continue
 		}
 		if k, v, ok := strings.Cut(line, "="); ok {
-			out[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			out[section+strings.TrimSpace(k)] = strings.TrimSpace(v)
 		}
 	}
 	return out
+}
+
+// anyKey reports whether key is set in any section.
+func anyKey(keys map[string]string, key string) bool {
+	for k := range keys {
+		if k == key || strings.HasSuffix(k, "."+key) {
+			return true
+		}
+	}
+	return false
 }
 
 // wslConfHardens: the distro template keeps the Windows PATH out of Linux and
@@ -123,11 +150,11 @@ func wslConfHardens() Rule {
 			r := &report{rule: id, path: wslConf}
 			text, _ := in[wslConf].(string)
 			keys := iniKeys(text)
-			if keys["appendWindowsPath"] != "false" {
-				r.add("set appendWindowsPath=false: the Windows PATH must not leak into the distro")
+			if keys["interop.appendWindowsPath"] != "false" {
+				r.add("set appendWindowsPath=false under [interop]: the Windows PATH must not leak into the distro")
 			}
-			if keys["systemd"] != "true" {
-				r.add("set systemd=true: native Podman and the services need a service manager")
+			if keys["boot.systemd"] != "true" {
+				r.add("set systemd=true under [boot]: native Podman and the services need a service manager")
 			}
 			return r.out
 		},
@@ -154,13 +181,47 @@ func wslconfigSafeSubset() Rule {
 			r := &report{rule: id, path: wslconfigTemplate}
 			text, _ := in[wslconfigTemplate].(string)
 			keys := iniKeys(text)
-			if keys["autoMemoryReclaim"] != "gradual" {
-				r.add("set autoMemoryReclaim=gradual")
+			if keys["experimental.autoMemoryReclaim"] != "gradual" {
+				r.add("set autoMemoryReclaim=gradual under [experimental]")
 			}
 			for _, k := range wslconfigRejected {
-				if _, ok := keys[k]; ok {
+				if anyKey(keys, k) {
 					r.add("%s must not be set in the shared template; it is rejected or a per-machine opt-in", k)
 				}
+			}
+			return r.out
+		},
+	}
+}
+
+const (
+	ghosttyConfig = "tools/ghostty-config"
+	zshrcPath     = ".zshrc"
+)
+
+const (
+	ghosttyCtrlEnter = `keybind = ctrl+enter=text:\x1b[13;5u`
+	zshCtrlEnter     = `bindkey '^[[13;5u' `
+)
+
+// ghosttyCtrlEnterReachesZsh: Ghostty sends Ctrl+Enter as its own CSI-u
+// sequence, not a bare CR, and .zshrc binds that sequence, so Ctrl+Enter
+// differs from Enter at the prompt instead of printing [13;5u.
+func ghosttyCtrlEnterReachesZsh() Rule {
+	const id = "ghostty-ctrl-enter-reaches-zsh"
+	return Rule{
+		ID:     id,
+		Why:    "Ghostty sends Ctrl+Enter as CSI-u and .zshrc binds that sequence",
+		Inputs: []Input{{Path: ghosttyConfig, Format: Text}, {Path: zshrcPath, Format: Text}},
+		Check: func(in Inputs) []Finding {
+			r := &report{rule: id, path: ghosttyConfig}
+			ghostty, _ := in[ghosttyConfig].(string)
+			if !slices.ContainsFunc(strings.Split(ghostty, "\n"), func(l string) bool { return strings.TrimSpace(l) == ghosttyCtrlEnter }) {
+				r.add("Ghostty must send ctrl+enter as CSI-u: `%s`", ghosttyCtrlEnter)
+			}
+			zshrc, _ := in[zshrcPath].(string)
+			if !slices.ContainsFunc(strings.Split(zshrc, "\n"), func(l string) bool { return strings.HasPrefix(strings.TrimSpace(l), zshCtrlEnter) }) {
+				r.addAt(zshrcPath, ".zshrc must bind the sequence Ghostty sends: `%s<widget>` (13;5u)", zshCtrlEnter)
 			}
 			return r.out
 		},

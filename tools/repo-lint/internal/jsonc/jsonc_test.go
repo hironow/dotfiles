@@ -27,6 +27,15 @@ func TestDecodeDropsCommentsAndTrailingCommasOutsideStrings(t *testing.T) {
 	}
 }
 
+func TestDecodeEndsALineCommentAtAnyLineBreak(t *testing.T) {
+	for _, text := range []string{"{\r// comment\r\"a\":1\r}", "{\r\n// comment\r\n\"a\":1\r\n}"} {
+		got, err := Decode(text)
+		if err != nil || !reflect.DeepEqual(got, map[string]any{"a": float64(1)}) {
+			t.Errorf("%q = %#v, %v", text, got, err)
+		}
+	}
+}
+
 func TestDecodeReportsBrokenJSON(t *testing.T) {
 	if _, err := Decode("{ \"a\": }"); err == nil {
 		t.Fatal("broken JSON decoded")

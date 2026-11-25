@@ -11,6 +11,9 @@ const jsJustfile = `js-install:
 js-typecheck: js-install
     {{ BUN }} check --no-script
 
+js-build:
+    @tmp="$(mktemp -d)"; {{ BUN }} build x.ts --outdir="$tmp" && if grep -rq '@earendil-works/' "$tmp"; then exit 1; fi
+
 lint:
     @echo '🔍 JS/TS (oxlint, bun check)...'
     # bun check reads tsconfig.json
@@ -21,13 +24,19 @@ func jsInputs() Inputs {
 	return Inputs{
 		packageJSON: map[string]any{
 			"private": true, "type": "module",
-			"devDependencies": map[string]any{"oxlint": "1.93.0", "@types/bun": "1.4.4"},
+			"devDependencies": map[string]any{
+				"oxlint": "1.93.0", "oxlint-tsgolint": "7.0.2006", "@types/bun": "1.4.4", "@earendil-works/pi-coding-agent": "1.5.2",
+			},
 		},
 		bunfigPath:   map[string]any{"install": map[string]any{"minimumReleaseAge": float64(604800), "exact": true}},
 		justfilePath: jsJustfile,
-		tsconfigPath: map[string]any{"compilerOptions": map[string]any{"strict": true, "noEmit": true}},
-		siteCopy:     "// @ts-check\nexport {};\n",
-		oxlintPath:   oxlintText,
+		bunLock:      map[string]any{"bun.lock": "{}\n"},
+		tsconfigPath: map[string]any{
+			"compilerOptions": map[string]any{"strict": true, "noEmit": true, "allowJs": true, "checkJs": false},
+			"include":         []any{"site/copy.js", "config/pi/extensions/jev-sonnet-fallback.ts", "tests/unit/*.test.ts"},
+		},
+		siteCopy:   "// @ts-check\nexport {};\n",
+		oxlintPath: oxlintText,
 		piExtensions: map[string]any{
 			"config/pi/extensions/jev.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { x } from \"./y\";\n",
 		},
@@ -52,6 +61,8 @@ func TestJSDevDependenciesArePinnedAndInstalledWithoutScripts(t *testing.T) {
 		{"no install recipe", func(in Inputs) { in[justfilePath] = "lint:\n    true\n" }, "js-install"},
 		{"no cooldown", func(in Inputs) { set(in[bunfigPath], float64(0), "install", "minimumReleaseAge") }, "minimumReleaseAge"},
 		{"ranges saved", func(in Inputs) { set(in[bunfigPath], nil, "install", "exact") }, "exact"},
+		{"no lockfile", func(in Inputs) { in[bunLock] = map[string]any{} }, "bun.lock"},
+		{"the linter dropped", func(in Inputs) { set(in[packageJSON], nil, "devDependencies", "oxlint") }, "oxlint"},
 	})
 }
 
@@ -64,6 +75,17 @@ func TestTheTypeCheckIsNotWeakened(t *testing.T) {
 			in[justfilePath] = jsJustfile + "\nci:\n    bun check\n"
 		}, "--no-script"},
 		{"a check script", func(in Inputs) { pkg(in)["scripts"] = map[string]any{"check": "true"} }, "check script"},
+		{"the page script not included", func(in Inputs) {
+			set(in[tsconfigPath], []any{"tests/unit/*.test.ts"}, "include")
+		}, "site/copy.js"},
+		{"the vendored bundle included", func(in Inputs) {
+			set(in[tsconfigPath], []any{"site/copy.js", "config/pi/extensions/jev-sonnet-fallback.ts", "tests/unit/*.test.ts", "site/vendor/**"}, "include")
+		}, "site/vendor/**"},
+		{"JS not loaded", func(in Inputs) { set(in[tsconfigPath], false, "compilerOptions", "allowJs") }, "allowJs"},
+		{"every JS file checked", func(in Inputs) { set(in[tsconfigPath], true, "compilerOptions", "checkJs") }, "checkJs"},
+		{"the type check recipe checks nothing", func(in Inputs) {
+			in[justfilePath] = strings.Replace(jsJustfile, "    {{ BUN }} check --no-script\n", "    true\n", 1)
+		}, "js-typecheck"},
 	})
 }
 
@@ -124,6 +146,9 @@ func TestPiExtensionsImportPiTypesOnly(t *testing.T) {
 		{"a value import", ext("import { Type } from \"@earendil-works/pi-ai\";\n"), "@earendil-works/pi-ai"},
 		{"a value import over lines", ext("import {\n  a,\n  b,\n} from '@earendil-works/pi-tui';\n"), "@earendil-works/pi-tui"},
 		{"a default import", ext("import pi from \"@earendil-works/pi-coding-agent\";\n"), "@earendil-works/pi-coding-agent"},
+		{"the build output not searched", func(in Inputs) {
+			in[justfilePath] = strings.Replace(jsJustfile, ` && if grep -rq '@earendil-works/' "$tmp"; then exit 1; fi`, "", 1)
+		}, "js-build"},
 	})
 }
 

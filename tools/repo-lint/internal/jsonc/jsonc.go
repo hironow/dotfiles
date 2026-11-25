@@ -41,7 +41,8 @@ func Strip(text string) string {
 			inString = true
 			b.WriteByte(c)
 		case strings.HasPrefix(text[i:], "//"):
-			end := strings.IndexByte(text[i:], '\n')
+			// A line comment ends at CR or LF, as jsonc-parser reads it.
+			end := strings.IndexAny(text[i:], "\r\n")
 			if end < 0 {
 				return dropTrailingCommas(b.String())
 			}

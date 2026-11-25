@@ -3,6 +3,7 @@ package rules
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -30,6 +31,33 @@ var (
 	}
 	fastCheckOthers = []string{"README.md", "scripts/install.sh", "config/mise/other.toml"}
 )
+
+// minForbiddenTokens is the fewest tokens the private list may hold; a gate
+// that accepts a shorter list lets a truncated list pass.
+const minForbiddenTokens = 11
+
+// requiredHooks are the read-only guards each config keeps (ADR 0085): the
+// confidentiality guards, prek's builtin checks, the secret-key detector, and
+// the fast version check (dotfiles) or ruff (the scaffold).
+var (
+	requiredHooks = []string{
+		"forbidden-tokens-staged", "forbidden-tokens-commit-msg", "check-yaml", "check-toml", "check-json",
+		"check-added-large-files", "check-merge-conflict", "detect-private-key", "mise-versions-check",
+	}
+	templateRequiredHooks = []string{
+		"trailing-whitespace", "end-of-file-fixer", "check-yaml", "check-toml", "check-json",
+		"check-added-large-files", "check-merge-conflict", "detect-private-key", "ruff-format-check", "ruff-check",
+	}
+)
+
+// requireHooks reports each required hook the config lacks.
+func requireHooks(r *report, hooks []map[string]any, required []string) {
+	for _, want := range required {
+		if hookByID(hooks, want) == nil {
+			r.add("hook %s is missing; it is one of the required read-only guards", want)
+		}
+	}
+}
 
 // rewritingHooks fix files in place; ADR 0083/0085 keep hooks read-only.
 var rewritingHooks = []string{"trailing-whitespace", "end-of-file-fixer"}
@@ -68,8 +96,12 @@ func prekConfidentialityGuards() Rule {
 			}
 			text, _ := in[justfilePath].(string)
 			m := forbiddenTokenGate.FindStringSubmatch(text)
-			if m == nil || !strings.HasPrefix(m[1], "--require-list --min-tokens ") {
-				r.addAt(justfilePath, `FORBIDDEN_TOKEN_GATE must be "--require-list --min-tokens <n>"`)
+			n := 0
+			if m != nil {
+				n, _ = strconv.Atoi(strings.TrimPrefix(m[1], "--require-list --min-tokens "))
+			}
+			if m == nil || !strings.HasPrefix(m[1], "--require-list --min-tokens ") || n < minForbiddenTokens {
+				r.addAt(justfilePath, `FORBIDDEN_TOKEN_GATE must be "--require-list --min-tokens <n>" with n at least %d`, minForbiddenTokens)
 				return r.out
 			}
 			hooks := allHooks(in[precommitPath])
@@ -134,12 +166,16 @@ func prekCheckOnlyHooks() Rule {
 					r.add("hook %s runs %q; the only local hooks are the guards and `just mise-versions-check`", hid, entry)
 				}
 			}
+			requireHooks(r, allHooks(cfg), requiredHooks)
 			checkFastHook(r, hookByID(allHooks(cfg), "mise-versions-check"))
 			text, _ := in[justfilePath].(string)
 			if m := recipeHeader("mise-versions-check").FindStringSubmatch(text); m == nil {
 				r.addAt(justfilePath, "the justfile has no mise-versions-check recipe")
 			} else if strings.TrimSpace(m[1]) != "" {
 				r.addAt(justfilePath, "mise-versions-check must have no dependencies; the hook stays fast")
+			}
+			if body, _ := recipeBody(text, "mise-versions-check"); !strings.Contains(body, "go run tools/mise-versions/main.go check") {
+				r.addAt(justfilePath, "mise-versions-check must run `go run tools/mise-versions/main.go check`")
 			}
 			if exclude, ok := str(cfg, "exclude"); ok {
 				if re, err := excludeRegexp(exclude); err == nil && re.MatchString("site/vendor/x.js") {
@@ -212,6 +248,7 @@ func templatePrekCheckOnly() Rule {
 				}
 			}
 			hooks := allHooks(cfg)
+			requireHooks(r, hooks, templateRequiredHooks)
 			for _, h := range hooks {
 				hid := hookID(h)
 				if stages := strs(h, "stages"); !slices.Equal(stages, []string{"pre-commit"}) {
@@ -233,8 +270,13 @@ func templatePrekCheckOnly() Rule {
 					r.add("the scaffold must check staged Python with hook %s", want.id)
 					continue
 				}
-				if entry, _ := str(h, "entry"); !strings.Contains(entry, want.mode) {
+				entry, _ := str(h, "entry")
+				if !strings.Contains(entry, want.mode) {
 					r.add("hook %s must run %q, not %q", want.id, strings.TrimSpace(want.mode), entry)
+				}
+				// --locked: the hook never rewrites uv.lock either.
+				if !strings.HasPrefix(entry, "uv run --locked ") {
+					r.add("hook %s must run through `uv run --locked`, so it never changes uv.lock", want.id)
 				}
 				if v, _ := at(h, "require_serial"); v != true {
 					r.add("hook %s must set require_serial: true", want.id)

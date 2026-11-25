@@ -12,8 +12,9 @@ const (
 	devcontainerLock  = ".devcontainer/devcontainer-lock.json"
 	podmanSocketMount = "source=${localEnv:DOTFILES_PODMAN_ENGINE_SOCKET},target=/run/dotfiles-podman/podman.sock,type=bind"
 	podmanSocketHost  = "unix:///run/dotfiles-podman/podman.sock"
-	officialImage     = "mcr.microsoft.com/devcontainers/"
+	baseImage         = "mcr.microsoft.com/devcontainers/base:trixie"
 	officialFeature   = "ghcr.io/devcontainers/features/"
+	oldMiseShims      = "/root/.local/share/mise/shims"
 	trustedConfigs    = "/root/dotfiles:/root/sandbox/dotfiles-fresh"
 )
 
@@ -38,8 +39,8 @@ func devcontainerEngineAndPaths() Rule {
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: devcontainerPath}
 			cfg := in[devcontainerPath]
-			if image, _ := str(cfg, "image"); !strings.HasPrefix(image, officialImage) {
-				r.add("image must be an official %s image, not %q", officialImage, image)
+			if image, _ := str(cfg, "image"); image != baseImage {
+				r.add("image must be Microsoft's official %s, not %q", baseImage, image)
 			}
 			features, _ := table(cfg, "features")
 			locked, _ := table(in[devcontainerLock], "features")
@@ -85,8 +86,11 @@ func devcontainerEngineAndPaths() Rule {
 					r.add("containerEnv %s must be %q, not %q", want.key, want.value, got)
 				}
 			}
-			if path, _ := str(env, "PATH"); !slices.Contains(strings.Split(path, ":"), "/opt/mise/shims") {
+			path, _ := str(env, "PATH")
+			if dirs := strings.Split(path, ":"); !slices.Contains(dirs, "/opt/mise/shims") {
 				r.add("containerEnv PATH must include /opt/mise/shims")
+			} else if slices.Contains(dirs, oldMiseShims) {
+				r.add("containerEnv PATH must not include %s; a mount over $HOME hides it and it shadows /opt/mise/shims", oldMiseShims)
 			}
 			script, _ := in[featureInstall].(string)
 			m := profileHeredoc.FindStringSubmatch(script)

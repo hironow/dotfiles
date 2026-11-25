@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const gateFlags = "--require-list --min-tokens 11"
 
@@ -25,7 +28,14 @@ func precommitConfig() map[string]any {
 				hook("id", "forbidden-tokens-commit-msg", "entry", "python3 scripts/check_forbidden_tokens.py commit-msg "+gateFlags,
 					"language", "system", "stages", []any{"commit-msg"}),
 			}},
-			map[string]any{"repo": "builtin", "hooks": []any{hook("id", "check-yaml", "stages", []any{"pre-commit"})}},
+			map[string]any{"repo": "builtin", "hooks": []any{
+				hook("id", "check-yaml", "stages", []any{"pre-commit"}),
+				hook("id", "check-toml", "stages", []any{"pre-commit"}),
+				hook("id", "check-json", "stages", []any{"pre-commit"}),
+				hook("id", "check-added-large-files", "stages", []any{"pre-commit"}),
+				hook("id", "check-merge-conflict", "stages", []any{"pre-commit"}),
+				hook("id", "detect-private-key", "stages", []any{"pre-commit"}),
+			}},
 			map[string]any{"repo": "local", "hooks": []any{
 				hook("id", "mise-versions-check", "entry", "just mise-versions-check", "language", "system",
 					"pass_filenames", false, "stages", []any{"pre-commit"},
@@ -76,6 +86,13 @@ func TestPrekRunsTheConfidentialityGuardsFirstAndFailClosed(t *testing.T) {
 			in[justfilePath] = "FORBIDDEN_TOKEN_GATE := \"--min-tokens 11\"\n"
 		}, "FORBIDDEN_TOKEN_GATE"},
 		{"no gate", func(in Inputs) { in[justfilePath] = "mise-versions-check:\n" }, "FORBIDDEN_TOKEN_GATE"},
+		{"a shorter list accepted everywhere", func(in Inputs) {
+			in[justfilePath] = strings.ReplaceAll(prekJustfile, "--min-tokens 11", "--min-tokens 1")
+			for _, g := range []string{"forbidden-tokens-staged", "forbidden-tokens-commit-msg"} {
+				h := prekHook(in, g)
+				h["entry"] = strings.ReplaceAll(h["entry"].(string), "--min-tokens 11", "--min-tokens 1")
+			}
+		}, "11"},
 	})
 }
 
@@ -100,6 +117,14 @@ func TestPrekHooksOnlyCheck(t *testing.T) {
 		{"the fast recipe with dependencies", func(in Inputs) {
 			in[justfilePath] = "FORBIDDEN_TOKEN_GATE := \"" + gateFlags + "\"\n\nmise-versions-check: lint\n    @true\n"
 		}, "dependencies"},
+		{"the secret-key guard dropped", func(in Inputs) {
+			repos := in[precommitPath].(map[string]any)["repos"].([]any)
+			builtin := repos[1].(map[string]any)
+			builtin["hooks"] = builtin["hooks"].([]any)[:5]
+		}, "detect-private-key"},
+		{"the fast recipe checks nothing", func(in Inputs) {
+			in[justfilePath] = strings.Replace(prekJustfile, "@mise exec -- go run tools/mise-versions/main.go check", "@true", 1)
+		}, "mise-versions"},
 		{"the vendored folder excluded", func(in Inputs) {
 			set(in[precommitPath], "(?x)^(\n  emulator/|\n  site/\n)\n", "exclude")
 		}, "site/"},
@@ -116,6 +141,11 @@ func templatePrecommit() map[string]any {
 				hook("id", "trailing-whitespace", "stages", stages, "args", []any{"--check"}),
 				hook("id", "end-of-file-fixer", "stages", stages, "args", []any{"--check"}),
 				hook("id", "check-yaml", "stages", stages),
+				hook("id", "check-toml", "stages", stages),
+				hook("id", "check-json", "stages", stages),
+				hook("id", "check-added-large-files", "stages", stages),
+				hook("id", "check-merge-conflict", "stages", stages),
+				hook("id", "detect-private-key", "stages", stages),
 			}},
 			map[string]any{"repo": "local", "hooks": []any{
 				hook("id", "ruff-format-check", "stages", stages, "language", "system", "types_or", []any{"python", "pyi"}, "require_serial", true,
@@ -159,6 +189,14 @@ func TestTemplatePrekHooksOnlyCheck(t *testing.T) {
 		{"ruff in parallel", func(in Inputs) { delete(templateHook(in, "ruff-format-check"), "require_serial") }, "require_serial"},
 		{"ruff on other files", func(in Inputs) { templateHook(in, "ruff-check")["types_or"] = []any{"python"} }, "types_or"},
 		{"ruff in its own environment", func(in Inputs) { templateHook(in, "ruff-check")["language"] = "python" }, "language"},
+		{"ruff may change the lockfile", func(in Inputs) {
+			templateHook(in, "ruff-check")["entry"] = "uv run --only-group lint ruff check --no-fix --no-fix-only --force-exclude --"
+		}, "--locked"},
+		{"the secret-key guard dropped", func(in Inputs) {
+			repos := in[templatePrecommitPath].(map[string]any)["repos"].([]any)
+			builtin := repos[0].(map[string]any)
+			builtin["hooks"] = builtin["hooks"].([]any)[:7]
+		}, "detect-private-key"},
 		{"no ruff check", func(in Inputs) {
 			repos := in[templatePrecommitPath].(map[string]any)["repos"].([]any)
 			in[templatePrecommitPath].(map[string]any)["repos"] = repos[:1]

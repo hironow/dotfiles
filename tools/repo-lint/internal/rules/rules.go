@@ -102,6 +102,7 @@ func All() []Rule {
 		repoClaudeMdImportsAgents(),
 		wslConfHardens(),
 		wslconfigSafeSubset(),
+		ghosttyCtrlEnterReachesZsh(),
 	}
 }
 

@@ -19,6 +19,7 @@ const (
 	oxlintPath     = ".oxlintrc.json"
 	piExtensions   = "config/pi/extensions/*.ts"
 	piRtkExtension = "config/pi/extensions/rtk.ts"
+	bunLock        = "bun.lock"
 	// sevenDays is the bun install cooldown in seconds: Dependabot's bun
 	// rejects "7d".
 	sevenDays = 604800
@@ -38,6 +39,11 @@ var (
 	// oxlintVendored are the only files oxlint may skip: bytes from elsewhere
 	// that this repository must not edit.
 	oxlintVendored = []string{"site/vendor/**", "config/pi/extensions/rtk.ts"}
+	// gateDevDependencies are the dev dependencies the JS gate runs: the
+	// linter and its type-aware half, and the types the type check reads.
+	gateDevDependencies = []string{"oxlint", "oxlint-tsgolint", "@types/bun", "@earendil-works/pi-coding-agent"}
+	// typeCheckedFiles are the first-party files tsconfig.json includes.
+	typeCheckedFiles = []string{"site/copy.js", "config/pi/extensions/jev-sonnet-fallback.ts", "tests/unit/*.test.ts"}
 )
 
 // recipeBody is the indented body of the recipe, or false when there is none.
@@ -63,11 +69,21 @@ func recipeBody(justfile, name string) (string, bool) {
 func jsDepsPinned() Rule {
 	const id = "js-deps-pinned"
 	return Rule{
-		ID:     id,
-		Why:    "the JS dev dependencies are exact pins, installed from the frozen lockfile without scripts, after a 7-day cooldown (ADR-0079)",
-		Inputs: []Input{{Path: packageJSON, Format: JSON}, {Path: bunfigPath, Format: TOML}, {Path: justfilePath, Format: Text}},
+		ID:  id,
+		Why: "the JS dev dependencies are exact pins, installed from the frozen lockfile without scripts, after a 7-day cooldown (ADR-0079)",
+		Inputs: []Input{
+			{Path: packageJSON, Format: JSON},
+			{Path: bunfigPath, Format: TOML},
+			{Path: justfilePath, Format: Text},
+			{Path: bunLock, Format: Text, Glob: true},
+		},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: packageJSON}
+			// Without a lockfile, `bun install --frozen-lockfile` still succeeds
+			// and resolves every transitive version afresh.
+			if locks, _ := in[bunLock].(map[string]any); len(locks) == 0 {
+				r.addAt(bunLock, "bun.lock must be tracked: without it a frozen install resolves every version afresh")
+			}
 			pkg := in[packageJSON]
 			if v, _ := at(pkg, "private"); v != true {
 				r.add("package.json must be private")
@@ -76,6 +92,11 @@ func jsDepsPinned() Rule {
 				r.add("package.json must have no dependencies; the gate needs dev dependencies only")
 			}
 			dev, _ := table(pkg, "devDependencies")
+			for _, name := range gateDevDependencies {
+				if _, ok := dev[name]; !ok {
+					r.add("devDependencies must keep %s; the gate runs it", name)
+				}
+			}
 			for _, name := range slices.Sorted(maps.Keys(dev)) {
 				if v, _ := dev[name].(string); !exactVersion.MatchString(v) {
 					r.add("devDependency %s must be an exact x.y.z, not %q", name, v)
@@ -117,9 +138,23 @@ func jsTypeCheckNotWeakened() Rule {
 		},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: tsconfigPath}
-			for _, key := range []string{"strict", "noEmit"} {
-				if v, _ := at(in[tsconfigPath], "compilerOptions", key); v != true {
-					r.add("compilerOptions.%s must be true", key)
+			for _, want := range []struct {
+				key   string
+				value bool
+			}{{"strict", true}, {"noEmit", true}, {"allowJs", true}, {"checkJs", false}} {
+				if v, _ := at(in[tsconfigPath], "compilerOptions", want.key); v != want.value {
+					r.add("compilerOptions.%s must be %v", want.key, want.value)
+				}
+			}
+			include := strs(in[tsconfigPath], "include")
+			for _, f := range typeCheckedFiles {
+				if !slices.Contains(include, f) {
+					r.add("include must list %s so the type check reads it", f)
+				}
+			}
+			for _, f := range include {
+				if strings.HasPrefix(f, "site/vendor/") || f == piRtkExtension {
+					r.add("include lists %s; vendored bytes are not type checked", f)
 				}
 			}
 			// JS is checked only where a file opts in, so the vendored bundle
@@ -128,6 +163,9 @@ func jsTypeCheckNotWeakened() Rule {
 				r.addAt(siteCopy, "site/copy.js must start with // @ts-check so the type check reads it")
 			}
 			text, _ := in[justfilePath].(string)
+			if body, _ := recipeBody(text, "js-typecheck"); !strings.Contains(body, "check --no-script") {
+				r.addAt(justfilePath, "js-typecheck must run `bun check --no-script`")
+			}
 			for line := range strings.SplitSeq(text, "\n") {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "@echo") {
@@ -230,9 +268,15 @@ func piExtensionsTypeOnlyImports() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "a Pi extension imports Pi's own packages as types only, so nothing resolves to this checkout at run time (ADR-0059)",
-		Inputs: []Input{{Path: piExtensions, Format: Text, Glob: true}},
+		Inputs: []Input{{Path: piExtensions, Format: Text, Glob: true}, {Path: justfilePath, Format: Text}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id}
+			// js-build bundles the extensions and fails when the output still
+			// imports @earendil-works/ at run time.
+			text, _ := in[justfilePath].(string)
+			if body, _ := recipeBody(text, "js-build"); !strings.Contains(body, "grep") || !strings.Contains(body, "@earendil-works/") {
+				r.addAt(justfilePath, "js-build must search its build output for @earendil-works/ and fail on a match")
+			}
 			files, _ := in[piExtensions].(map[string]any)
 			for _, p := range slices.Sorted(maps.Keys(files)) {
 				text, _ := files[p].(string)
