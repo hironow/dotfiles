@@ -1,0 +1,12 @@
+rules:
+  # The default auto_prune queues a prune a day after each `mise up`; on
+  # Windows a running tool cannot be removed, and every new terminal warned.
+  # The comment keeps the setting from being tidied away as a leftover.
+  - id: mise-auto-prune-keeps-its-reason
+    message: >-
+      Keep the comment right above `auto_prune = false` that names `just disk-gc`, the deliberate replacement for the automatic prune.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^auto_prune = false[ \t]*$'
+      - pattern-not-regex: 'disk-gc[^\n]*\n(?:#[^\n]*\n)*auto_prune = false'

@@ -33,7 +33,7 @@ mkdir -p "$bootstrap/bin"
 if [[ "$mode" == podman ]]; then
   required_tools='bun node uv just npm:@devcontainers/cli pypi:podman-compose'
 else
-  required_tools='bun node uv just go vp markdownlint-cli2 aqua:golangci/golangci-lint npm:@informalsystems/quint'
+  required_tools='bun node uv just go vp markdownlint-cli2 aqua:golangci/golangci-lint aqua:mikefarah/yq npm:@informalsystems/quint'
 fi
 REQUIRED_TOOLS="$required_tools" python3 - "$repo" "$bootstrap" <<'PY'
 import pathlib
@@ -153,7 +153,7 @@ done
 if [[ "$mode" == podman ]]; then
   second_tools=(npm:@devcontainers/cli pypi:podman-compose)
 else
-  second_tools=(go vp markdownlint-cli2 aqua:golangci/golangci-lint npm:@informalsystems/quint)
+  second_tools=(go vp markdownlint-cli2 aqua:golangci/golangci-lint aqua:mikefarah/yq npm:@informalsystems/quint)
 fi
 mise install "${second_tools[@]}"
 for tool in "${second_tools[@]}"; do

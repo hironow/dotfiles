@@ -56,6 +56,9 @@ node = "24.22.3"
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
 go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
+# yq: `just check` runs `just repo-lint`, which reads TOML and YAML through it
+# (tools/repo-lint, ADR-0093). Same pin as config/mise/config.toml.
+"aqua:mikefarah/yq" = "4.54.3"
 # quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
 # autonomous stop/delete logic in any repo opened in this image. Same pin as
 # config/mise/config.toml: a checker under a mandatory gate changes its
