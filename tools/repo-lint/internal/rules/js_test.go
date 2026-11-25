@@ -63,6 +63,7 @@ func TestJSDevDependenciesArePinnedAndInstalledWithoutScripts(t *testing.T) {
 		{"ranges saved", func(in Inputs) { set(in[bunfigPath], nil, "install", "exact") }, "exact"},
 		{"no lockfile", func(in Inputs) { in[bunLock] = map[string]any{} }, "bun.lock"},
 		{"the linter dropped", func(in Inputs) { set(in[packageJSON], nil, "devDependencies", "oxlint") }, "oxlint"},
+		{"another dev dependency", func(in Inputs) { set(in[packageJSON], "1.3.0", "devDependencies", "left-pad") }, "left-pad"},
 	})
 }
 
@@ -83,6 +84,9 @@ func TestTheTypeCheckIsNotWeakened(t *testing.T) {
 		}, "site/vendor/**"},
 		{"JS not loaded", func(in Inputs) { set(in[tsconfigPath], false, "compilerOptions", "allowJs") }, "allowJs"},
 		{"every JS file checked", func(in Inputs) { set(in[tsconfigPath], true, "compilerOptions", "checkJs") }, "checkJs"},
+		{"the type check only in a comment", func(in Inputs) {
+			in[justfilePath] = strings.Replace(jsJustfile, "    {{ BUN }} check --no-script\n", "    # {{ BUN }} check --no-script\n    @true\n", 1)
+		}, "js-typecheck"},
 		{"the type check recipe checks nothing", func(in Inputs) {
 			in[justfilePath] = strings.Replace(jsJustfile, "    {{ BUN }} check --no-script\n", "    true\n", 1)
 		}, "js-typecheck"},
@@ -135,6 +139,8 @@ func TestOxlintKeepsEveryCheckAtError(t *testing.T) {
 		{"an opt-out with no reason", edit("// The two rules ban each other's only alternative, so both stay off.\n", ""), "import/no-default-export"},
 		{"an opt-out with a short reason", edit("// A test lives in tests/unit/ and imports the code it tests from config/.", "// tests"), "import/no-relative-parent-imports"},
 		{"unreadable", edit(`"options"`, `options`), "decode"},
+		{"an opt-out as a list with no reason", edit(`"one-var": ["error", "never"],`, `"one-var": ["error", "never"],
+"eqeqeq": ["off"],`), "eqeqeq"},
 	})
 }
 

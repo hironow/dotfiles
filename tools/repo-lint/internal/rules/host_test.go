@@ -23,7 +23,7 @@ func hostInputs() Inputs {
 			"github:google-antigravity/antigravity-cli": map[string]any{"version": "latest", "rename_exe": "antigravity"},
 		}},
 		justfilePath:  hostJustfile,
-		ghosttyConfig: "# Send CSI-u for ctrl+enter\nkeybind = ctrl+enter=text:\\x1b[13;5u\n",
+		ghosttyConfig: "# Send CSI-u for ctrl+enter\nkeybind = ctrl+enter=text:\\x1b[13;5u\nkeybind = opt+left=esc:b\nkeybind = opt+right=esc:f\n",
 		zshrcPath:     "bindkey '^[[13;5u' _ctrl_enter_newline\n",
 		imageConfig:   map[string]any{"tools": map[string]any{"just": "1.59.0"}},
 		repoClaudeMd:  "@AGENTS.md\n",
@@ -103,10 +103,20 @@ func TestTheWSLHostTemplateShipsOnlyTheSafeSubset(t *testing.T) {
 	})
 }
 
-func TestCtrlEnterReachesTheShellAsCSIu(t *testing.T) {
-	runCases(t, ghosttyCtrlEnterReachesZsh(), hostInputs, []ruleCase{
-		{"ghostty sends a bare CR", func(in Inputs) { in[ghosttyConfig] = "keybind = ctrl+enter=text:\\x0d\n" }, "ctrl+enter"},
-		{"only in a comment", func(in Inputs) { in[ghosttyConfig] = "# keybind = ctrl+enter=text:\\x1b[13;5u\n" }, "ctrl+enter"},
+func TestGhosttySendsWhatTheShellBinds(t *testing.T) {
+	runCases(t, ghosttyKeysReachZsh(), hostInputs, []ruleCase{
+		{"ghostty sends a bare CR", func(in Inputs) {
+			in[ghosttyConfig] = strings.Replace(in[ghosttyConfig].(string), `ctrl+enter=text:\x1b[13;5u`, `ctrl+enter=text:\x0d`, 1)
+		}, "ctrl+enter"},
+		{"only in a comment", func(in Inputs) {
+			in[ghosttyConfig] = strings.Replace(in[ghosttyConfig].(string), "keybind = ctrl+enter", "# keybind = ctrl+enter", 1)
+		}, "ctrl+enter"},
+		{"option-left deletes a word", func(in Inputs) {
+			in[ghosttyConfig] = strings.Replace(in[ghosttyConfig].(string), "opt+left=esc:b", "opt+left=esc:d", 1)
+		}, "opt+left"},
+		{"option-right bound twice", func(in Inputs) {
+			in[ghosttyConfig] = in[ghosttyConfig].(string) + "keybind = opt+right=esc:f\n"
+		}, "opt+right"},
 		{"zsh does not claim it", func(in Inputs) { in[zshrcPath] = "bindkey '^M' accept-line\n" }, "13;5u"},
 	})
 }

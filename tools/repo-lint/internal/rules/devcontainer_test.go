@@ -77,6 +77,9 @@ func TestDevcontainerReachesOneExplicitEngineFromOfficialParts(t *testing.T) {
 		{"the old shims too", func(in Inputs) {
 			containerEnv(in)["PATH"] = "/root/.local/share/mise/shims:/opt/mise/shims:/usr/bin"
 		}, "/root/.local/share/mise/shims"},
+		{"the old shims with a trailing slash", func(in Inputs) {
+			containerEnv(in)["PATH"] = "/root/.local/share/mise/shims/:/opt/mise/shims:/usr/bin"
+		}, "/root/.local/share/mise/shims"},
 		{"another Debian release", func(in Inputs) { dc(in)["image"] = "mcr.microsoft.com/devcontainers/base:bookworm" }, "image"},
 		{"quint under home", func(in Inputs) { containerEnv(in)["QUINT_HOME"] = "/root/.quint" }, "QUINT_HOME"},
 		{"the profile without quint", func(in Inputs) {

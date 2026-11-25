@@ -201,23 +201,44 @@ const (
 
 const (
 	ghosttyCtrlEnter = `keybind = ctrl+enter=text:\x1b[13;5u`
-	zshCtrlEnter     = `bindkey '^[[13;5u' `
+	// Option+arrows send meta-b and meta-f, which zsh's emacs keymap reads as
+	// backward-word and forward-word.
+	ghosttyOptLeft  = "keybind = opt+left=esc:b"
+	ghosttyOptRight = "keybind = opt+right=esc:f"
+	zshCtrlEnter    = `bindkey '^[[13;5u' `
 )
 
-// ghosttyCtrlEnterReachesZsh: Ghostty sends Ctrl+Enter as its own CSI-u
+// countOf is how many items equal s.
+func countOf(items []string, s string) int {
+	n := 0
+	for _, it := range items {
+		if it == s {
+			n++
+		}
+	}
+	return n
+}
+
+// ghosttyKeysReachZsh: Option+arrows move by word, and Ghostty sends Ctrl+Enter as its own CSI-u
 // sequence, not a bare CR, and .zshrc binds that sequence, so Ctrl+Enter
 // differs from Enter at the prompt instead of printing [13;5u.
-func ghosttyCtrlEnterReachesZsh() Rule {
-	const id = "ghostty-ctrl-enter-reaches-zsh"
+func ghosttyKeysReachZsh() Rule {
+	const id = "ghostty-keys-reach-zsh"
 	return Rule{
 		ID:     id,
-		Why:    "Ghostty sends Ctrl+Enter as CSI-u and .zshrc binds that sequence",
+		Why:    "Ghostty sends Option+arrows as meta-b/f and Ctrl+Enter as CSI-u, and .zshrc binds CSI-u",
 		Inputs: []Input{{Path: ghosttyConfig, Format: Text}, {Path: zshrcPath, Format: Text}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: ghosttyConfig}
 			ghostty, _ := in[ghosttyConfig].(string)
-			if !slices.ContainsFunc(strings.Split(ghostty, "\n"), func(l string) bool { return strings.TrimSpace(l) == ghosttyCtrlEnter }) {
-				r.add("Ghostty must send ctrl+enter as CSI-u: `%s`", ghosttyCtrlEnter)
+			var lines []string
+			for l := range strings.SplitSeq(ghostty, "\n") {
+				lines = append(lines, strings.TrimSpace(l))
+			}
+			for _, want := range []string{ghosttyCtrlEnter, ghosttyOptLeft, ghosttyOptRight} {
+				if n := countOf(lines, want); n != 1 {
+					r.add("Ghostty must bind `%s` once, not %d times", want, n)
+				}
 			}
 			zshrc, _ := in[zshrcPath].(string)
 			if !slices.ContainsFunc(strings.Split(zshrc, "\n"), func(l string) bool { return strings.HasPrefix(strings.TrimSpace(l), zshCtrlEnter) }) {

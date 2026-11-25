@@ -87,7 +87,11 @@ func devcontainerEngineAndPaths() Rule {
 				}
 			}
 			path, _ := str(env, "PATH")
-			if dirs := strings.Split(path, ":"); !slices.Contains(dirs, "/opt/mise/shims") {
+			dirs := strings.Split(path, ":")
+			for i, d := range dirs {
+				dirs[i] = strings.TrimRight(d, "/")
+			}
+			if !slices.Contains(dirs, "/opt/mise/shims") {
 				r.add("containerEnv PATH must include /opt/mise/shims")
 			} else if slices.Contains(dirs, oldMiseShims) {
 				r.add("containerEnv PATH must not include %s; a mount over $HOME hides it and it shadows /opt/mise/shims", oldMiseShims)

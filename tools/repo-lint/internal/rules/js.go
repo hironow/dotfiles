@@ -29,7 +29,7 @@ var (
 	bunCheckLine     = regexp.MustCompile(`(?:\bbun|BUN \}\}) check\b`)
 	importStatement  = regexp.MustCompile(`(?ms)^import\b[^;]*?from\s+["']([^"']+)["']`)
 	sentinelConstant = regexp.MustCompile(`(?m)^VENDORED_SENTINEL = ("(?:[^"\\]|\\.)*")$`)
-	offRule          = regexp.MustCompile(`":\s*"off"`)
+	offRule          = regexp.MustCompile(`":\s*(?:"off"|\[\s*"off")`)
 )
 
 // oxlintCategories must each be error; oxlintDefaultPlugins stay listed.
@@ -98,17 +98,21 @@ func jsDepsPinned() Rule {
 				}
 			}
 			for _, name := range slices.Sorted(maps.Keys(dev)) {
+				if !slices.Contains(gateDevDependencies, name) {
+					r.add("devDependency %s is not one the gate runs %v; each new one is a supply-chain decision", name, gateDevDependencies)
+				}
 				if v, _ := dev[name].(string); !exactVersion.MatchString(v) {
 					r.add("devDependency %s must be an exact x.y.z, not %q", name, v)
 				}
 			}
 			text, _ := in[justfilePath].(string)
-			body, ok := recipeBody(text, "js-install")
+			_, ok := recipeBody(text, "js-install")
 			if !ok {
 				r.addAt(justfilePath, "the justfile has no js-install recipe")
 			}
+			install := strings.Join(recipeCommands(text, "js-install"), "\n")
 			for _, flag := range []string{"--frozen-lockfile", "--ignore-scripts"} {
-				if ok && !strings.Contains(body, flag) {
+				if ok && !strings.Contains(install, flag) {
 					r.addAt(justfilePath, "js-install must pass %s", flag)
 				}
 			}
@@ -163,7 +167,7 @@ func jsTypeCheckNotWeakened() Rule {
 				r.addAt(siteCopy, "site/copy.js must start with // @ts-check so the type check reads it")
 			}
 			text, _ := in[justfilePath].(string)
-			if body, _ := recipeBody(text, "js-typecheck"); !strings.Contains(body, "check --no-script") {
+			if !slices.ContainsFunc(recipeCommands(text, "js-typecheck"), func(c string) bool { return bunCheckLine.MatchString(c) && strings.Contains(c, "--no-script") }) {
 				r.addAt(justfilePath, "js-typecheck must run `bun check --no-script`")
 			}
 			for line := range strings.SplitSeq(text, "\n") {
@@ -274,7 +278,9 @@ func piExtensionsTypeOnlyImports() Rule {
 			// js-build bundles the extensions and fails when the output still
 			// imports @earendil-works/ at run time.
 			text, _ := in[justfilePath].(string)
-			if body, _ := recipeBody(text, "js-build"); !strings.Contains(body, "grep") || !strings.Contains(body, "@earendil-works/") {
+			if !slices.ContainsFunc(recipeCommands(text, "js-build"), func(c string) bool {
+				return strings.Contains(c, "grep") && strings.Contains(c, "@earendil-works/")
+			}) {
 				r.addAt(justfilePath, "js-build must search its build output for @earendil-works/ and fail on a match")
 			}
 			files, _ := in[piExtensions].(map[string]any)

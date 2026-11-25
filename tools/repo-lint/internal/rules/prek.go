@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -50,14 +51,49 @@ var (
 	}
 )
 
-// requireHooks reports each required hook the config lacks.
-func requireHooks(r *report, hooks []map[string]any, required []string) {
+// exactHooks reports each required hook the config lacks and each hook it has
+// beyond them: a new hook, under any name, is a decision for ADR 0085.
+func exactHooks(r *report, hooks []map[string]any, required []string) {
 	for _, want := range required {
 		if hookByID(hooks, want) == nil {
 			r.add("hook %s is missing; it is one of the required read-only guards", want)
 		}
 	}
+	for _, h := range hooks {
+		if id := hookID(h); !slices.Contains(required, id) {
+			r.add("hook %s is not one of the read-only guards %v", id, required)
+		}
+	}
 }
+
+// recipeCommands is the recipe's command lines, trimmed, without blank lines
+// and comments.
+func recipeCommands(justfile, name string) []string {
+	body, _ := recipeBody(justfile, name)
+	var out []string
+	for line := range strings.SplitSeq(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// fastRecipe is the whole body of the fast version check: one command whose
+// failure fails the hook.
+const fastRecipe = "@mise exec -- go run tools/mise-versions/main.go check"
+
+// templateRuffEntries are the scaffold's ruff hooks, checking the staged
+// Python: never fixing (--no-fix --no-fix-only), never changing uv.lock
+// (--locked), and honouring excludes for named files (--force-exclude).
+var templateRuffEntries = map[string]string{
+	"ruff-format-check": "uv run --locked --only-group lint ruff format --check --force-exclude --",
+	"ruff-check":        "uv run --locked --only-group lint ruff check --no-fix --no-fix-only --force-exclude --",
+}
+
+// minPrek is the first prek whose builtin whitespace hooks take --check.
+const minPrek = "0.5.4"
 
 // rewritingHooks fix files in place; ADR 0083/0085 keep hooks read-only.
 var rewritingHooks = []string{"trailing-whitespace", "end-of-file-fixer"}
@@ -152,12 +188,12 @@ func prekCheckOnlyHooks() Rule {
 			}
 			for _, h := range allHooks(cfg) {
 				hid := hookID(h)
-				stages := strs(h, "stages")
-				switch {
-				case len(stages) == 0:
-					r.add("hook %s must name its stages itself (ADR 0084 D2)", hid)
-				case slices.Contains(stages, "pre-push"):
-					r.add("hook %s runs at pre-push; no hook does (ADR 0084 D2)", hid)
+				want := []string{"pre-commit"}
+				if hid == "forbidden-tokens-commit-msg" {
+					want = []string{"commit-msg"}
+				}
+				if stages := strs(h, "stages"); !slices.Equal(stages, want) {
+					r.add("hook %s must name its own stages %v, not %v (ADR 0084 D2)", hid, want, stages)
 				}
 				if slices.Contains(rewritingHooks, hid) {
 					r.add("hook %s rewrites files; hooks only check (ADR 0085)", hid)
@@ -166,7 +202,7 @@ func prekCheckOnlyHooks() Rule {
 					r.add("hook %s runs %q; the only local hooks are the guards and `just mise-versions-check`", hid, entry)
 				}
 			}
-			requireHooks(r, allHooks(cfg), requiredHooks)
+			exactHooks(r, allHooks(cfg), requiredHooks)
 			checkFastHook(r, hookByID(allHooks(cfg), "mise-versions-check"))
 			text, _ := in[justfilePath].(string)
 			if m := recipeHeader("mise-versions-check").FindStringSubmatch(text); m == nil {
@@ -174,8 +210,8 @@ func prekCheckOnlyHooks() Rule {
 			} else if strings.TrimSpace(m[1]) != "" {
 				r.addAt(justfilePath, "mise-versions-check must have no dependencies; the hook stays fast")
 			}
-			if body, _ := recipeBody(text, "mise-versions-check"); !strings.Contains(body, "go run tools/mise-versions/main.go check") {
-				r.addAt(justfilePath, "mise-versions-check must run `go run tools/mise-versions/main.go check`")
+			if cmds := recipeCommands(text, "mise-versions-check"); !slices.Equal(cmds, []string{fastRecipe}) {
+				r.addAt(justfilePath, "mise-versions-check must run exactly `%s`, not %q", fastRecipe, cmds)
 			}
 			if exclude, ok := str(cfg, "exclude"); ok {
 				if re, err := excludeRegexp(exclude); err == nil && re.MatchString("site/vendor/x.js") {
@@ -247,8 +283,11 @@ func templatePrekCheckOnly() Rule {
 					r.add("%s must be [pre-commit], not %v", key, got)
 				}
 			}
+			if v, _ := str(cfg, "minimum_prek_version"); v == "" || less(v, minPrek) {
+				r.add("minimum_prek_version must be at least %s, the first prek whose whitespace hooks take --check, not %q", minPrek, v)
+			}
 			hooks := allHooks(cfg)
-			requireHooks(r, hooks, templateRequiredHooks)
+			exactHooks(r, hooks, templateRequiredHooks)
 			for _, h := range hooks {
 				hid := hookID(h)
 				if stages := strs(h, "stages"); !slices.Equal(stages, []string{"pre-commit"}) {
@@ -261,34 +300,25 @@ func templatePrekCheckOnly() Rule {
 					r.add("hook %s must pass --check; scaffold hooks never rewrite", hid)
 				}
 			}
-			for _, want := range []struct{ id, mode string }{
-				{"ruff-format-check", "ruff format --check "},
-				{"ruff-check", "ruff check --no-fix "},
-			} {
-				h := hookByID(hooks, want.id)
+			for _, id := range slices.Sorted(maps.Keys(templateRuffEntries)) {
+				h := hookByID(hooks, id)
 				if h == nil {
-					r.add("the scaffold must check staged Python with hook %s", want.id)
 					continue
 				}
-				entry, _ := str(h, "entry")
-				if !strings.Contains(entry, want.mode) {
-					r.add("hook %s must run %q, not %q", want.id, strings.TrimSpace(want.mode), entry)
-				}
-				// --locked: the hook never rewrites uv.lock either.
-				if !strings.HasPrefix(entry, "uv run --locked ") {
-					r.add("hook %s must run through `uv run --locked`, so it never changes uv.lock", want.id)
+				if entry, _ := str(h, "entry"); entry != templateRuffEntries[id] {
+					r.add("hook %s must run %q (checks only, uv.lock untouched, excludes kept), not %q", id, templateRuffEntries[id], entry)
 				}
 				if v, _ := at(h, "require_serial"); v != true {
-					r.add("hook %s must set require_serial: true", want.id)
+					r.add("hook %s must set require_serial: true", id)
 				}
 				if !slices.Equal(strs(h, "types_or"), []string{"python", "pyi"}) {
-					r.add("hook %s must set types_or: [python, pyi]", want.id)
+					r.add("hook %s must set types_or: [python, pyi]", id)
 				}
 				if lang, _ := str(h, "language"); lang != "system" {
-					r.add("hook %s must use language: system", want.id)
+					r.add("hook %s must use language: system", id)
 				}
 				if pf, ok := at(h, "pass_filenames"); ok && pf == false {
-					r.add("hook %s must get the staged file names (no pass_filenames: false)", want.id)
+					r.add("hook %s must get the staged file names (no pass_filenames: false)", id)
 				}
 			}
 			return r.out

@@ -122,6 +122,15 @@ func TestPrekHooksOnlyCheck(t *testing.T) {
 			builtin := repos[1].(map[string]any)
 			builtin["hooks"] = builtin["hooks"].([]any)[:5]
 		}, "detect-private-key"},
+		{"the secret-key guard at another stage", func(in Inputs) {
+			prekHook(in, "detect-private-key")["stages"] = []any{"commit-msg"}
+		}, "detect-private-key"},
+		{"an extra builtin hook", func(in Inputs) {
+			addHook(in, hook("id", "mixed-line-ending", "stages", []any{"pre-commit"}))
+		}, "mixed-line-ending"},
+		{"the fast check failure swallowed", func(in Inputs) {
+			in[justfilePath] = strings.Replace(prekJustfile, "main.go check\n", "main.go check || true\n", 1)
+		}, "mise-versions"},
 		{"the fast recipe checks nothing", func(in Inputs) {
 			in[justfilePath] = strings.Replace(prekJustfile, "@mise exec -- go run tools/mise-versions/main.go check", "@true", 1)
 		}, "mise-versions"},
@@ -134,6 +143,7 @@ func TestPrekHooksOnlyCheck(t *testing.T) {
 func templatePrecommit() map[string]any {
 	stages := []any{"pre-commit"}
 	return map[string]any{
+		"minimum_prek_version":       "0.5.4",
 		"default_install_hook_types": []any{"pre-commit"},
 		"default_stages":             []any{"pre-commit"},
 		"repos": []any{
@@ -189,6 +199,20 @@ func TestTemplatePrekHooksOnlyCheck(t *testing.T) {
 		{"ruff in parallel", func(in Inputs) { delete(templateHook(in, "ruff-format-check"), "require_serial") }, "require_serial"},
 		{"ruff on other files", func(in Inputs) { templateHook(in, "ruff-check")["types_or"] = []any{"python"} }, "types_or"},
 		{"ruff in its own environment", func(in Inputs) { templateHook(in, "ruff-check")["language"] = "python" }, "language"},
+		{"ruff applies fixes only", func(in Inputs) {
+			templateHook(in, "ruff-check")["entry"] = "uv run --locked --only-group lint ruff check --no-fix --force-exclude --"
+		}, "ruff-check"},
+		{"ruff checks excluded files named on the command line", func(in Inputs) {
+			templateHook(in, "ruff-format-check")["entry"] = "uv run --locked --only-group lint ruff format --check --"
+		}, "ruff-format-check"},
+		{"a formatter under another name", func(in Inputs) {
+			repos := in[templatePrecommitPath].(map[string]any)["repos"].([]any)
+			local := repos[1].(map[string]any)
+			local["hooks"] = append(local["hooks"].([]any), hook("id", "fmt", "stages", []any{"pre-commit"},
+				"language", "system", "entry", "uv run --locked --only-group lint ruff format ."))
+		}, "fmt"},
+		{"no minimum prek", func(in Inputs) { delete(in[templatePrecommitPath].(map[string]any), "minimum_prek_version") }, "minimum_prek_version"},
+		{"a prek without --check", func(in Inputs) { set(in[templatePrecommitPath], "0.5.3", "minimum_prek_version") }, "minimum_prek_version"},
 		{"ruff may change the lockfile", func(in Inputs) {
 			templateHook(in, "ruff-check")["entry"] = "uv run --only-group lint ruff check --no-fix --no-fix-only --force-exclude --"
 		}, "--locked"},
