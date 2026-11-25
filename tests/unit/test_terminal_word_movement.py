@@ -36,7 +36,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 ZSHRC = ROOT / ".zshrc"
-GHOSTTY_CONFIG = ROOT / "tools" / "ghostty-config"
 TMUX_CONF = ROOT / "tools" / "tmux" / "tmux.conf"
 
 # xterm modifier spellings: 3 = Alt/Option, 5 = Ctrl; D = left, C = right.
@@ -67,17 +66,6 @@ def test_zshrc_binds_exactly_the_four_modifier_arrow_sequences() -> None:
     sequences = [sequence for sequence, _modifier, _widget in bindings]
     assert len(sequences) == len(set(sequences)), f"duplicate binding: {sequences}"
     assert {sequence: widget for sequence, _m, widget in bindings} == WORD_MOVEMENT
-
-
-def test_ghostty_pins_option_arrows_to_meta_b_f() -> None:
-    # Comments are skipped: the keybind lines are what Ghostty reads.
-    lines = [
-        line.strip()
-        for line in _read(GHOSTTY_CONFIG).splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
-    assert lines.count("keybind = opt+left=esc:b") == 1
-    assert lines.count("keybind = opt+right=esc:f") == 1
 
 
 def test_tmux_forces_extended_keys_for_clients_that_never_asked() -> None:

@@ -52,6 +52,19 @@ func TestFilesReadsTextAndJSON(t *testing.T) {
 	}
 }
 
+func TestFilesReadsJSONWithComments(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, ".devcontainer/devcontainer.json", "// the spec\n{\n  \"image\": \"x\", // inline\n}\n")
+	got, err := Files{Root: root}.Load(rules.Input{Path: ".devcontainer/devcontainer.json", Format: rules.JSONC})
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"image": "x"}) {
+		t.Fatalf("jsonc = %#v, %v", got, err)
+	}
+	write(t, root, "bad.json", "{ // no end\n")
+	if _, err := (Files{Root: root}).Load(rules.Input{Path: "bad.json", Format: rules.JSONC}); err == nil || !strings.Contains(err.Error(), "bad.json") {
+		t.Fatalf("error %v does not name the file", err)
+	}
+}
+
 // A Windows checkout with core.autocrlf=true has CRLF line ends; a rule's
 // line regexps see the same text as on Linux.
 func TestFilesReadsCRLFTextAsLF(t *testing.T) {

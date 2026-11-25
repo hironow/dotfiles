@@ -124,9 +124,6 @@ def test_deploy_refuses_user_extension(
         installer.install(agent, symlinks=False)
 
 
-AGENT_NAMES = ("codex-jev.md", "codex-jev-writer.md")
-
-
 def _install(
     agent: Path, monkeypatch: pytest.MonkeyPatch, python: str = "/py/bin/python3"
 ) -> None:
@@ -263,16 +260,6 @@ def test_an_unrelated_rtk_symlink_is_kept_and_reported(
     with pytest.raises(RuntimeError, match=r"rtk\.ts"):
         _install(agent, monkeypatch)
     assert link.resolve() == other.resolve()
-
-
-def test_the_vendored_rtk_extension_only_rewrites_bash_and_fails_open() -> None:
-    text = RTK.read_text(encoding="utf-8")
-    assert text.startswith("// dotfiles-managed: rtk\n")
-    assert "Apache License 2.0" in text.split(installer.VENDORED_SENTINEL)[0]
-    body = _upstream_rtk()
-    assert 'event.toolName === "bash"' in body
-    assert 'process.env.RTK_DISABLED === "1"' in body
-    assert "Fail open" in body
 
 
 def test_a_configured_missing_egm_is_reinstalled_without_global_updates(

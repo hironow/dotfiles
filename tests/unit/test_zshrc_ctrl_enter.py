@@ -26,7 +26,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 ZSHRC = ROOT / ".zshrc"
-GHOSTTY_CONFIG = ROOT / "tools" / "ghostty-config"
 
 WIDGET = "_ctrl_enter_newline"
 # As spelled in .zshrc: zsh's `^[` caret notation for ESC, not a real ESC byte.
@@ -36,11 +35,6 @@ MODIFY_OTHER_KEYS = "'^[[27;5;13~'"
 
 def _zshrc() -> str:
     return ZSHRC.read_text(encoding="utf-8")
-
-
-def test_ghostty_sends_csi_u_for_ctrl_enter() -> None:
-    config = GHOSTTY_CONFIG.read_text(encoding="utf-8")
-    assert r"keybind = ctrl+enter=text:\x1b[13;5u" in config
 
 
 def test_the_widget_inserts_a_newline_without_executing() -> None:

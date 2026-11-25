@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-json"
+	"github.com/hironow/dotfiles/tools/repo-lint/internal/jsonc"
 	"github.com/hironow/dotfiles/tools/repo-lint/internal/rules"
 )
 
@@ -83,6 +84,16 @@ func (f Files) one(in rules.Input) (any, error) {
 			return nil, fmt.Errorf("read %s: %w", in.Path, err)
 		}
 		return decode(in.Path, data)
+	case rules.JSONC:
+		data, err := os.ReadFile(path) //nolint:gosec // G304: as above.
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", in.Path, err)
+		}
+		v, err := jsonc.Decode(string(data))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", in.Path, err)
+		}
+		return v, nil
 	case rules.TOML, rules.YAML:
 		var stderr bytes.Buffer
 		// Audited: the executable is the pinned yq the gate names (--yq), and

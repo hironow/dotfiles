@@ -55,13 +55,6 @@ def test_every_vp_gate_reads_the_one_file_list() -> None:
     assert text.count(" vp -C site ") == len(lines), "a vp line the list does not feed"
 
 
-def test_the_file_list_is_declared_once() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert len(re.findall(r"^JS_FILES := ", text, re.MULTILINE)) == 1
-    assert text.count("'*.mts' '*.cts'") == 1, "the pathspec is written out again"
-    assert (ROOT / "site" / "package.json").is_file(), "vp's package"
-
-
 @pytest.mark.skipif(
     shutil.which("git") is None, reason="needs git to list tracked files"
 )

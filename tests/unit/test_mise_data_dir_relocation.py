@@ -122,63 +122,9 @@ def _load_devcontainer_json() -> dict:
     return json.loads(text)
 
 
-@pytest.mark.parametrize(
-    "endpoint",
-    ["unix:///run/dotfiles-podman/podman.sock", "https://example.invalid/path"],
-)
-def test_config_loader_preserves_protocols_and_comment_tokens_in_strings(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
-) -> None:
-    probe = tmp_path / "devcontainer.json"
-    literal = 'quoted " /* literal */ // literal , }'
-    probe.write_text(
-        "// leading comment\n{\n"
-        '  /* block comment */ "containerEnv": {\n'
-        f'    "CONTAINER_HOST": {json.dumps(endpoint)}, // inline comment\n'
-        f'    "LITERAL": {json.dumps(literal)},\n'
-        "  },\n}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setitem(globals(), "DEVCONTAINER_JSON", probe)
-    assert _load_devcontainer_json() == {
-        "containerEnv": {"CONTAINER_HOST": endpoint, "LITERAL": literal}
-    }
-
-
 @pytest.fixture(scope="module")
 def devcontainer_config() -> dict:
     return _load_devcontainer_json()
-
-
-def test_devcontainer_containerenv_has_mise_data_dir(
-    devcontainer_config: dict,
-) -> None:
-    """containerEnv must expose MISE_DATA_DIR=/opt/mise so processes
-    spawned by the dev container (including Podman test containers)
-    inherit the relocation."""
-    container_env = devcontainer_config.get("containerEnv", {})
-    assert container_env.get("MISE_DATA_DIR") == "/opt/mise", (
-        f"devcontainer.json containerEnv must set MISE_DATA_DIR=/opt/mise. "
-        f"Found: {container_env.get('MISE_DATA_DIR')!r}"
-    )
-
-
-def test_devcontainer_path_uses_opt_mise_shims(
-    devcontainer_config: dict,
-) -> None:
-    """containerEnv PATH must include /opt/mise/shims (not the old
-    /root/.local/share/mise/shims)."""
-    container_env = devcontainer_config.get("containerEnv", {})
-    path = container_env.get("PATH", "")
-    assert "/opt/mise/shims" in path, (
-        f"devcontainer.json containerEnv PATH must include /opt/mise/shims. "
-        f"Found PATH: {path!r}"
-    )
-    assert "/root/.local/share/mise/shims" not in path, (
-        f"devcontainer.json containerEnv PATH still references the "
-        f"old /root/.local/share/mise/shims; remove it after the "
-        f"relocation. PATH={path!r}"
-    )
 
 
 # ---------- post-create.sh ----------------------------------------

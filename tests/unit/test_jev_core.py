@@ -280,13 +280,6 @@ def test_codex_request_adds_two_atomic_questions_to_the_shared_ones() -> None:
     }
 
 
-def test_codex_only_uses_the_gpt_6_family_and_efforts_the_cli_accepts() -> None:
-    models = {c["expected"][0] for c in CODEX_CASES}
-    efforts = {c["expected"][1] for c in CODEX_CASES}
-    assert models == {"gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"}
-    assert efforts <= {"low", "medium", "high"}  # the Claude plugin stops at xhigh
-
-
 def test_exec_command_owns_the_sandbox_and_pins_model_and_effort() -> None:
     command = core.build_codex_exec_command(
         "gpt-6.1-sol", "high", "workspace-write", "/tmp/out.txt"

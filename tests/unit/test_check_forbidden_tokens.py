@@ -654,21 +654,6 @@ def test_added_lines_does_not_mistake_the_plus_plus_plus_header() -> None:
 # --- prek wiring ----------------------------------------------------------
 
 
-def test_prek_config_declares_both_install_hook_types() -> None:
-    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "default_install_hook_types:" in config
-    block = config.split("default_install_hook_types:", 1)[1].split("\n", 1)[0]
-    assert "pre-commit" in block
-    assert "commit-msg" in block
-
-
-def test_prek_config_runs_the_guard_at_both_stages() -> None:
-    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "check_forbidden_tokens.py staged" in config
-    assert "check_forbidden_tokens.py commit-msg" in config
-    assert "stages: [commit-msg]" in config
-
-
 def test_install_hooks_recipe_installs_the_commit_msg_shim() -> None:
     justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
     recipe = justfile.split("\ninstall-hooks:", 1)[1].split("\n\n", 1)[0]
@@ -969,34 +954,6 @@ def test_staged_without_the_gate_still_skips_with_no_list(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "skipped" in result.stdout
-
-
-def _justfile_gate() -> str:
-    """The one place the gate flags are declared: the justfile variable."""
-    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    line = next(
-        line
-        for line in justfile.splitlines()
-        if line.startswith("FORBIDDEN_TOKEN_GATE := ")
-    )
-    return line.split(":=", 1)[1].strip().strip('"')
-
-
-def test_prek_hooks_pass_the_fail_closed_gate() -> None:
-    gate = _justfile_gate()
-    assert gate.startswith("--require-list --min-tokens "), gate
-    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    entries = [
-        line.strip()
-        for line in config.splitlines()
-        if "check_forbidden_tokens.py staged" in line
-        or "check_forbidden_tokens.py commit-msg" in line
-    ]
-    assert len(entries) == 2, entries
-    # endswith, not a substring test: a hook quietly moved to `--min-tokens 1`
-    # fails here, and the value is pinned to the justfile's single source.
-    for entry in entries:
-        assert entry.endswith(gate), entry
 
 
 def test_staged_recipe_passes_the_gate() -> None:

@@ -37,48 +37,76 @@ SCRIPT = ROOT / "scripts" / "wslconfig_conf.sh"
 JUSTFILE = ROOT / "justfile"
 
 
-def test_template_exists_with_the_safe_subset() -> None:
-    assert TEMPLATE.is_file(), "config/wsl/wslconfig template is missing"
-    text = TEMPLATE.read_text(encoding="utf-8")
-    assert re.search(r"^\s*autoMemoryReclaim\s*=\s*gradual", text, re.MULTILINE), (
-        "the template must set autoMemoryReclaim=gradual."
+def _advise(tmp_path: Path, live: str) -> tuple[str, Path, Path]:
+    """Run the advisor against a live .wslconfig in a scratch tree.
+
+    `wsl` and `wsl.exe` are fakes that only record their arguments, so a run
+    that tried to reload WSL shows in the log instead of stopping the runner.
+    Returns the output, the live file and the call log.
+    """
+    (tmp_path / "config" / "wsl").mkdir(parents=True)
+    shutil.copy(TEMPLATE, tmp_path / "config" / "wsl" / "wslconfig")
+    (tmp_path / "home").mkdir()
+    conf = tmp_path / "home" / ".wslconfig"
+    conf.write_text(live, encoding="utf-8", newline="\n")
+    calls = tmp_path / "wsl-calls.log"
+    fakes = tmp_path / "fakes.sh"
+    fakes.write_text(
+        "uname() { echo MINGW64_NT-10.0-26300; }\n"
+        "cygpath() { echo home; }\n"
+        f'wsl() {{ echo "wsl $*" >> "{bash_path(calls)}"; }}\n'
+        f'wsl.exe() {{ echo "wsl.exe $*" >> "{bash_path(calls)}"; }}\n',
+        encoding="utf-8",
+        newline="\n",
     )
+    env = {**os.environ, "BASH_ENV": bash_path(fakes), "USERPROFILE": "unused"}
+    proc = run_bash(
+        SCRIPT,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    return proc.stdout, conf, calls
 
 
-def test_template_does_not_spread_risky_or_rejected_keys() -> None:
-    text = TEMPLATE.read_text(encoding="utf-8")
-    assert not re.search(r"^\s*sparseVhd\s*=", text, re.MULTILINE), (
-        "sparseVhd must not ship in the template: this repo does not turn "
-        "sparse on (ADR 0035); an already-sparse vhdx works without it."
+def test_advisor_warns_on_the_two_live_misconfigurations(tmp_path: Path) -> None:
+    """The two misconfigurations found live on the trade box (2026-08-20):
+    localhostForwarding under networkingMode=mirrored is ignored and makes
+    every wsl.exe call print a warning; sparseVhd turns sparse on for new
+    disks in WSL 3.0.2+, which this repo does not do (ADR 0035)."""
+    out, _, _ = _advise(
+        tmp_path,
+        "[wsl2]\nnetworkingMode=mirrored\nlocalhostForwarding=true\n"
+        "[experimental]\nautoMemoryReclaim=gradual\nsparseVhd=true\n",
     )
-    assert "sparseVhd" in text, (
-        "the template must explain WHY sparseVhd is absent, or the next "
-        "editor re-adds it from the trade box's local file."
-    )
-    assert not re.search(r"^\s*vmIdleTimeout\s*=", text, re.MULTILINE), (
-        "vmIdleTimeout was tested live and does not govern distro lifetime "
-        "(the keepalive task does); shipping it would be cargo cult."
-    )
-    assert not re.search(r"^\s*memory\s*=|^\s*processors\s*=", text, re.MULTILINE), (
-        "machine limits are per-host and must stay out of the shared template."
-    )
+    assert "localhostForwarding is IGNORED under networkingMode=mirrored" in out, out
+    assert "sparseVhd is set" in out, out
 
 
-def test_advisor_never_self_applies() -> None:
-    text = SCRIPT.read_text(encoding="utf-8")
-    assert "--shutdown" in text, (
-        "the advisor must document the wsl --shutdown reload step."
+def test_advisor_leaves_localhost_forwarding_alone_without_mirrored(
+    tmp_path: Path,
+) -> None:
+    out, _, _ = _advise(
+        tmp_path,
+        "[wsl2]\nlocalhostForwarding=true\n[experimental]\nautoMemoryReclaim=gradual\n",
     )
-    # Anchored to a line-initial invocation so the printed guidance
-    # (`echo "  wsl --shutdown"`) does not false-positive.
-    assert not re.search(r"^\s*wsl(\.exe)?\s+--shutdown", text, re.MULTILINE), (
-        "the advisor must not execute `wsl --shutdown` itself — it takes the "
-        "self-hosted runner offline without asking."
-    )
-    assert not re.search(r"^\s*[^#]*(>|>>)\s*\"?\$\{?conf", text, re.MULTILINE), (
-        "the advisor must not write the live .wslconfig; it previews and "
-        "prints the apply steps only."
-    )
+    assert "IGNORED" not in out, out
+    assert "already carries the recommended keys" in out, out
+
+
+def test_advisor_never_applies_anything_itself(tmp_path: Path) -> None:
+    """Reloading .wslconfig needs `wsl --shutdown`, which takes the
+    self-hosted runner offline: the advisor prints the step and never runs
+    it, and never writes the live file."""
+    live = "[wsl2]\nnetworkingMode=mirrored\nlocalhostForwarding=true\n"
+    out, conf, calls = _advise(tmp_path, live)
+    assert "wsl --shutdown" in out, out
+    assert conf.read_text(encoding="utf-8") == live
+    assert not calls.exists(), calls.read_text(encoding="utf-8")
 
 
 def test_justfile_wires_wslconfig() -> None:
@@ -88,39 +116,6 @@ def test_justfile_wires_wslconfig() -> None:
     )
     assert "config/wsl/wslconfig" in text or "wslconfig_conf.sh" in text, (
         "the wslconfig recipe must reference the template or its advisor script."
-    )
-
-
-def test_optional_networking_keys_ship_commented_only() -> None:
-    """networkingMode=mirrored (+ dnsTunneling / autoProxy) are modern
-    recommendations but environment-sensitive: mirrored needs Win11 22H2+ and
-    some VPN stacks break under it. They ship as a commented-out optional
-    block — documented, never active by default."""
-    text = TEMPLATE.read_text(encoding="utf-8")
-    for key in ("networkingMode", "dnsTunneling", "autoProxy"):
-        assert key in text, f"the template must document the optional {key} key."
-        assert not re.search(rf"^\s*{key}\s*=", text, re.MULTILINE), (
-            f"{key} must stay commented out: it is environment-sensitive and "
-            "must be an explicit local opt-in."
-        )
-
-
-def test_advisor_flags_live_misconfigurations() -> None:
-    """The advisor must catch the two live misconfigurations found on the
-    trade box (2026-08-20), not just missing recommended keys:
-
-    - localhostForwarding=true under networkingMode=mirrored is ignored and
-      makes every wsl.exe invocation print a warning.
-    - sparseVhd=true turns sparse on for new disks in WSL 3.0.2+, which this
-      repo does not do (ADR 0035).
-    """
-    text = SCRIPT.read_text(encoding="utf-8")
-    assert "localhostForwarding" in text and "mirrored" in text, (
-        "the advisor must warn when localhostForwarding coexists with "
-        "networkingMode=mirrored (the combination is ignored + noisy)."
-    )
-    assert "sparseVhd" in text, (
-        "the advisor must warn when the live file carries the sparseVhd key."
     )
 
 

@@ -1,35 +1,22 @@
 """dotfiles follows its own frontend CI guide (docs/agents/frontend-ci.md, ADR-0079).
 
-The guide has five rules. Each test below pins the part of this repo that
-carries one of them, and the ways it could pass while checking nothing: a
-category lowered to a warning, a rule turned off with no reason, a file no gate
-reads, a `check` script that shadows the type checker, an install that runs
-package scripts, a last job that is skipped instead of failed.
+The guide has five rules. The repo-lint rules oxlint-strict, js-deps-pinned
+and js-type-check-not-weakened hold the config side: no category lowered to a
+warning, no rule off without a reason, no `check` script that shadows the type
+checker, no install that runs package scripts. The tests below check what no
+config rule can: that a gate reads every first-party file, and that the last
+job fails instead of being skipped.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
-OXLINT = ROOT / ".oxlintrc.json"
-TSCONFIG = ROOT / "tsconfig.json"
-PACKAGE = ROOT / "package.json"
 
-CATEGORIES = (
-    "correctness",
-    "suspicious",
-    "pedantic",
-    "perf",
-    "style",
-    "restriction",
-    "nursery",
-)
 # Third-party bytes we must not edit; each has its own gate.
 VENDORED = {
     "site/vendor/**": "tests/unit/test_site_vendor.py (SHA-256 of npm's bytes)",
@@ -43,14 +30,7 @@ OWN_FILES = (
     "config/pi/extensions/jev-sonnet-fallback.ts",
     "tests/unit/jev_sonnet_fallback.test.ts",
 )
-DEV_DEPENDENCIES = {
-    "@earendil-works/pi-coding-agent",
-    "@types/bun",
-    "oxlint",
-    "oxlint-tsgolint",
-}
 _JS = re.compile(r"\.(?:[cm]?[jt]s|[jt]sx)$")
-_LINE_COMMENT = re.compile(r"^\s*//.*$", re.MULTILINE)
 
 
 def _recipe(name: str) -> str:
@@ -61,15 +41,6 @@ def _recipe(name: str) -> str:
     )
     assert len(bodies) == 1, f"missing or ambiguous recipe: {name}"
     return bodies[0]
-
-
-def _oxlint_text() -> str:
-    return OXLINT.read_text(encoding="utf-8")
-
-
-def _oxlint() -> dict:
-    """The config as data. Its comments are whole lines, so they strip cleanly."""
-    return json.loads(_LINE_COMMENT.sub("", _oxlint_text()))
 
 
 def _tracked_js() -> list[str]:
@@ -95,46 +66,6 @@ def _is_vendored(path: str) -> bool:
 
 
 # --- rule 2: oxlint, every rule that can be on ---------------------------------
-
-
-def test_every_category_is_an_error() -> None:
-    assert _oxlint()["categories"] == dict.fromkeys(CATEGORIES, "error")
-
-
-def test_type_aware_rules_are_on() -> None:
-    assert _oxlint()["options"]["typeAware"] is True
-
-
-def test_the_default_plugins_stay_in_the_list() -> None:
-    plugins = set(_oxlint()["plugins"])
-    assert {"eslint", "typescript", "unicorn", "oxc"} <= plugins, plugins
-
-
-def test_no_rule_is_lowered_to_a_warning() -> None:
-    config = _oxlint()
-    blocks = [config.get("rules", {})]
-    blocks += [override.get("rules", {}) for override in config.get("overrides", [])]
-    for rules in blocks:
-        for name, setting in rules.items():
-            level = setting[0] if isinstance(setting, list) else setting
-            assert level in {"off", "error"}, (name, level)
-
-
-def test_every_rule_that_is_off_has_a_reason_above_it() -> None:
-    lines = _oxlint_text().splitlines()
-    off = [n for n, line in enumerate(lines) if re.search(r'":\s*"off"', line)]
-    assert off, "expected the opt-outs to be listed by name"
-    for n in off:
-        above = n - 1
-        while re.search(r'":\s*"off"', lines[above]):
-            above -= 1  # several rules can share one reason
-        reason = lines[above].strip()
-        assert reason.startswith("// "), lines[n].strip()
-        assert len(reason) > len("// ") + 20, f"too short to be a reason: {reason}"
-
-
-def test_only_vendored_bytes_are_ignored() -> None:
-    assert sorted(_oxlint()["ignorePatterns"]) == sorted(VENDORED)
 
 
 def test_every_tracked_js_file_is_linted_or_vendored() -> None:
@@ -169,71 +100,7 @@ def test_oxlint_is_handed_the_tracked_files_only() -> None:
     ]
 
 
-def test_oxlint_is_pinned_and_installed_without_scripts() -> None:
-    package = json.loads(PACKAGE.read_text(encoding="utf-8"))
-    assert package["private"] is True
-    assert set(package["devDependencies"]) == DEV_DEPENDENCIES
-    assert "dependencies" not in package
-    for name, version in package["devDependencies"].items():
-        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (name, version)
-    assert (ROOT / "bun.lock").is_file()
-    install = _recipe("js-install")
-    assert "--frozen-lockfile" in install
-    assert "--ignore-scripts" in install
-    bunfig = tomllib.loads((ROOT / "bunfig.toml").read_text(encoding="utf-8"))
-    # Seven days in seconds: Dependabot's bun (1.4.2) rejects "7d".
-    assert bunfig["install"]["minimumReleaseAge"] == 604800
-    assert bunfig["install"]["exact"] is True
-
-
 # --- rule 1: bun check, never shadowed ------------------------------------------
-
-
-def test_the_type_check_cannot_be_shadowed_by_a_script() -> None:
-    assert "check --no-script" in _recipe("js-typecheck")
-    for line in JUSTFILE.splitlines():
-        runs_the_checker = re.search(r"(?:\bbun|BUN \}\}) check\b", line)
-        if runs_the_checker and not line.lstrip().startswith(("#", "@echo")):
-            assert "--no-script" in line, line
-    package = json.loads(PACKAGE.read_text(encoding="utf-8"))
-    assert "check" not in package.get("scripts", {})
-
-
-def test_the_type_check_reads_every_own_file_and_no_vendored_one() -> None:
-    config = json.loads(TSCONFIG.read_text(encoding="utf-8"))
-    options = config["compilerOptions"]
-    assert options["strict"] is True
-    assert options["noEmit"] is True
-    # JS is only checked where a file opts in with `// @ts-check`, so the
-    # vendored bundle that site/copy.js imports is loaded but not checked.
-    assert options["allowJs"] is True
-    assert options["checkJs"] is False
-    assert sorted(config["include"]) == sorted(
-        [
-            "site/copy.js",
-            "config/pi/extensions/jev-sonnet-fallback.ts",
-            "tests/unit/*.test.ts",
-        ]
-    )
-    first = (ROOT / "site" / "copy.js").read_text(encoding="utf-8").splitlines()[0]
-    assert first == "// @ts-check"
-
-
-def test_pi_types_never_reach_the_extension_at_run_time() -> None:
-    # Pi places an extension as a symlink into this checkout, so a value import
-    # would resolve to the dev dependency here instead of the running Pi
-    # (ADR-0059). A type-only import is erased.
-    for path in sorted((ROOT / "config" / "pi" / "extensions").glob("*.ts")):
-        text = path.read_text(encoding="utf-8")
-        for statement in re.findall(
-            r"^import\b[^;]*?from\s+[\"'][^\"']+[\"']", text, re.MULTILINE | re.DOTALL
-        ):
-            if "@earendil-works/" in statement:
-                assert statement.startswith("import type"), (path.name, statement)
-    build = _recipe("js-build")
-    assert "@earendil-works/" in build and "grep" in build, (
-        "the build output is not searched"
-    )
 
 
 # --- rules 3 and 4: one shard, the whole suite ----------------------------------

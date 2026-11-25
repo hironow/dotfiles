@@ -6,7 +6,8 @@ non-writing `--check` mode) and ruff in check mode on the staged Python files.
 prek stashes unstaged changes while hooks run, so they see what will be
 committed. `just check` (the whole gate, which never writes) runs in CI.
 
-The static tests read files only and run everywhere. The runtime tests run prek
+The repo-lint rule template-prek-check-only holds the hook config. The static
+tests read files only and run everywhere. The runtime tests run prek
 itself in a temp git repo: where prek is absent they skip, except under
 DOTFILES_REQUIRE_PREK=1 (the Linux unit-test job), where they fail; a prek older
 than 0.5.4 (the first with `--check`) always fails them. They use POSIX shell
@@ -42,24 +43,11 @@ HOOK_IDS = [
     "ruff-format-check",
     "ruff-check",
 ]
-RUFF_FORMAT = (
-    "entry: uv run --locked --only-group lint ruff format --check --force-exclude --"
-)
-RUFF_CHECK = "entry: uv run --locked --only-group lint ruff check --no-fix --no-fix-only --force-exclude --"
 MIN_PREK = (0, 5, 4)
 
 
 def _config() -> str:
     return CONFIG.read_text(encoding="utf-8")
-
-
-def _hook_block(hook_id: str) -> str:
-    """The lines of one hook in the template's config, up to the next hook."""
-    text = _config()
-    start = text.index(f"- id: {hook_id}\n")
-    rest = text[start + 1 :]
-    nxt = re.search(r"\n\s*- (?:id|repo):", rest)
-    return text[start : start + 1 + (nxt.start() if nxt else len(rest))]
 
 
 def _recipe(name: str) -> tuple[list[str], list[str]]:
@@ -82,40 +70,6 @@ def _recipe(name: str) -> tuple[list[str], list[str]]:
 
 
 # --- static -----------------------------------------------------------------
-
-
-def test_the_template_hooks_are_prek_not_githooks() -> None:
-    assert CONFIG.is_file()
-    assert not (TEMPLATE / ".githooks").exists()
-    with pytest.raises(AssertionError):
-        _recipe("pre-commit")
-
-
-def test_the_config_holds_exactly_the_check_only_hooks() -> None:
-    text = _config()
-    assert re.findall(r"(?m)^\s+- id: (\S+)$", text) == HOOK_IDS
-    assert re.search(r'(?m)^minimum_prek_version: "0\.5\.4"$', text)
-    assert re.search(r"(?m)^default_install_hook_types: \[pre-commit\]$", text)
-    assert re.search(r"(?m)^default_stages: \[pre-commit\]$", text)
-    settings = re.sub(r"(?m)^\s*#.*$", "", text)
-    assert "pre-push" not in settings
-    for hook in ("trailing-whitespace", "end-of-file-fixer"):
-        assert "args: [--check]" in _hook_block(hook), hook
-    for hook in HOOK_IDS:
-        # A hook's own manifest can name pre-push too (prek's builtins do).
-        assert "stages: [pre-commit]" in _hook_block(hook), hook
-    assert "just " not in settings
-
-
-def test_ruff_runs_in_check_mode_on_the_staged_files() -> None:
-    fmt, chk = _hook_block("ruff-format-check"), _hook_block("ruff-check")
-    assert RUFF_FORMAT in fmt
-    assert RUFF_CHECK in chk
-    for block in (fmt, chk):
-        assert "require_serial: true" in block
-        assert "types_or: [python, pyi]" in block
-        assert "language: system" in block
-        assert "pass_filenames: false" not in block
 
 
 def test_the_strict_gate_never_writes() -> None:

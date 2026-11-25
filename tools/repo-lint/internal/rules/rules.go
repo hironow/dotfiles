@@ -20,6 +20,8 @@ const (
 	JSON Format = "json"
 	TOML Format = "toml"
 	YAML Format = "yaml"
+	// JSONC is JSON with comments and trailing commas (devcontainer.json).
+	JSONC Format = "jsonc"
 )
 
 // Input is one file a rule reads, relative to the repository root. With Glob
@@ -86,6 +88,21 @@ func All() []Rule {
 		namedSkillsDeclared(),
 		egmPinnedBundle(),
 		piEgmReviewerReadOnly(),
+		prekConfidentialityGuards(),
+		prekCheckOnlyHooks(),
+		templatePrekCheckOnly(),
+		devcontainerEngineAndPaths(),
+		jsDepsPinned(),
+		jsTypeCheckNotWeakened(),
+		oxlintStrict(),
+		piExtensionsTypeOnlyImports(),
+		piRtkExtensionScoped(),
+		codexAgyNamesFollowMise(),
+		justFmtPinned(),
+		repoClaudeMdImportsAgents(),
+		wslConfHardens(),
+		wslconfigSafeSubset(),
+		ghosttyKeysReachZsh(),
 	}
 }
 

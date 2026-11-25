@@ -190,17 +190,3 @@ def test_an_unreadable_antigravity_list_reinstalls_and_warns(
     assert needed == [
         "antigravity plugin list --json (could not read the installed plugins)"
     ]
-
-
-def test_the_names_searched_follow_the_mise_executable_name() -> None:
-    # #604 looked only for `agy` while mise names the executable `antigravity`,
-    # so deploy skipped Antigravity on every machine without saying it was wrong.
-    import tomllib
-
-    config = tomllib.loads(
-        (Path(plugins.__file__).parents[1] / "config/mise/config.toml").read_text(
-            encoding="utf-8"
-        )
-    )
-    entry = config["tools"]["github:google-antigravity/antigravity-cli"]
-    assert plugins.ANTIGRAVITY_NAMES[0] == entry["rename_exe"]

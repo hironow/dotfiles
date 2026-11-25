@@ -17,7 +17,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 INSTALL = REPO / ".devcontainer" / "features" / "dotfiles-tools" / "install.sh"
-DEVCONTAINER = REPO / ".devcontainer" / "devcontainer.json"
 
 
 def assignment(name: str) -> str:
@@ -41,21 +40,4 @@ def test_quints_evaluator_is_built_from_a_pinned_commit() -> None:
     assert (
         '"${QUINT_HOME}/rust-evaluator-${QUINT_EVALUATOR_VERSION}/quint_evaluator"'
         in script
-    )
-
-
-def test_quint_home_is_outside_the_home_directory() -> None:
-    # A mount over /root hides whatever was baked under $HOME; the retired
-    # Coder workspace did exactly that (ADR 0006). An evaluator baked into
-    # ~/.quint would be hidden, and quint would then download one that
-    # cannot run on this glibc.
-    m = re.search(
-        r"cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'\n(.*?)\nPROFILE",
-        INSTALL.read_text(encoding="utf-8"),
-        re.DOTALL,
-    )
-    assert m, "install.sh must write /etc/profile.d/dotfiles-mise.sh"
-    assert re.search(r"^export QUINT_HOME=/opt/quint$", m.group(1), re.MULTILINE)
-    assert re.search(
-        r'"QUINT_HOME":\s*"/opt/quint"', DEVCONTAINER.read_text(encoding="utf-8")
     )

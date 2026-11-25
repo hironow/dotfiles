@@ -17,19 +17,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TEMPLATE = ROOT / "config" / "wsl" / "wsl.conf"
 JUSTFILE = ROOT / "justfile"
-
-
-def test_template_exists_and_hardens() -> None:
-    assert TEMPLATE.is_file(), "config/wsl/wsl.conf template is missing"
-    text = TEMPLATE.read_text(encoding="utf-8")
-    assert re.search(r"^\s*appendWindowsPath\s*=\s*false", text, re.MULTILINE), (
-        "wsl.conf template must set appendWindowsPath=false (no Windows PATH leak)."
-    )
-    assert re.search(r"^\s*systemd\s*=\s*true", text, re.MULTILINE), (
-        "wsl.conf template must set systemd=true (native Podman / service manager)."
-    )
 
 
 def test_justfile_wires_wsl_conf() -> None:

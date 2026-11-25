@@ -118,39 +118,6 @@ def test_no_deprecated_setting_or_function() -> None:
     assert not found, found
 
 
-def _version(text: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in text.split("."))
-
-
-@pytest.mark.parametrize("path", JUSTFILES, ids=lambda p: str(p.relative_to(ROOT)))
-def test_the_justfile_names_the_oldest_just_it_needs(path: Path) -> None:
-    found = re.findall(
-        r'^set minimum-version := "(\d+\.\d+\.\d+)"$',
-        path.read_text(encoding="utf-8"),
-        re.MULTILINE,
-    )
-    assert len(found) == 1, "one `set minimum-version`"
-    pinned = tomllib.loads(
-        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )
-    # Never above the just the image and CI install, or the gate cannot run.
-    assert _version(found[0]) <= _version(pinned["tools"]["just"])
-
-
-def test_the_formatter_the_recipes_run_is_the_pinned_just() -> None:
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    (formatter,) = re.findall(r'^JUST_FMT := "(.*)"$', text, re.MULTILINE)
-    assert formatter == f"mise x just@{_pinned()} -- just"
-    # `fmt` writes and `check-except-go` checks, both with the pin
-    for recipe, flag in (("fmt", "--fmt"), ("check-except-go", "--fmt --check")):
-        body = text.split(f"\n{recipe}:\n", 1)[1].split("\n\n", 1)[0]
-        for justfile in ("justfile", "templates/agent-baseline/justfile"):
-            assert f"{{{{ JUST_FMT }}}} --justfile {justfile} {flag}" in body, (
-                recipe,
-                justfile,
-            )
-
-
 @pytest.mark.parametrize(
     "path", ["justfile", "templates/agent-baseline/justfile", "just/example.just"]
 )
