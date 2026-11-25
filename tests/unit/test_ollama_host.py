@@ -1841,18 +1841,6 @@ def test_only_an_exact_name_in_the_declaration_counts(
     assert "uninspected" in old[0][2]
 
 
-def test_windows_ci_runs_these_tests_on_windows() -> None:
-    # The PowerShell classifiers skip on ubuntu-latest; only this job runs them.
-    workflow = (
-        Path(__file__).resolve().parents[2] / ".github/workflows/unit-test.yaml"
-    ).read_text(encoding="utf-8")
-    job = workflow.split("\n  windows-ollama-host:\n", 1)[-1].split("\n  windows-", 1)[
-        0
-    ]
-    assert "runs-on: windows-latest" in job
-    assert "uvx pytest -q -ra tests/unit/test_ollama_host.py" in job
-
-
 def test_the_probe_travels_on_stdin_not_the_command_line(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

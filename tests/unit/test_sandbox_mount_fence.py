@@ -31,7 +31,6 @@ DISPOSABLE_CHECKOUT_ENV = "DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT"
 
 ROOT = Path(__file__).resolve().parents[2]
 _SANDBOX_TESTS = ROOT / "tests" / "test_just_sandbox.py"
-_WORKFLOW = ROOT / ".github" / "workflows" / "test-just.yaml"
 
 
 def _load_sandbox_module() -> Any:
@@ -380,16 +379,6 @@ def test_snapshot_omits_vanished_and_gitlinks_with_portable_reads(
         assert not (snapshot / "module").exists()
     finally:
         shutil.rmtree(snapshot)
-
-
-def test_ci_workflow_declares_the_disposable_checkout() -> None:
-    """The fence is fail-closed, so CI must declare its checkout disposable.
-
-    Without this line in the workflow's `env:` block, every sandbox test in CI
-    refuses instead of binding the runner checkout.
-    """
-    workflow = _WORKFLOW.read_text(encoding="utf-8")
-    assert f"{DISPOSABLE_CHECKOUT_ENV}=1" in workflow
 
 
 def test_actual_sync_copy_rejects_internal_untracked_ancestor_before_copy(

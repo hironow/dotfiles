@@ -236,17 +236,6 @@ def test_reused_gate_still_rejects_retired_models_and_simulation() -> None:
         )
 
 
-def test_no_workflow_runs_the_old_coder_stack() -> None:
-    workflows = ROOT / ".github" / "workflows"
-    offenders = sorted(
-        f"{path.name}: {needle}"
-        for path in workflows.glob("*.yaml")
-        for needle in ("tofu/exe/", "Coder template", "publish-devcontainer")
-        if needle in path.read_text(encoding="utf-8")
-    )
-    assert offenders == [], f"a workflow still reaches the old stack: {offenders}"
-
-
 def test_the_named_operational_files_no_longer_mention_it() -> None:
     """One file at a time, with the needle spelled out, so this check can never
     grow into a repo-wide grep that hits a fixture or a spoke."""

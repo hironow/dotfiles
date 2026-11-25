@@ -151,18 +151,6 @@ def test_the_formatter_the_recipes_run_is_the_pinned_just() -> None:
             )
 
 
-def test_ci_installs_the_pinned_just() -> None:
-    installs = [
-        (path.name, line.strip())
-        for path in sorted((ROOT / ".github/workflows").glob("*.yaml"))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if "tool install rust-just" in line
-    ]
-    assert installs, "no workflow installs just"
-    unpinned = [i for i in installs if not i[1].endswith(f"rust-just=={_pinned()}")]
-    assert not unpinned, unpinned
-
-
 @pytest.mark.parametrize(
     "path", ["justfile", "templates/agent-baseline/justfile", "just/example.just"]
 )

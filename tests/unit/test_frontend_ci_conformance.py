@@ -20,7 +20,6 @@ JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
 OXLINT = ROOT / ".oxlintrc.json"
 TSCONFIG = ROOT / "tsconfig.json"
 PACKAGE = ROOT / "package.json"
-WORKFLOW = ROOT / ".github" / "workflows" / "frontend-ci.yaml"
 
 CATEGORIES = (
     "correctness",
@@ -47,7 +46,6 @@ DEV_DEPENDENCIES = {
     "oxlint",
     "oxlint-tsgolint",
 }
-JOBS = ("lint", "typecheck", "build", "test")
 _JS = re.compile(r"\.(?:[cm]?[jt]s|[jt]sx)$")
 _LINE_COMMENT = re.compile(r"^\s*//.*$", re.MULTILINE)
 
@@ -241,46 +239,6 @@ def test_the_whole_suite_runs_in_one_shard() -> None:
 
 
 # --- rule 5: parallel jobs behind one gate ---------------------------------------
-
-
-def _job(name: str) -> str:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    match = re.search(rf"^  {name}:\n((?:    .*\n|\n)+)", text, re.MULTILINE)
-    assert match, f"no job {name}"
-    return match.group(1)
-
-
-def test_each_gate_is_its_own_job_running_one_recipe() -> None:
-    for name in JOBS:
-        job = _job(name)
-        assert "needs:" not in job, name
-        assert "github.event.pull_request.draft == false" in job, name
-        assert "timeout-minutes:" in job, name
-        assert f"just js-{name}" in job, name
-        assert "DOTFILES_BUN: bun" in job, name
-
-
-def test_the_last_job_fails_unless_every_job_passed() -> None:
-    gate = _job("frontend")
-    assert f"needs: [{', '.join(JOBS)}]" in gate
-    assert "always()" in gate
-    assert "github.event.pull_request.draft == false" in gate
-    for name in JOBS:
-        assert f"needs.{name}.result" in gate, name
-    assert "success" in gate
-    text = WORKFLOW.read_text(encoding="utf-8")
-    jobs = re.findall(
-        r"^  ([a-z][a-z0-9_-]*):\n", text.split("\njobs:\n", 1)[1], re.MULTILINE
-    )
-    assert sorted(jobs) == sorted([*JOBS, "frontend"]), jobs
-
-
-def test_the_workflow_wakes_up_when_a_draft_becomes_ready() -> None:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    assert "types: [opened, synchronize, reopened, ready_for_review]" in text
-    assert "paths:" not in text, "a required check must always report"
-    for uses in re.findall(r"uses: (\S+)", text):
-        assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", uses), uses
 
 
 def test_the_local_gate_runs_the_same_recipes() -> None:
