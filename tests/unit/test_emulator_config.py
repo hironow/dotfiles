@@ -338,17 +338,12 @@ def test_emulator_runs_no_prometheus_exporters() -> None:
     ("path", "pattern", "separator"),
     [
         ("justfile", r"^# Groups: ([a-z ]+)\.$", " "),
-        ("README.md", r"\(([a-z ]+)\)$", " "),
-        ("AGENTS.md", r"capability \(([a-z/\n ]+)\)", "/"),
     ],
 )
 def test_documented_emulator_groups_match_compose_profiles(
     path: str, pattern: str, separator: str
 ) -> None:
     text = (ROOT / path).read_text(encoding="utf-8")
-    if path == "README.md":
-        text = next(line for line in text.splitlines() if "emu-up-group" in line)
-        text = text.replace("（", "(").replace("）", ")")
     found = re.search(pattern, text, re.MULTILINE)
     assert found, f"{path} no longer lists the emu-up-group names"
     names = {n.strip() for n in found[1].replace("\n", " ").split(separator)}

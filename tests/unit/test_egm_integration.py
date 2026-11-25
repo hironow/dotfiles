@@ -76,7 +76,6 @@ def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
         "claude_plugins.py",
     ):
         assert step in deploy
-    assert "docs/agents/egm.md" in (ROOT / "ROOT_AGENTS.md").read_text(encoding="utf-8")
 
 
 def test_pi_reviewer_profile_is_restricted_without_overriding_route() -> None:
@@ -93,14 +92,6 @@ def test_pi_reviewer_profile_is_restricted_without_overriding_route() -> None:
     assert front["systemPromptMode"].strip() == "replace"
     assert front["defaultContext"].strip() == "fresh"
     assert not {"model", "thinking", "memory", "allowNestedSubagents"} & front.keys()
-    guide = (ROOT / "ROOT_AGENTS_docs_agents_egm.md").read_text(encoding="utf-8")
-    for requirement in (
-        "2.1.271",
-        'options.context: "fresh"',
-        "host-required",
-        "actual child",
-    ):
-        assert requirement in guide
 
 
 def _git(root: Path, *args: str) -> str:

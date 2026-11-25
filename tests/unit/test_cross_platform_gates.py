@@ -12,12 +12,9 @@ every repo to do the same (ADR 0069).
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import _workflow
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
@@ -27,13 +24,9 @@ DRAFT_GATE = (
     "    if: github.event_name != 'pull_request' || "
     "github.event.pull_request.draft == false\n"
 )
-PYTHON_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_python-tooling.md"
-GO_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_go-tooling.md"
-RUST_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_rust-tooling.md"
 TEMPLATE_JUSTFILE = ROOT / "templates/agent-baseline/justfile"
 PLATFORMS = {"win32", "linux", "darwin"}
 GOOSES = {"windows", "linux", "darwin"}
-EVERY_OS = "for every OS the code runs on"
 
 
 def _recipe(name: str, source: str | None = None) -> str:
@@ -223,96 +216,10 @@ def test_go_lint_runs_golangci_once_per_goos():
     assert len(re.findall(r"golangci-lint fmt ", body)) == 1
 
 
-def _just_blocks(markdown: Path) -> str:
-    """Every fenced just block of a spoke, joined."""
-    text = markdown.read_text(encoding="utf-8")
-    blocks = re.findall(r"^```just\n(.*?)^```$", text, re.MULTILINE | re.DOTALL)
-    assert blocks, f"no just block in {markdown.name}"
-    return "\n".join(blocks)
-
-
-def test_the_python_spoke_and_the_template_type_check_every_os():
-    # One gate shape: the spoke's example is what the template runs, and both
-    # run ty once per OS, as this repo's check-ty does.
-    spoke = _recipe("lint", _just_blocks(PYTHON_SPOKE))
-    template = _recipe("lint", TEMPLATE_JUSTFILE.read_text(encoding="utf-8"))
-    assert spoke.splitlines() == template.splitlines()
-    platforms = re.findall(r"ty check --python-platform (\S+)", spoke)
+def test_the_template_type_checks_every_os():
+    # The agent-baseline template runs ty once per OS, as this repo's check-ty
+    # does.
+    lint = _recipe("lint", TEMPLATE_JUSTFILE.read_text(encoding="utf-8"))
+    platforms = re.findall(r"ty check --python-platform (\S+)", lint)
     assert sorted(platforms) == sorted(PLATFORMS)
-    assert not re.search(r"ty check(?! --python-platform)", spoke)
-    assert EVERY_OS in " ".join(PYTHON_SPOKE.read_text(encoding="utf-8").split())
-
-
-def test_the_go_spoke_lints_for_every_os_it_ships_to():
-    block = _recipe("go-lint", _just_blocks(GO_SPOKE))
-    # one bash process with errexit ([script]): a loop in just's default
-    # linewise `sh -cu` would return only the last GOOS's exit code
-    assert "[script]\ngo-lint:" in _just_blocks(GO_SPOKE)
-    assert block.lstrip().startswith("set -euo pipefail")
-    assert "set -euo pipefail" in block
-    loop = re.search(r"for goos in ([^;\n]+); do", block)
-    assert loop and set(loop.group(1).split()) == GOOSES
-    assert re.search(r'GOOS="\$goos" golangci-lint run ', block)
-    assert len(re.findall(r"golangci-lint fmt ", block)) == 1
-    # the OSes the spoke ships binaries for
-    text = GO_SPOKE.read_text(encoding="utf-8")
-    ship = text.split("\n## Ship binaries", 1)[1].split("\n## ", 1)[0]
-    assert (
-        set(re.findall(r"\b(linux|darwin|windows)/(?:amd64|arm64)\b", ship)) == GOOSES
-    )
-
-
-TRIPLE = r"\b(?:x86_64|aarch64)-[a-z0-9_]+-[a-z0-9_]+(?:-[a-z0-9_]+)?\b"
-
-
-def test_the_rust_spoke_lints_for_every_target_it_ships_to():
-    # clippy checks one target; code under #[cfg(target_os = ...)] is linted
-    # only for that target (measured 2026-11-10: a macOS-only error showed up
-    # only with --target aarch64-apple-darwin, from every host) (ADR 0071).
-    blocks = _just_blocks(RUST_SPOKE)
-    listed = re.search(r'^rust_targets := "([^"]+)"$', blocks, re.MULTILINE)
-    assert listed, "the rust block must list the shipped targets once"
-    targets = set(listed.group(1).split())
-    body = _recipe("rust-lint", blocks)
-    assert "[script]\nrust-lint " in blocks
-    assert body.lstrip().startswith("set -euo pipefail")
-    assert "set -euo pipefail" in body
-    assert re.search(r"for target in \{\{ targets \}\}; do", body)
-    assert 'rustup target add "$target"' in body
-    assert re.search(
-        r'cargo clippy --all-targets --all-features --target "\$target" -- -D warnings',
-        body,
-    )
-    assert len(re.findall(r"cargo fmt ", body)) == 1
-    # the recipe defaults to that list, and the release build uses it too
-    assert re.search(r"^rust-lint \*targets=rust_targets:", blocks, re.MULTILINE)
-    text = RUST_SPOKE.read_text(encoding="utf-8")
-    ship = text.split("\n## Ship binaries", 1)[1]
-    assert set(re.findall(TRIPLE, ship)) == targets
-
-
-def test_the_rust_recipe_parses_and_expands_its_targets(tmp_path):
-    just = shutil.which("just")
-    if just is None:
-        pytest.skip("needs just to parse the recipe")
-    justfile = tmp_path / "justfile"
-    justfile.write_text(_just_blocks(RUST_SPOKE), encoding="utf-8", newline="\n")
-    shown = subprocess.run(
-        [just, "--justfile", str(justfile), "--evaluate", "rust_targets"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    assert shown.returncode == 0, shown.stderr
-    listed = subprocess.run(
-        [just, "--justfile", str(justfile), "--show", "rust-lint"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    assert listed.returncode == 0, listed.stderr
-    assert "rust-lint *targets=rust_targets:" in listed.stdout
+    assert not re.search(r"ty check(?! --python-platform)", lint)

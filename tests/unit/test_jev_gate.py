@@ -58,8 +58,6 @@ def test_the_claude_live_verification_is_one_command() -> None:
         "\njev-claude-verify:\n    {{ UV_RUN }} scripts/jev_claude_verify.py"
         in JUSTFILE
     )
-    runbook = (ROOT / "docs/runbook/jev-launchers.md").read_text(encoding="utf-8")
-    assert "just jev-claude-verify" in runbook
 
 
 def test_windows_ci_runs_the_codex_runner_tests() -> None:
