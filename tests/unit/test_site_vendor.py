@@ -98,15 +98,3 @@ def test_git_never_converts_the_vendored_bytes() -> None:
     ).stdout.splitlines()
     converted = [line for line in out if not line.endswith(": text: unset")]
     assert len(out) == len(files) and converted == [], converted[:5]
-
-
-def test_guard_hooks_still_read_the_vendored_folder() -> None:
-    config = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    top_level = config.split("\nrepos:", 1)[0]
-    assert "site/" not in top_level, (
-        "the other hooks must still read the vendored files"
-    )
-    # CLI tests in test_check_text_hygiene.py exercise the replacement
-    # gate's vendor exclusion alongside a dirty first-party site source.
-    for hook in ("trailing-whitespace", "end-of-file-fixer"):
-        assert not re.search(rf"(?m)^\s+- id: {hook}$", config), hook

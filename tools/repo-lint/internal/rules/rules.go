@@ -88,6 +88,20 @@ func All() []Rule {
 		namedSkillsDeclared(),
 		egmPinnedBundle(),
 		piEgmReviewerReadOnly(),
+		prekConfidentialityGuards(),
+		prekCheckOnlyHooks(),
+		templatePrekCheckOnly(),
+		devcontainerEngineAndPaths(),
+		jsDepsPinned(),
+		jsTypeCheckNotWeakened(),
+		oxlintStrict(),
+		piExtensionsTypeOnlyImports(),
+		piRtkExtensionScoped(),
+		codexAgyNamesFollowMise(),
+		justFmtPinned(),
+		repoClaudeMdImportsAgents(),
+		wslConfHardens(),
+		wslconfigSafeSubset(),
 	}
 }
 

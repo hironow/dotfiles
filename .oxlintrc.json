@@ -1,7 +1,7 @@
 {
   // The JS gate's lint rules (docs/agents/frontend-ci.md, ADR-0079).
   // Every category is an error. A rule is turned off by name, with the reason
-  // on the line above it; tests/unit/test_frontend_ci_conformance.py checks that.
+  // on the line above it; the repo-lint rule oxlint-strict checks that.
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node"],
   "categories": {

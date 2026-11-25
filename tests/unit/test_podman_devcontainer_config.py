@@ -1,9 +1,7 @@
 """Podman devcontainer/Cursor transport contract; no engine calls."""
 
 import importlib.util
-import json
 import os
-import re
 import shlex
 import shutil
 from pathlib import Path
@@ -12,49 +10,6 @@ import pytest
 from _bash_hook import bash_path, run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def config():
-    text = (ROOT / ".devcontainer/devcontainer.json").read_text(encoding="utf-8")
-    return json.loads(re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE))
-
-
-def test_official_trixie_and_only_docker_feature_lock_removed():
-    current = config()
-    assert current["image"] == "mcr.microsoft.com/devcontainers/base:trixie"
-    assert (
-        "ghcr.io/devcontainers/features/docker-outside-of-docker:1"
-        not in current["features"]
-    )
-    lock = json.loads(
-        (ROOT / ".devcontainer/devcontainer-lock.json").read_text(encoding="utf-8")
-    )
-    assert set(lock["features"]) == {
-        key for key in current["features"] if not key.startswith("./")
-    }
-    assert current["remoteUser"] == current["containerUser"] == "root"
-    assert (
-        current["containerEnv"]["MISE_TRUSTED_CONFIG_PATHS"]
-        == "/root/dotfiles:/root/sandbox/dotfiles-fresh"
-    )
-
-
-def test_engine_socket_is_explicit_and_not_host_forwarding():
-    current = config()
-    assert current["mounts"] == [
-        "source=${localEnv:DOTFILES_PODMAN_ENGINE_SOCKET},target=/run/dotfiles-podman/podman.sock,type=bind"
-    ]
-    assert (
-        current["containerEnv"]["CONTAINER_HOST"]
-        == "unix:///run/dotfiles-podman/podman.sock"
-    )
-    assert current["containerEnv"]["PODMAN_COMPOSE_PROVIDER"] == "podman-compose"
-    # Application-scoped host selection cannot come from remote customizations.
-    assert (
-        "dev.containers.dockerPath"
-        not in current["customizations"]["vscode"]["settings"]
-    )
-    assert "require-podman-socket.sh" in current["initializeCommand"]
 
 
 def test_feature_installs_native_podman_without_changing_generated_versions():

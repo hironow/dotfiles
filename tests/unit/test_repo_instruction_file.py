@@ -36,9 +36,3 @@ def test_no_tracked_file_is_a_symlink():
     assert not links, (
         f"tracked symlinks break Windows checkouts and the sandbox: {links}"
     )
-
-
-def test_claude_md_imports_the_repo_rules():
-    lines = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
-    assert "@AGENTS.md" in lines
-    assert (ROOT / "AGENTS.md").is_file()
