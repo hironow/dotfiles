@@ -12,7 +12,7 @@
 - **supersedes**: part of [0078](0078-frontend-ci-under-two-minutes.md) D8 and of [0080](0080-established-terms-not-private-ones.md) D7 (their clauses that a test keeps the rule text), and part of [0090](0090-keep-one-justfile-no-modules.md) D1 (the provable glossary's module only)
 - **superseded-by**: none
 - **related**: [0078](0078-frontend-ci-under-two-minutes.md), [0080](0080-established-terms-not-private-ones.md), [0090](0090-keep-one-justfile-no-modules.md), [0088](0088-ci-speed-standard-for-every-language.md), [0091](0091-review-against-requirements-three-rounds.md)
-- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-25 (16:24 JST), the owner's answers to four questions (16:35 JST) and to a fifth one raised by the plan review (17:05 JST), quoted in the pull request that adds this record ([PR #686](https://github.com/hironow/dotfiles/pull/686)); the owner accepted the record on 2026-11-25 ("0092 approveします"), quoted in the pull request that settled it
+- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-25 (16:24 JST), the owner's answers to four questions (16:35 JST) and to a fifth one raised by the plan review (17:05 JST), quoted in the pull request that adds this record ([PR #686](https://github.com/hironow/dotfiles/pull/686)); the owner accepted the record on 2026-11-25 ("0092 approveします"), quoted in [PR #688](https://github.com/hironow/dotfiles/pull/688)
 
 ## Plain summary
 
@@ -96,5 +96,5 @@ Restore the earlier hub section and spokes from git history; the deleted content
 ## Decision (2026-11-25)
 
 - [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), 2026-11-25 17:49 JST. After both pull requests had passed CI and merged (#686, the rules; #687, this repository's Markdown content tests removed), the owner wrote "0092 approveします" (translated: I approve 0092). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in the pull request that settled the record.
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-25 17:49 JST. After both pull requests had passed CI and merged (#686, the rules; #687, this repository's Markdown content tests removed), the owner wrote "0092 approveします" (translated: I approve 0092). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #688](https://github.com/hironow/dotfiles/pull/688).
 - Action: ADR-0078, ADR-0080 and ADR-0090 say on their status lines that this record replaced part of them; nothing else in them changes. The content tests were removed in #687.
