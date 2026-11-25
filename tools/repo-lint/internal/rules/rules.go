@@ -64,6 +64,18 @@ func All() []Rule {
 		miseImageBakesGoLint(),
 		misePlaywrightCLIVersion(),
 		caIncidentFloors(),
+		emulatorGroups(),
+		emulatorNoExporters(),
+		emulatorEnvPorts(),
+		emulatorMCPInspector(),
+		emulatorGoBuilders(),
+		emulatorHealthDockerfile(),
+		emulatorHealthServices(),
+		telemetryStack(),
+		telemetryDependabot(),
+		rootLintCoversTelemetry(),
+		dependabotPythonHeld(),
+		dependabotUVSyncedTools(),
 	}
 }
 
@@ -154,6 +166,20 @@ func strs(v any, keys ...string) []string {
 			return nil
 		}
 		out = append(out, s)
+	}
+	return out
+}
+
+// tables is the tables in the list at the keys; an item that is not a table is
+// left out.
+func tables(v any, keys ...string) []map[string]any {
+	got, _ := at(v, keys...)
+	items, _ := got.([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if t, ok := item.(map[string]any); ok {
+			out = append(out, t)
+		}
 	}
 	return out
 }

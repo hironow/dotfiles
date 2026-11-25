@@ -3,100 +3,14 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 HEALTH = ROOT / "emulator/healthcheck"
-
-
-def _service(name: str) -> str:
-    compose = (ROOT / "emulator/compose.yaml").read_text(encoding="utf-8")
-    match = re.search(rf"(?ms)^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:|\Z)", compose)
-    assert match, f"missing service {name}"
-    return match.group(1)
-
-
-def test_spanner_health_uses_shellless_image_local_probe() -> None:
-    service = _service("spanner-emulator")
-    assert (
-        'test: ["CMD", "/usr/local/bin/tcp-healthcheck", "127.0.0.1:9010"]' in service
-    )
-    assert "CMD-SHELL" not in service
-    assert "nc -z" not in service
-
-
-@pytest.mark.parametrize(
-    "service,target", [("spanner-emulator", "spanner"), ("pgadapter", "pgadapter")]
-)
-def test_health_images_have_explicit_local_build_targets(
-    service: str, target: str
-) -> None:
-    block = _service(service)
-    assert "context: ./healthcheck" in block
-    assert "dockerfile: Dockerfile" in block
-    assert f"target: {target}\n" in block
-    assert f'image: "localhost/emulator-health-{target}:local"' in block
-    assert "pull_policy: build" in block
-    for timing in ("interval: 30s", "timeout: 10s", "retries: 5", "start_period: 30s"):
-        assert timing in block
-
-
-def test_pgadapter_health_keeps_upstream_pg_isready_contract() -> None:
-    assert 'test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]' in _service(
-        "pgadapter"
-    )
-
-
-def test_health_dockerfile_preserves_runtime_bases_and_configuration() -> None:
-    dockerfile = HEALTH / "Dockerfile"
-    assert dockerfile.is_file(), "health tools must be installed in the images"
-    source = dockerfile.read_text(encoding="utf-8")
-    version = tomllib.loads(
-        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )["tools"]["go"]
-    assert f"FROM docker.io/library/golang:{version}-alpine AS builder" in source
-    assert "CGO_ENABLED=0" in source
-    assert "go build -mod=readonly -trimpath -o /tcp-healthcheck ." in source
-    assert "FROM gcr.io/cloud-spanner-emulator/emulator:1.5.59 AS spanner" in source
-    assert "FROM gcr.io/cloud-spanner-pg-adapter/pgadapter AS pgadapter" in source
-    spanner = source.split(" AS spanner\n", 1)[1].split("FROM ", 1)[0]
-    assert (
-        spanner.strip()
-        == "COPY --from=builder /tcp-healthcheck /usr/local/bin/tcp-healthcheck"
-    )
-    runtime = source.split(" AS spanner\n", 1)[1]
-    assert not re.search(
-        r"(?mi)^(USER|ENTRYPOINT|CMD|WORKDIR|ENV|EXPOSE|VOLUME|HEALTHCHECK)\b", runtime
-    )
-    pgadapter = source.split(" AS pgadapter\n", 1)[1]
-    assert "apt-get install -y --no-install-recommends postgresql-client" in pgadapter
-    assert "command -v pg_isready" in pgadapter
-    assert "pg_isready --version" in pgadapter
-    assert "rm -rf /var/lib/apt/lists/*" in pgadapter
-    assert not re.search(
-        r"apt-get\s+upgrade|postgresql-server|COPY|curl|wget", pgadapter
-    )
-
-
-def test_every_emulator_go_builder_uses_the_image_go_version() -> None:
-    version = tomllib.loads(
-        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )["tools"]["go"]
-    builders = {}
-    for dockerfile in sorted((ROOT / "emulator").glob("*/Dockerfile")):
-        source = dockerfile.read_text(encoding="utf-8")
-        for match in re.finditer(
-            r"(?m)^FROM docker\.io/library/golang:(\S+?)-", source
-        ):
-            builders[dockerfile.parent.name] = match.group(1)
-    assert builders, "the emulator has Go builder images"
-    assert {name: found for name, found in builders.items() if found != version} == {}
 
 
 def test_health_build_context_only_allows_production_sources() -> None:
