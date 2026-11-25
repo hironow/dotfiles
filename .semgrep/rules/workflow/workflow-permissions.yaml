@@ -1,0 +1,11 @@
+rules:
+  # The GC compatibility workflow only reads the repository.
+  - id: workflow-gc-compat-token-reads-only
+    message: >-
+      Podman GC PowerShell compatibility must declare `permissions:` with `contents: read`.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^jobs:'
+      - pattern-regex: '(?s)\Aname: Podman GC PowerShell compatibility\n.*'
+      - pattern-not-regex: '(?ms)\A.*^permissions:\n  contents: read\n.*'

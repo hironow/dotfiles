@@ -22,23 +22,6 @@ def test_justfile_has_no_claudelint() -> None:
     )
 
 
-def test_workflow_runs_official_validate_not_claudelint() -> None:
-    wf = (ROOT / ".github" / "workflows" / "claude-lint.yaml").read_text(
-        encoding="utf-8"
-    )
-    assert "claude-code-lint" not in wf, (
-        "CI workflow still runs the retired third-party claudelint."
-    )
-    assert "plugin validate" in wf, (
-        "CI must run the OFFICIAL `claude plugin validate --strict` — "
-        "before ADR 0041 the official half never ran in CI at all."
-    )
-    assert "@anthropic-ai/claude-code@" in wf, (
-        "the official CLI must be invoked via a version-pinned bunx run "
-        "(reproducible; nothing global on the runner)."
-    )
-
-
 def test_effective_settings_checker_is_stdlib_only() -> None:
     src = (ROOT / "scripts" / "check_effective_settings.py").read_text(encoding="utf-8")
     assert "claude-code-lint" not in src and "bunx" not in src, (

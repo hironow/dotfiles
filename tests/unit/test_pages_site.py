@@ -127,13 +127,6 @@ def test_copy_buttons_are_ui_buttons_that_hide_until_defined() -> None:
     )
 
 
-def test_pages_redeploys_when_the_site_folder_changes() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "pages.yaml").read_text(
-        encoding="utf-8"
-    )
-    assert re.search(r"paths:\s*\[index\.html,\s*'site/\*\*'\]", workflow)
-
-
 @pytest.mark.skipif(
     shutil.which("git") is None, reason="needs git to list tracked files"
 )

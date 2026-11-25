@@ -10,19 +10,15 @@ container job before ADR-0089).
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import stat
 import subprocess
 import sys
 from pathlib import Path
 
-import _workflow
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOWS = ROOT / ".github/workflows"
-SMALL = WORKFLOWS / "small-checks.yaml"
 CHECKERS = ("shellcheck", "actionlint", "semgrep-test")
 
 
@@ -80,28 +76,3 @@ def test_the_recipe_passes_when_every_checker_passes(tmp_path: Path) -> None:
     result = _run_small_checks(tmp_path, set())
     assert result.returncode == 0, result.stdout + result.stderr
     assert "stub just semgrep-test" in result.stdout
-
-
-def test_the_workflow_runs_the_recipe_with_a_checked_actionlint() -> None:
-    body = SMALL.read_text(encoding="utf-8")
-    (job,) = _workflow.jobs(body).values()
-    assert (
-        "    if: github.event_name != 'pull_request' || "
-        "github.event.pull_request.draft == false\n"
-    ) in job
-    assert "ready_for_review" in body
-    assert re.search(r"\n    timeout-minutes: \d+\n", job)
-    for action in re.findall(r"uses:\s+(\S+)", job):
-        assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), action
-    version = re.search(r"ACTIONLINT_VERSION: (\d+\.\d+\.\d+)\n", job)
-    digest = re.search(r"ACTIONLINT_SHA256: ([0-9a-f]{64})\n", job)
-    assert version and digest
-    assert "sha256sum -c -" in job
-    runs = [c for step in _workflow.steps(job) for c in _workflow.run_commands(step)]
-    assert runs[-1] == "just small-checks"
-
-
-def test_the_old_shellcheck_workflow_is_gone() -> None:
-    # Its one job is part of small-checks now; two jobs would run shellcheck
-    # twice on every pull request.
-    assert not (WORKFLOWS / "shellcheck.yaml").exists()

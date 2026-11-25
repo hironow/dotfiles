@@ -14,7 +14,6 @@ Bash's usr/bin like the runbook says shebang recipes run.
 """
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +22,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github/workflows/iac-test.yaml"
 CACHE_SUFFIX = Path("opentofu", "plugin-cache")
 BREAK_LOCK = "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE"
 
@@ -195,28 +193,3 @@ def test_test_iac_never_lets_the_cache_break_the_lock_file(tmp_path: Path) -> No
     calls = _run_test_iac(tmp_path, HOME=str(home), **{BREAK_LOCK: "true"})
     # then tofu never sees it
     assert {escape for *_, escape in calls} == {"<unset>"}
-
-
-def _workflow_steps() -> list[str]:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    return re.split(r"\n      - ", text.split("\n    steps:\n", 1)[1])
-
-
-def test_iac_workflow_caches_providers_keyed_on_lock_files() -> None:
-    steps = _workflow_steps()
-    exports = next(i for i, s in enumerate(steps) if "TF_PLUGIN_CACHE_DIR=" in s)
-    cache = next(i for i, s in enumerate(steps) if "actions/cache@" in s)
-    init = next(i for i, s in enumerate(steps) if "tofu init" in s)
-    assert "$GITHUB_ENV" in steps[exports]
-    assert re.search(r"uses: actions/cache@[0-9a-f]{40} # v\d", steps[cache])
-    assert "path: ${{ env.TF_PLUGIN_CACHE_DIR }}" in steps[cache]
-    assert "hashFiles('tofu/**/.terraform.lock.hcl')" in steps[cache]
-    # the path is set before the cache restores into it, and both precede init
-    assert exports < cache < init
-
-
-def test_nothing_lets_the_cache_break_the_lock_file() -> None:
-    for path in (ROOT / "justfile", WORKFLOW):
-        text = path.read_text(encoding="utf-8")
-        assert "plugin_cache_may_break_dependency_lock_file" not in text, path
-        assert not re.search(rf"{BREAK_LOCK}\s*[=:]", text), path

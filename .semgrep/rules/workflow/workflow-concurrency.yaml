@@ -1,0 +1,12 @@
+rules:
+  # The GC compatibility workflow cancels the run a newer push to the same ref
+  # replaces, checked by the test this rule replaced.
+  - id: workflow-gc-compat-cancels-stale-runs
+    message: >-
+      Podman GC PowerShell compatibility must declare `concurrency:` with `group: ${{ github.workflow }}-${{ github.ref }}` and `cancel-in-progress: true`.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^jobs:'
+      - pattern-regex: '(?s)\Aname: Podman GC PowerShell compatibility\n.*'
+      - pattern-not-regex: '(?ms)\A.*^concurrency:\n  group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true\n.*'

@@ -156,13 +156,6 @@ def test_tel_down_also_removes_containers_of_an_older_stack() -> None:
     assert "{{ PODMAN_COMPOSE }} down --remove-orphans" in recipe[1]
 
 
-def test_emulator_ci_runs_when_telemetry_changes() -> None:
-    # The isolated CI run starts telemetry/compose.yaml (`--telemetry`).
-    body = _read(ROOT / ".github" / "workflows" / "test-emulators.yaml")
-    assert body.count("      - 'telemetry/**'\n") == 2
-    assert body.count("      - '!telemetry/**/*.md'\n") == 2
-
-
 def test_dependabot_bumps_the_lgtm_tag_after_a_cooldown() -> None:
     config = _read(ROOT / ".github" / "dependabot.yaml")
     entries = re.split(r"^  - package-ecosystem: ", config, flags=re.MULTILINE)[1:]

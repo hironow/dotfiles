@@ -1,0 +1,14 @@
+name: Check
+on: [push]
+jobs:
+  # ruleid: workflow-job-has-a-timeout
+  no-limit:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  # ok: workflow-job-has-a-timeout
+  limited:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi

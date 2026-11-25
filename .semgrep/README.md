@@ -6,6 +6,7 @@ sits next to its test fixture (same base name, any extension).
 | Rule file | What it checks | Runs in |
 | --- | --- | --- |
 | [`rules/meta/compose-v1-filename-must-be-sentineled.yaml`](rules/meta/compose-v1-filename-must-be-sentineled.yaml) | In rule files (`ROOT_AGENTS.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`), every literal Compose v1 filename sits inside a `<prohibited-filename>` tag, so a rule file never breaks its own rule | `just check`, `just meta-semgrep` |
+| [`rules/workflow/`](rules/workflow/) | The policies the GitHub Actions workflows keep: actions pinned to a full SHA, draft pull requests skipped and woken on `ready_for_review`, caches saved only on push, gates that run `always()`, required checks without path filters, no cached Go test results, pwsh steps that stop on a failed command, pinned just, no `continue-on-error`, verified downloads, and the retired tools kept out (ADR-0093) | `just check` (over `.github/workflows/` and the `justfile`) |
 | [`rules/python/python-custom.yaml`](rules/python/python-custom.yaml) | Python style rules (specific class names, no `os.path`, no `print`, and more) | `just emu-lint`, on `emulator/` only |
 
 `just semgrep-test` (part of `just ci`) runs every rule against its fixture.

@@ -1,0 +1,6 @@
+name: Check
+on:
+  pull_request:
+    # ruleid: workflow-required-check-always-reports
+    paths: ['src/**']
+jobs: {}

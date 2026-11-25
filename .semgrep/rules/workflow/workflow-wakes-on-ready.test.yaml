@@ -1,0 +1,12 @@
+name: Fixture
+on:
+  pull_request:
+    # This workflow should wake on ready_for_review, but the list below forgets it.
+    types: [opened, synchronize]
+jobs:
+  a:
+    # ruleid: workflow-draft-guard-wakes-on-ready
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,12 @@
+name: Fixture
+on: [push]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      # ruleid: workflow-actionlint-download-is-verified
+      ACTIONLINT_VERSION: 1.7.7
+      # ruleid: workflow-pwsh-download-is-verified
+      PWSH_TARBALL_URL: https://example.invalid/powershell.tar.gz
+    steps:
+      - run: curl -fsSLO "$PWSH_TARBALL_URL" && tar -xzf powershell.tar.gz

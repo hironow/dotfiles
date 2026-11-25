@@ -1,0 +1,10 @@
+rules:
+  # Go's test cache does not track files a test reads outside its module;
+  # the job that runs `just go-test` must not take results from it.
+  - id: workflow-go-test-takes-no-cached-result
+    message: The job that runs `just go-test` must set `GOFLAGS=-count=1` itself, so no test result comes from the cache.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s+(?:-\s+)?run: just go-test\s*$'
+      - pattern-not-regex: '(?m)^  [A-Za-z0-9_-]+:\n(?:(?=[ \n])(?!  \S)[^\n]*\n)*?[^\n]*GOFLAGS=-count=1[^\n]*\n(?:(?=[ \n])(?!  \S)[^\n]*\n)*'

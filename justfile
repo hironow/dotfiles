@@ -1114,6 +1114,8 @@ check-except-go:
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     {{ SEMGREP }} --config .semgrep/rules/meta/ --error .
+    @echo '🔎 Workflow policies (semgrep, ADR-0093)...'
+    {{ SEMGREP }} --config .semgrep/rules/workflow/ --error .github/workflows/ justfile
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{ UV_RUN }} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'

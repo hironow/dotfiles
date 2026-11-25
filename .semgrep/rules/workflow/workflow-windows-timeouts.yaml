@@ -1,0 +1,26 @@
+rules:
+  # The Windows test jobs of Unit Tests (shards, PowerShell 5.1, Go) had
+  # their timeouts checked too.
+  - id: workflow-windows-unit-job-has-a-timeout
+    message: The Windows shard, PowerShell 5.1 and Go jobs of Unit Tests set `timeout-minutes`.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          name: Unit Tests
+          ...
+          jobs:
+            ...
+      - pattern: |
+          $JOB:
+            ...
+            runs-on: $R
+            ...
+      - metavariable-regex:
+          metavariable: $JOB
+          regex: '\A(windows-unit-shard|windows-powershell|windows-go)\Z'
+      - pattern-not: |
+          $JOB:
+            ...
+            timeout-minutes: $T
+            ...

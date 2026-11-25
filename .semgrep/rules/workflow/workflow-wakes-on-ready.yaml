@@ -1,0 +1,10 @@
+rules:
+  # A workflow that skips drafts would never run on a pull request that is
+  # marked ready unless it also listens to ready_for_review.
+  - id: workflow-draft-guard-wakes-on-ready
+    message: A workflow that skips draft pull requests must also run on `ready_for_review`.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'github\.event\.pull_request\.draft == false'
+      - pattern-not-regex: '(?ms)\A.*^\s+types: \[[^\]\n]*\bready_for_review\b[^\]\n]*\].*'
