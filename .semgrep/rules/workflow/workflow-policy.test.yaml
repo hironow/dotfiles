@@ -1,0 +1,158 @@
+name: Fixture
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+jobs:
+  # ruleid: workflow-pull-request-job-skips-drafts
+  no-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  # ruleid: workflow-pull-request-job-condition-skips-drafts
+  other-guard:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  # ok: workflow-pull-request-job-skips-drafts
+  guarded:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      # ruleid: workflow-action-pinned-to-a-full-sha
+      - uses: actions/checkout@v7
+      # ruleid: workflow-action-pinned-to-a-full-sha
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # ok: workflow-action-pinned-to-a-full-sha
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ok: workflow-action-pinned-to-a-full-sha
+      - uses: ./.github/actions/local
+      # ruleid: workflow-cache-save-only-on-push
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+      # ruleid: workflow-cache-save-only-on-push
+      - if: github.event_name == 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+      # ok: workflow-cache-save-only-on-push
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+      # ruleid: workflow-cache-save-only-on-push
+      - if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+      - name: Install just
+        # ruleid: workflow-just-install-is-pinned
+        run: uv tool install rust-just
+      - name: Install pinned just
+        # ok: workflow-just-install-is-pinned
+        run: uv tool install rust-just==1.59.0
+      - run: echo hi
+        # ruleid: workflow-no-continue-on-error
+        continue-on-error: true
+      # ruleid: workflow-no-third-party-claudelint
+      - run: bunx claude-code-lint .
+      # ruleid: workflow-no-retired-coder-stack
+      - run: tofu -chdir=tofu/exe/ plan
+      # ruleid: workflow-no-devcontainers-ci-action
+      - uses: devcontainers/ci@3d3c42e5aac5ba805825da76410c181273ba90b1 # v0.3.0
+      # ruleid: workflow-no-sandbox-switch
+      - if: vars.RUN_SANDBOX_TESTS == 'true'
+        run: echo hi
+      # ruleid: workflow-tofu-cache-keeps-the-lock-file
+      - run: echo "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=1" >> "$GITHUB_ENV"
+      # ok: workflow-tofu-cache-keeps-the-lock-file
+      - run: unset TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE
+  # ruleid: workflow-gate-runs-always, workflow-pull-request-job-skips-drafts
+  gate-without-condition:
+    needs: [guarded]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  # ruleid: workflow-gate-runs-always
+  gate-without-always:
+    needs: [guarded]
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  # ok: workflow-gate-runs-always
+  gate:
+    needs: [guarded]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.guarded.result }}" = success
+  windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    steps:
+      - name: Default shell, two commands
+        # ruleid: workflow-pwsh-step-stops-on-a-failed-command
+        run: |
+          uv tool install rust-just==1.59.0
+          just check
+      # ruleid: workflow-pwsh-step-stops-on-a-failed-command
+      - name: Explicit pwsh, two commands
+        shell: pwsh
+        run: |
+          uv tool install rust-just==1.59.0
+          just check
+      # ok: workflow-pwsh-step-stops-on-a-failed-command
+      - name: Guarded
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          uv tool install rust-just==1.59.0
+          just check
+      - name: One command
+        # ok: workflow-pwsh-step-stops-on-a-failed-command
+        run: just check
+      # ok: workflow-pwsh-step-stops-on-a-failed-command
+      - name: Bash
+        shell: bash
+        run: |
+          uv tool install rust-just==1.59.0
+          just check
+  shards:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: [1, 2]
+    steps:
+      # ruleid: workflow-cache-save-has-one-writer
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+      # ok: workflow-cache-save-has-one-writer
+      - if: github.event_name == 'push' && matrix.group == 1
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: x
+          key: k
+  windows-pwsh-default:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Default pwsh, two commands
+        # ruleid: workflow-pwsh-step-stops-on-a-failed-command
+        run: |
+          uv tool install rust-just==1.59.0
+          just check

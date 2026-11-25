@@ -1,0 +1,11 @@
+name: Emulator fixture
+on: [push]
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -m tests.utils.isolation start
+      # ruleid: workflow-emulator-ci-keeps-shared-state
+      - run: docker stop "$(docker ps -q)"
+      - if: always()
+        run: python -m tests.utils.isolation cleanup

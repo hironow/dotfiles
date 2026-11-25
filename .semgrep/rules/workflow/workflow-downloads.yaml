@@ -1,0 +1,17 @@
+rules:
+  # A downloaded tool is checked against its pinned SHA-256 before it runs.
+  - id: workflow-actionlint-download-is-verified
+    message: Verify the actionlint download against ACTIONLINT_SHA256 (`sha256sum -c`).
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s+ACTIONLINT_VERSION:'
+      - pattern-not-regex: '(?s)\A.*ACTIONLINT_SHA256:.*sha256sum -c.*'
+
+  - id: workflow-pwsh-download-is-verified
+    message: Verify the PowerShell download against PWSH_TARBALL_SHA256 (`sha256sum --check --strict`) before extracting it.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s+PWSH_TARBALL_URL:'
+      - pattern-not-regex: '(?s)\A.*PWSH_TARBALL_SHA256:.*sha256sum --check --strict.*tar -xzf.*'

@@ -1,0 +1,255 @@
+rules:
+  # ADR-0003: every action is pinned to a full commit SHA, with its version in
+  # a comment, so a moved tag cannot change what runs.
+  - id: workflow-action-pinned-to-a-full-sha
+    message: Pin the action to a full commit SHA and name its version in a comment (`@<40 hex> # vX.Y.Z`).
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s*-?\s*uses:\s+(?!\./|docker://)[^\s@]+@(?![0-9a-f]{40}\s+#\s+v\d)\S*.*$'
+
+  # CI does not run on draft pull requests (AGENTS.md "Git / PR").
+  - id: workflow-pull-request-job-skips-drafts
+    message: In a workflow that runs on pull_request, give every job an `if:` that skips draft pull requests.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          on:
+            ...
+            pull_request: $PR
+            ...
+          ...
+          jobs:
+            ...
+      - pattern: |
+          $JOB:
+            ...
+            runs-on: $R
+            ...
+      - pattern-not: |
+          $JOB:
+            ...
+            if: $COND
+            ...
+
+  - id: workflow-pull-request-job-condition-skips-drafts
+    message: The job's `if:` must skip draft pull requests (`github.event.pull_request.draft == false`).
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          on:
+            ...
+            pull_request: $PR
+            ...
+          ...
+          jobs:
+            ...
+      - pattern: |
+          $JOB:
+            ...
+            if: $COND
+            ...
+      - metavariable-regex:
+          metavariable: $COND
+          regex: '\A(?![\s\S]*github\.event\.pull_request\.draft == false)'
+
+  # ci-speed.md: the default branch seeds caches; a pull request only restores.
+  - id: workflow-cache-save-only-on-push
+    message: >-
+      Save a cache only on a push: the `if:` is `github.event_name == 'push'`, optionally `&& matrix.<key> == <value>`, and nothing else.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  - uses: $ACTION
+                    ...
+              - pattern-not: |
+                  - uses: $ACTION
+                    ...
+                    if: $COND
+                    ...
+          - patterns:
+              - pattern: |
+                  - uses: $ACTION
+                    ...
+                    if: $COND
+                    ...
+              - metavariable-regex:
+                  metavariable: $COND
+                  regex: "\\A(?!\\s*(?:\\$\\{\\{\\s*)?github\\.event_name == 'push'(?:\\s*&&\\s*matrix\\.[A-Za-z_]+ == ['\"]?[A-Za-z0-9_-]+['\"]?)?(?:\\s*\\}\\})?\\s*\\Z)"
+      - metavariable-regex:
+          metavariable: $ACTION
+          regex: '\Aactions/cache/save@'
+
+  # A cache key cannot be overwritten: in a matrix job, one cell saves.
+  - id: workflow-cache-save-has-one-writer
+    message: >-
+      In a matrix job, only one cell saves the cache: the `if:` ends with `&& matrix.<key> == <value>`.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          strategy: $STRATEGY
+          ...
+      - pattern: |
+          - uses: $ACTION
+            ...
+            if: $COND
+            ...
+      - metavariable-regex:
+          metavariable: $ACTION
+          regex: '\Aactions/cache/save@'
+      - metavariable-regex:
+          metavariable: $COND
+          regex: '\A(?![\s\S]*&&\s*matrix\.[A-Za-z_]+ == [''"]?[A-Za-z0-9_-]+[''"]?\s*(?:\}\})?\s*\Z)'
+
+  # frontend-ci.md rule 5: a job that gathers others' results runs even when
+  # one of them failed or was skipped, so a skip cannot pass as success.
+  - id: workflow-gate-runs-always
+    message: A job with `needs:` gathers results; its `if:` must include `always()` so a failed or skipped job cannot pass as a skip.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          jobs:
+            ...
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  $JOB:
+                    ...
+                    needs: $NEEDS
+                    ...
+              - pattern-not: |
+                  $JOB:
+                    ...
+                    if: $COND
+                    ...
+          - patterns:
+              - pattern: |
+                  $JOB:
+                    ...
+                    needs: $NEEDS
+                    ...
+                    if: $COND
+                    ...
+              - metavariable-regex:
+                  metavariable: $COND
+                  regex: '\A(?![\s\S]*always\(\))'
+
+  # pwsh does not stop at a failed native command unless this is set, and
+  # the step then takes the last command's exit code.
+  - id: workflow-pwsh-step-stops-on-a-failed-command
+    message: A multi-command pwsh step must start with `$PSNativeCommandUseErrorActionPreference = $true`.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              shell: pwsh
+              ...
+              run: $SCRIPT
+          - pattern: |
+              run: $SCRIPT
+              ...
+              shell: pwsh
+          - patterns:
+              - pattern-inside: |
+                  runs-on: $OS
+                  ...
+              - metavariable-regex:
+                  metavariable: $OS
+                  regex: windows
+              - pattern-not-inside: |
+                  defaults:
+                    run:
+                      shell: $DEFAULT
+                  ...
+              - pattern: |
+                  run: $SCRIPT
+              - pattern-not-inside: |
+                  shell: $ANY
+                  ...
+                  run: $SCRIPT
+              - pattern-not-inside: |
+                  run: $SCRIPT
+                  ...
+                  shell: $ANY
+          - patterns:
+              - pattern-inside: |
+                  defaults:
+                    run:
+                      shell: pwsh
+                  ...
+              - pattern: |
+                  run: $SCRIPT
+              - pattern-not-inside: |
+                  shell: $ANY
+                  ...
+                  run: $SCRIPT
+              - pattern-not-inside: |
+                  run: $SCRIPT
+                  ...
+                  shell: $ANY
+      - metavariable-regex:
+          metavariable: $SCRIPT
+          regex: '(?s)\A\s*(?!\$PSNativeCommandUseErrorActionPreference = \$true)\S[^\n]*\n\s*\S'
+
+  - id: workflow-just-install-is-pinned
+    message: Install just at a pinned version (`rust-just==X.Y.Z`).
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'tool install rust-just(?!==\d+\.\d+\.\d+)'
+
+  # ADR-0088 rule 2: no hidden failure.
+  - id: workflow-no-continue-on-error
+    message: A failing step or job must fail the run; do not use continue-on-error (ADR-0088).
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s+continue-on-error:'
+
+  # ADR-0041: the third-party claudelint is retired; CI runs the official
+  # `claude plugin validate`.
+  - id: workflow-no-third-party-claudelint
+    message: The third-party claudelint is retired (ADR-0041); run `claude plugin validate --strict`.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'claude-code-lint'
+
+  - id: workflow-no-retired-coder-stack
+    message: The Coder and exe stacks are retired; no workflow reaches them.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'tofu/exe/|Coder template|publish-devcontainer'
+
+  # ADR-0089: the dev container tests use the rootless native bootstrap and
+  # no repository variable switches them off.
+  - id: workflow-no-devcontainers-ci-action
+    message: Bootstrap with `.devcontainer/ci-bootstrap.sh`, not devcontainers/ci.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'devcontainers/ci@'
+
+  - id: workflow-no-sandbox-switch
+    message: No repository variable switches the dev container tests (ADR-0089).
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'RUN_SANDBOX_TESTS'
+
+  # OpenTofu must not let its provider cache rewrite the lock file.
+  - id: workflow-tofu-cache-keeps-the-lock-file
+    message: Do not let the provider cache break the dependency lock file.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'plugin_cache_may_break_dependency_lock_file|TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE\s*[=:]'

@@ -1,0 +1,26 @@
+rules:
+  # ci-speed.md: each job has a limit for a single run. These workflows'
+  # jobs all had one, checked by the tests this rule replaced.
+  - id: workflow-job-has-a-timeout
+    message: Every job of Check, Frontend CI, Small checks and Podman GC PowerShell compatibility sets `timeout-minutes`.
+    severity: ERROR
+    languages: [yaml]
+    patterns:
+      - pattern-inside: |
+          name: $WORKFLOW
+          ...
+          jobs:
+            ...
+      - metavariable-regex:
+          metavariable: $WORKFLOW
+          regex: '\A(Check|Frontend CI|Small checks|Podman GC PowerShell compatibility)\Z'
+      - pattern: |
+          $JOB:
+            ...
+            runs-on: $R
+            ...
+      - pattern-not: |
+          $JOB:
+            ...
+            timeout-minutes: $T
+            ...

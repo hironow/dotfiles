@@ -1,0 +1,14 @@
+name: Just Sandbox Tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # ruleid: workflow-sandbox-ignores-only-the-reviewed-paths
+    paths-ignore:
+      - 'docs/**'
+      - 'emulator/**'
+      - 'telemetry/**'
+      - 'site/**'
+      - 'tofu/**'
+      - 'tests/unit/**'
+      - 'tests/durations/**'
+jobs: {}

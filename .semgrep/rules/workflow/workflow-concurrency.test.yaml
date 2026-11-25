@@ -1,0 +1,11 @@
+name: Podman GC PowerShell compatibility
+on: [push]
+concurrency:
+  group: ${{ github.run_id }}
+  cancel-in-progress: true
+# ruleid: workflow-gc-compat-cancels-stale-runs
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,19 @@
+name: Unit Tests
+on: [push]
+jobs:
+  # ruleid: workflow-windows-unit-job-has-a-timeout
+  windows-go:
+    runs-on: windows-latest
+    steps:
+      - run: echo hi
+  # ok: workflow-windows-unit-job-has-a-timeout
+  windows-powershell:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo hi
+  # ok: workflow-windows-unit-job-has-a-timeout
+  windows-jev:
+    runs-on: windows-latest
+    steps:
+      - run: echo hi

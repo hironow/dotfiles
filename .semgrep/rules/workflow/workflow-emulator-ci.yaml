@@ -1,0 +1,10 @@
+rules:
+  # The emulator CI runs through tests.utils.isolation; it never stops or
+  # removes containers it did not start.
+  - id: workflow-emulator-ci-keeps-shared-state
+    message: The emulator CI cleans up only through tests.utils.isolation; never kill by port or by a shared Compose project.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: 'publish=\$port|docker stop|docker rm|docker compose down|sudo lsof'
+      - pattern-regex: '(?s)\Aname: [^\n]*\n.*tests\.utils\.isolation.*'

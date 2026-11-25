@@ -1,0 +1,12 @@
+rules:
+  # ADR-0089: a directory joins the dev container tests' paths-ignore only
+  # when every reader of it is a `just check` leg. Widening the list makes
+  # the job skip changes it must test, and CI stays green.
+  - id: workflow-sandbox-ignores-only-the-reviewed-paths
+    message: The dev container tests' paths-ignore is the reviewed list (ADR-0089); change it together with this rule.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^    paths-ignore:'
+      - pattern-regex: '(?s)\Aname: Just Sandbox Tests\n.*'
+      - pattern-not-regex: "(?m)^    paths-ignore:\\n      - 'docs/\\*\\*/\\*\\.md'\\n      - 'emulator/\\*\\*'\\n      - 'telemetry/\\*\\*'\\n      - 'site/\\*\\*'\\n      - 'tofu/\\*\\*'\\n      - 'tests/unit/\\*\\*'\\n      - 'tests/durations/\\*\\*'\\n(?!      - )"

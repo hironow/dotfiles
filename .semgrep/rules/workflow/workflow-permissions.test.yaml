@@ -1,0 +1,8 @@
+name: Podman GC PowerShell compatibility
+on: [push]
+# ruleid: workflow-gc-compat-token-reads-only
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

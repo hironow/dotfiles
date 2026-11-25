@@ -1,0 +1,10 @@
+rules:
+  # A required check that a path filter skips never reports, and a pull
+  # request waits for it forever (frontend-ci.md).
+  - id: workflow-required-check-always-reports
+    message: The workflows behind required checks (Check, Frontend CI, Unit Tests, Small checks) must not filter paths.
+    severity: ERROR
+    languages: [generic]
+    patterns:
+      - pattern-regex: '(?m)^\s+paths(-ignore)?:'
+      - pattern-regex: '(?s)\Aname: (Check|Frontend CI|Unit Tests|Small checks)\n.*'
