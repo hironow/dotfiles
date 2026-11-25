@@ -37,7 +37,7 @@ func run(args []string, stdout, stderr io.Writer, src load.Source, all []rules.R
 		return 0
 	}
 	if src == nil {
-		src = load.Files{Root: *root, YQ: *yq}
+		src = load.Files{Root: *root, YQ: *yq, Git: "git"}
 	}
 	inputs := rules.Inputs{}
 	failed := false

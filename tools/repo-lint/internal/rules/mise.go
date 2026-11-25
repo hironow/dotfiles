@@ -39,7 +39,7 @@ func miseAgentTools() Rule {
 	return Rule{
 		ID:     "mise-agent-tools-on-every-os",
 		Why:    "rtk and headroom (with its proxy) run in every agent session, on every OS (ADR 0047)",
-		Inputs: []Input{{hostConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: "mise-agent-tools-on-every-os", path: hostConfig}
 			for _, name := range []string{"rtk", "pypi:headroom-ai"} {
@@ -70,7 +70,7 @@ func miseAWSCLI() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "the AWS CLI is AWS's official archive per CPU, checksum-pinned, with no install script",
-		Inputs: []Input{{hostConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: hostConfig}
 			spec, ok := hostTool(in, "http:aws")
@@ -143,7 +143,7 @@ func miseMQ() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "mq installs one explicit, checksum-pinned asset per platform",
-		Inputs: []Input{{hostConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: hostConfig}
 			spec, ok := hostTool(in, "github:harehare/mq")
@@ -194,7 +194,7 @@ func miseHostSettings() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "the host keeps mise's own cooldown off, installs npm tools with bun, tracks the newest release, and turns telemetry off",
-		Inputs: []Input{{hostConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: hostConfig}
 			cfg := in[hostConfig]
@@ -236,40 +236,34 @@ func miseAgeExemptPins() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "the tools that skip the release-age cooldown are exact pins, the same on host and image",
-		Inputs: []Input{{hostConfig, TOML}, {imageConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}, {Path: imageConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
-			var out []Finding
+			r := &report{rule: id, path: imageConfig}
 			const cli = "npm:@devcontainers/cli"
 			var versions []string
 			for _, path := range []string{hostConfig, imageConfig} {
-				r := &report{rule: id, path: path}
 				spec, ok := table(in[path], "tools", cli)
 				if !ok {
-					r.add("[tools] must declare %s as a table with version and bun_args", cli)
-					out = append(out, r.out...)
+					r.addAt(path, "[tools] must declare %s as a table with version and bun_args", cli)
 					continue
 				}
 				for key := range spec {
 					if key != "version" && key != "bun_args" {
-						r.add("%s holds only version and bun_args, not %s", cli, key)
+						r.addAt(path, "%s holds only version and bun_args, not %s", cli, key)
 					}
 				}
 				v, _ := str(spec, "version")
 				if !exactVersion.MatchString(v) {
-					r.add("%s version must be an exact x.y.z, got %q", cli, v)
+					r.addAt(path, "%s version must be an exact x.y.z, got %q", cli, v)
 				}
 				versions = append(versions, v)
 				if b, _ := str(spec, "bun_args"); b != "--minimum-release-age=0" {
-					r.add("%s bun_args must be \"--minimum-release-age=0\", got %q", cli, b)
+					r.addAt(path, "%s bun_args must be \"--minimum-release-age=0\", got %q", cli, b)
 				}
-				out = append(out, r.out...)
 			}
 			if len(versions) == 2 && versions[0] != versions[1] {
-				r := &report{rule: id, path: imageConfig}
 				r.add("%s version %q must equal the host's %q", cli, versions[1], versions[0])
-				out = append(out, r.out...)
 			}
-			r := &report{rule: id, path: imageConfig}
 			const compose = "pypi:podman-compose"
 			if spec, ok := table(in[imageConfig], "tools", compose); !ok {
 				r.add("[tools] must declare %s", compose)
@@ -281,7 +275,7 @@ func miseAgeExemptPins() Rule {
 					r.add("%s uvx_args must hold --exclude-newer 0d, got %q", compose, v)
 				}
 			}
-			return append(out, r.out...)
+			return r.out
 		},
 	}
 }
@@ -291,7 +285,7 @@ func miseImageBakesGoLint() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "the image bakes Go and golangci-lint, so `just check` runs go-lint inside it",
-		Inputs: []Input{{imageConfig, TOML}},
+		Inputs: []Input{{Path: imageConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: imageConfig}
 			for _, name := range []string{"go", "aqua:golangci/golangci-lint"} {
@@ -311,7 +305,7 @@ func misePlaywrightCLIVersion() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "the playwright-cli skill runs `playwright-cli` from PATH; it is `latest` or an exact pin, never a range or `next`",
-		Inputs: []Input{{hostConfig, TOML}},
+		Inputs: []Input{{Path: hostConfig, Format: TOML}},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: hostConfig}
 			spec, ok := hostTool(in, "npm:@playwright/cli")

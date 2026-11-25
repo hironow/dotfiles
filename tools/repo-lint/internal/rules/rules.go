@@ -12,9 +12,9 @@ import (
 // Format says how the shell decodes an input before a rule reads it.
 type Format string
 
-// The formats. Text is the file as a string; the others are the value the
-// file's JSON form decodes to (map[string]any, []any, string, float64, bool,
-// nil).
+// The formats. Text is the file as a string with LF line ends; the others are
+// the value the file's JSON form decodes to (map[string]any, []any, string,
+// float64, bool, nil).
 const (
 	Text Format = "text"
 	JSON Format = "json"
@@ -22,10 +22,13 @@ const (
 	YAML Format = "yaml"
 )
 
-// Input is one file a rule reads, relative to the repository root.
+// Input is one file a rule reads, relative to the repository root. With Glob
+// set, Path is a git pathspec glob (`**` spans directories), and the input is
+// a map from each tracked file it matches to that file's decoded value.
 type Input struct {
 	Path   string
 	Format Format
+	Glob   bool
 }
 
 // Inputs maps each input path to its decoded value.
@@ -61,6 +64,18 @@ func All() []Rule {
 		miseImageBakesGoLint(),
 		misePlaywrightCLIVersion(),
 		caIncidentFloors(),
+		emulatorGroups(),
+		emulatorNoExporters(),
+		emulatorEnvPorts(),
+		emulatorMCPInspector(),
+		emulatorGoBuilders(),
+		emulatorHealthDockerfile(),
+		emulatorHealthServices(),
+		telemetryStack(),
+		telemetryDependabot(),
+		rootLintCoversTelemetry(),
+		dependabotPythonHeld(),
+		dependabotUVSyncedTools(),
 	}
 }
 
@@ -96,7 +111,12 @@ type report struct {
 }
 
 func (r *report) add(format string, args ...any) {
-	r.out = append(r.out, Finding{Path: r.path, Rule: r.rule, Message: fmt.Sprintf(format, args...)})
+	r.addAt(r.path, format, args...)
+}
+
+// addAt adds a finding for another path than the report's.
+func (r *report) addAt(path, format string, args ...any) {
+	r.out = append(r.out, Finding{Path: path, Rule: r.rule, Message: fmt.Sprintf(format, args...)})
 }
 
 // at walks nested tables by key.
@@ -146,6 +166,20 @@ func strs(v any, keys ...string) []string {
 			return nil
 		}
 		out = append(out, s)
+	}
+	return out
+}
+
+// tables is the tables in the list at the keys; an item that is not a table is
+// left out.
+func tables(v any, keys ...string) []map[string]any {
+	got, _ := at(v, keys...)
+	items, _ := got.([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if t, ok := item.(map[string]any); ok {
+			out = append(out, t)
+		}
 	}
 	return out
 }

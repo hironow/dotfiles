@@ -1,6 +1,5 @@
 """RTTM uses the same synchronized, cooldown-exempt lint tools as the repo."""
 
-import re
 import tomllib
 from pathlib import Path
 
@@ -31,22 +30,6 @@ def test_rttm_ty_has_its_own_scope_and_import_path() -> None:
     assert config["src"]["include"] == ["to_eaf.py", "visualize.py", "tests"]
     assert config["environment"]["extra-paths"] == ["."]
     assert config["terminal"]["error-on-warning"] is True
-
-
-def test_synchronized_tools_cannot_be_bumped_by_one_dependabot_entry() -> None:
-    text = (ROOT / ".github/dependabot.yaml").read_text(encoding="utf-8")
-    blocks = re.split(r"^  - package-ecosystem: ", text, flags=re.MULTILINE)[1:]
-    uv: dict[str, str] = {}
-    for block in blocks:
-        if not block.startswith('"uv"'):
-            continue
-        directory = re.search(r'^    directory: "([^"]+)"', block, re.MULTILINE)
-        assert directory is not None, block
-        uv[directory[1]] = block
-    for project in ("/", "/emulator", "/tools/rttm"):
-        ignored = uv[project].split("    ignore:\n", 1)[1]
-        for tool in ("ruff", "ty"):
-            assert f'- dependency-name: "{tool}"' in ignored
 
 
 def test_rttm_tasks_are_reached_by_root_gates() -> None:

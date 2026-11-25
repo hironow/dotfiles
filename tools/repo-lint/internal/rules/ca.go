@@ -87,12 +87,10 @@ func caIncidentFloors() Rule {
 	return Rule{
 		ID:     id,
 		Why:    "frozen and exact pins stay at or above the CA incident's reviewed floors",
-		Inputs: []Input{{imageConfig, TOML}, {hostConfig, TOML}, {featureInstall, Text}, {caIncident, JSON}},
+		Inputs: []Input{{Path: imageConfig, Format: TOML}, {Path: hostConfig, Format: TOML}, {Path: featureInstall, Format: Text}, {Path: caIncident, Format: JSON}},
 		Check: func(in Inputs) []Finding {
-			var out []Finding
-			add := func(path, format string, args ...any) {
-				out = append(out, Finding{Path: path, Rule: id, Message: fmt.Sprintf(format, args...)})
-			}
+			r := &report{rule: id}
+			add := r.addAt
 			floors, _ := table(in[caIncident], "floors")
 			if pending := strs(in[caIncident], "pending"); slices.Contains(pending, "bun") {
 				add(caIncident, "patched Bun must not remain pending")
@@ -145,7 +143,7 @@ func caIncidentFloors() Rule {
 				}
 				add(featureInstall, "RUST_TOOLCHAIN %q must equal the host's rust %q", got, rust)
 			}
-			return out
+			return r.out
 		},
 	}
 }

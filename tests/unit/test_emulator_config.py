@@ -1,9 +1,9 @@
-"""Static checks that keep the emulator's side files in step with compose.yaml.
+"""Static checks that keep the local `ci-emu` gate in step with the emulator CI.
 
-The env example, the local `ci-emu` gate, and the published ports each restate
-something compose.yaml or the emulator workflow already decides. These tests
-read both sides, so a port or a step that changes in one place cannot leave the
-other describing a stack that no longer exists.
+The local `ci-emu` recipe restates what the emulator workflow already decides.
+These tests read both sides, so a step that changes in one place cannot leave
+the other describing a gate that no longer exists. repo-lint holds the
+policies on compose.yaml and the env example (the emulator-* rules).
 """
 
 from __future__ import annotations
@@ -18,31 +18,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-EMULATOR = ROOT / "emulator"
 WORKFLOW = ROOT / ".github" / "workflows" / "test-emulators.yaml"
-
-# A published port is `"127.0.0.1:<host>:<container>"`, where <host> is a
-# number or `${VAR:-<default>}`.
-_PUBLISHED = re.compile(r'"127\.0\.0\.1:(?:\$\{\w+:-(\d+)\}|(\d+)):(\d+)"')
-_ENV_LOCALHOST = re.compile(r"^export (\w+)=localhost:(\d+)\s*$", re.MULTILINE)
-
-
-def _published_host_ports() -> set[str]:
-    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
-    return {default or fixed for default, fixed, _ in _PUBLISHED.findall(text)}
-
-
-def test_env_example_localhost_ports_are_published_host_ports() -> None:
-    published = _published_host_ports()
-    env = (EMULATOR / ".env.local.example").read_text(encoding="utf-8")
-    pairs = _ENV_LOCALHOST.findall(env)
-    assert pairs, "the env example names no localhost:<port> address"
-    stale = {name: port for name, port in pairs if port not in published}
-    assert not stale, (
-        f"{stale} point at ports compose.yaml does not publish on the host. "
-        "Use the default host port from emulator/compose.yaml."
-    )
-
 
 _SERVICES = "firebase-emulator,spanner-emulator,pgadapter,postgres"
 _MANIFEST = "$DOTFILES_PODMAN_RUN_MANIFEST"
@@ -244,40 +220,6 @@ def test_ci_emu_contract_is_nonempty_and_rejects_shared_cleanup(
         _isolation_contract(text + "\n" + insertion if insertion else "", local=local)
 
 
-def _service_block(name: str) -> str:
-    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
-    match = re.search(
-        rf"^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:\n|^\S)",
-        text,
-        re.MULTILINE | re.DOTALL,
-    )
-    assert match, f"compose.yaml has no {name} service"
-    return match.group(1)
-
-
-def test_mcp_inspector_publishes_its_proxy_for_the_browser() -> None:
-    # The Inspector UI runs in the browser and calls its proxy directly on
-    # <page host>:6277 (upstream client/src/utils/configUtils.ts). The proxy
-    # accepts only origins in ALLOWED_ORIGINS and needs its session token.
-    block = _service_block("mcp-inspector")
-    ports = re.findall(r'^\s+- "([^"]+)"', block, re.MULTILINE)
-    assert ports, "mcp-inspector publishes no port"
-    assert all(port.startswith("127.0.0.1:") for port in ports), (
-        f"bind every Inspector port to loopback: {ports}"
-    )
-    assert "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274" in ports
-    assert any(port.endswith(":6277") for port in ports), (
-        "publish the proxy port 6277; the browser UI cannot reach it otherwise"
-    )
-    origins = re.search(r"^\s+- ALLOWED_ORIGINS=(\S+)$", block, re.MULTILINE)
-    assert origins, "set ALLOWED_ORIGINS so the proxy accepts the published UI"
-    assert "http://localhost:${MCP_INSPECTOR_PORT:-6274}" in origins.group(1).split(",")
-    assert re.search(r"^\s+- MCP_AUTO_OPEN_ENABLED=false$", block, re.MULTILINE), (
-        "turn off the auto-open; there is no browser inside the container"
-    )
-    assert "DANGEROUSLY_OMIT_AUTH" not in block, "keep the proxy's auth token"
-
-
 @pytest.mark.skipif(shutil.which("just") is None, reason="needs just to dump recipes")
 def test_ci_emu_contract_rejects_unknown_just_interpolation(tmp_path: Path) -> None:
     justfile = tmp_path / "justfile"
@@ -315,36 +257,3 @@ def test_ci_emu_contract_rejects_missing_invocations(local: bool, command: str) 
     mutated = "\n".join(line for line in lines if needle not in line)
     with pytest.raises(AssertionError):
         _isolation_contract(mutated, local=local)
-
-
-def _compose_groups() -> set[str]:
-    """The `emu-up-group` names: every Compose profile except the `cli` tools."""
-    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
-    blocks = re.findall(r"^    profiles:\n((?:      - .*\n)+)", text, re.MULTILINE)
-    profiles = {
-        p for b in blocks for p in re.findall(r"^      - (\S+)$", b, re.MULTILINE)
-    }
-    return profiles - {"cli"}
-
-
-def test_emulator_runs_no_prometheus_exporters() -> None:
-    # ADR 0072: nothing scrapes them since telemetry is upstream otel-lgtm.
-    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
-    assert not re.findall(r"^  ([\w-]+-exporter):$", text, re.MULTILINE)
-    assert "exporters" not in _compose_groups()
-
-
-@pytest.mark.parametrize(
-    ("path", "pattern", "separator"),
-    [
-        ("justfile", r"^# Groups: ([a-z ]+)\.$", " "),
-    ],
-)
-def test_documented_emulator_groups_match_compose_profiles(
-    path: str, pattern: str, separator: str
-) -> None:
-    text = (ROOT / path).read_text(encoding="utf-8")
-    found = re.search(pattern, text, re.MULTILINE)
-    assert found, f"{path} no longer lists the emu-up-group names"
-    names = {n.strip() for n in found[1].replace("\n", " ").split(separator)}
-    assert names - {""} == _compose_groups()

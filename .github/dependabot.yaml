@@ -172,7 +172,7 @@ updates:
       # still allowed. Revisit when upstream publishes 3.14 wheels.
       # Dependabot names an image without its registry: the FROM
       # docker.io/library/python is "library/python", and an ignore of "python"
-      # does not match it (tests/unit/test_dependabot_docker_python.py).
+      # does not match it (repo-lint dependabot-python-images-held-on-minor).
       - dependency-name: "library/python"
         update-types:
           - "version-update:semver-major"

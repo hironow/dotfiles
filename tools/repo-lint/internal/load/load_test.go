@@ -3,6 +3,7 @@ package load
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,6 +52,17 @@ func TestFilesReadsTextAndJSON(t *testing.T) {
 	}
 }
 
+// A Windows checkout with core.autocrlf=true has CRLF line ends; a rule's
+// line regexps see the same text as on Linux.
+func TestFilesReadsCRLFTextAsLF(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "Dockerfile", "FROM a AS b\r\nRUN c\r\n")
+	got, err := Files{Root: root}.Load(rules.Input{Path: "Dockerfile", Format: rules.Text})
+	if err != nil || got != "FROM a AS b\nRUN c\n" {
+		t.Fatalf("text = %#v, %v", got, err)
+	}
+}
+
 func TestFilesAsksYQForTOMLAndYAMLAsJSON(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "config/x.toml", "a = 1\n")
@@ -86,5 +98,26 @@ func TestFilesReportsWhatItCannotRead(t *testing.T) {
 		if _, err := files.Load(in); err == nil || !strings.Contains(err.Error(), in.Path) {
 			t.Errorf("%s as %s: error %v does not name the file", in.Path, in.Format, err)
 		}
+	}
+}
+
+func TestFilesReadsEveryTrackedFileAGlobMatches(t *testing.T) {
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.invalid"}, {"config", "user.name", "t"}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	write(t, root, "a/Dockerfile", "FROM a\n")
+	write(t, root, "b/c/Dockerfile.dev", "FROM c\n")
+	write(t, root, "b/notes.txt", "no\n")
+	write(t, root, "d/Dockerfile", "FROM untracked\n")
+	if out, err := exec.Command("git", "-C", root, "add", "a", "b").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
+	}
+	got, err := Files{Root: root, Git: "git"}.Load(rules.Input{Path: "**/Dockerfile*", Format: rules.Text, Glob: true})
+	want := map[string]any{"a/Dockerfile": "FROM a\n", "b/c/Dockerfile.dev": "FROM c\n"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("glob = %#v, %v; want %#v (tracked files only)", got, err, want)
 	}
 }
