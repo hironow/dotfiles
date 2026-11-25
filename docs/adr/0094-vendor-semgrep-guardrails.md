@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0014](0014-vendor-emulator-telemetry-from-submodules.md), [0090](0090-keep-one-justfile-no-modules.md), [0092](0092-generated-docs-code-as-spec-provable-glossary.md), [0093](0093-tests-check-code-not-file-text.md)
-- **consultation-trace**: the owner's requests in a Claude Code session on 2026-11-25 (19:34 and 21:25 JST), quoted in the pull request that adds this record ([PR #691](https://github.com/hironow/dotfiles/pull/691)); the owner accepted the record on 2026-11-26 ("どちらも承認します！(0093,94)、続けてください"), quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN)
+- **consultation-trace**: the owner's requests in a Claude Code session on 2026-11-25 (19:34 and 21:25 JST), quoted in the pull request that adds this record ([PR #691](https://github.com/hironow/dotfiles/pull/691)); the owner accepted the record on 2026-11-26 ("どちらも承認します！(0093,94)、続けてください"), quoted in [PR #697](https://github.com/hironow/dotfiles/pull/697)
 
 ## Plain summary
 
@@ -62,5 +62,5 @@ Restore the submodule from git history and unarchive the repository.
 ## Decision (2026-11-26)
 
 - [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 02:05 JST. After #691 had merged, the owner wrote "どちらも承認します！(0093,94)、続けてください" (translated: I approve both, 0093 and 0094; please continue). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN).
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 02:05 JST. After #691 had merged, the owner wrote "どちらも承認します！(0093,94)、続けてください" (translated: I approve both, 0093 and 0094; please continue). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #697](https://github.com/hironow/dotfiles/pull/697).
 - Action: done. #691 moved the rules, and the owner archived hironow/semgrep-guardrails (D6; the repository reads `archived: true` on 2026-11-26).
