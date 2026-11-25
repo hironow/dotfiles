@@ -22,10 +22,13 @@ const (
 	YAML Format = "yaml"
 )
 
-// Input is one file a rule reads, relative to the repository root.
+// Input is one file a rule reads, relative to the repository root. With Glob
+// set, Path is a git pathspec glob (`**` spans directories), and the input is
+// a map from each tracked file it matches to that file's decoded value.
 type Input struct {
 	Path   string
 	Format Format
+	Glob   bool
 }
 
 // Inputs maps each input path to its decoded value.

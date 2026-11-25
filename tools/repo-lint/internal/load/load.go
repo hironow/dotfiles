@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-json"
 	"github.com/hironow/dotfiles/tools/repo-lint/internal/rules"
@@ -24,10 +25,48 @@ type Source interface {
 type Files struct {
 	Root string
 	YQ   string
+	Git  string
 }
 
-// Load reads one input.
+// Load reads one input. A glob input becomes a map from each tracked file
+// the pathspec matches to its decoded value: `git ls-files` lists the files,
+// so nothing untracked (a scratch copy, a dependency folder) is read.
 func (f Files) Load(in rules.Input) (any, error) {
+	if in.Glob {
+		return f.glob(in)
+	}
+	return f.one(in)
+}
+
+func (f Files) glob(in rules.Input) (any, error) {
+	git := f.Git
+	if git == "" {
+		git = "git"
+	}
+	var stderr bytes.Buffer
+	// Audited: git with fixed arguments and a rule's pathspec. No shell runs.
+	// nosemgrep: dangerous-exec-command, go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	cmd := exec.Command(git, "-C", f.Root, "ls-files", "-z", "--", ":(glob)"+in.Path) //nolint:gosec // G204: audited above.
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files %s: %w: %s", in.Path, err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	files := map[string]any{}
+	for name := range strings.SplitSeq(strings.TrimSuffix(string(out), "\x00"), "\x00") {
+		if name == "" {
+			continue
+		}
+		v, err := f.one(rules.Input{Path: name, Format: in.Format})
+		if err != nil {
+			return nil, err
+		}
+		files[name] = v
+	}
+	return files, nil
+}
+
+func (f Files) one(in rules.Input) (any, error) {
 	path := filepath.Join(f.Root, filepath.FromSlash(in.Path))
 	switch in.Format {
 	case rules.Text:
