@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _bash_hook import run_bash
+from _bash_hook import bash_path, run_bash
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "plugins" / "autoreview" / "scripts"
@@ -262,6 +262,17 @@ def _git_repo(path: Path) -> Path:
     return path
 
 
+def _same_dir(printed: str, expected: Path) -> bool:
+    """Whether the script printed ``expected``. Git Bash on native Windows
+    prints `pwd` as /c/... and `git rev-parse` as C:/..., so compare in the
+    form each one uses."""
+    printed = printed.strip()
+    native = expected.resolve()
+    return printed in {native.as_posix(), bash_path(native)} or (
+        Path(printed).resolve() == native
+    )
+
+
 def test_resolve_guardrails_finds_the_rules_in_the_repository(tmp_path: Path) -> None:
     # given a repository whose rules live in .semgrep/rules/guardrails/
     repo = _git_repo(tmp_path / "repo")
@@ -271,7 +282,7 @@ def test_resolve_guardrails_finds_the_rules_in_the_repository(tmp_path: Path) ->
     result = run_bash(RESOLVE, cwd=repo, capture_output=True, text=True)
     # then it prints that directory
     assert result.returncode == 0, result.stderr
-    assert Path(result.stdout.strip()).resolve() == rules.resolve()
+    assert _same_dir(result.stdout, rules), result.stdout
 
 
 def test_resolve_guardrails_falls_back_to_the_plugins_own_repository(
@@ -295,7 +306,7 @@ def test_resolve_guardrails_falls_back_to_the_plugins_own_repository(
     )
     # then it prints the rules beside the plugin
     assert result.returncode == 0, result.stderr
-    assert Path(result.stdout.strip()).resolve() == rules.resolve()
+    assert _same_dir(result.stdout, rules), result.stdout
 
 
 def test_next_target_takes_every_rule_category_but_the_fixtures(
