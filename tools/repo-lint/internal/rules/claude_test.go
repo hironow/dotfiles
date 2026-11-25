@@ -20,6 +20,8 @@ func TestClaudeLintAcceptsTheValidateCommandAsTheShellRunsIt(t *testing.T) {
 	for _, run := range []string{
 		"bunx  @anthropic-ai/claude-code@2.1.226\tplugin validate  --strict .\n",
 		"for m in plugins/*/.claude-plugin/plugin.json; do\n  bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict \"$m\"\ndone\n",
+		"bunx @anthropic-ai/claude-code@2.1.226 \\\n  plugin validate --strict .\n",
+		"echo 'checking'\nbunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict . # the official one\n",
 	} {
 		in := Inputs{claudeLintWorkflow: claudeLintSteps(run)}
 		if got := findingsOf(t, claudeLintRunsOfficialValidate(), in); len(got) != 0 {
@@ -39,6 +41,15 @@ func TestClaudeLintRunsThePinnedOfficialValidate(t *testing.T) {
 		{"without --strict", replace("bunx @anthropic-ai/claude-code@2.1.226 plugin validate .\n"), "plugin validate"},
 		{"only echoed", replace("echo 'bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict .'\n"), "plugin validate"},
 		{"only in a comment", replace("# bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict .\ntrue\n"), "plugin validate"},
+		{"only in a multi-line echo", replace("echo '\nbunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict .\n'\n"), "plugin validate"},
+		{"only in a multi-line double-quoted string", replace("msg=\"\n  bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict .\n\"\necho \"$msg\"\n"), "plugin validate"},
+		{"the step turned off", func(in Inputs) {
+			steps := in[claudeLintWorkflow].(map[string]any)["jobs"].(map[string]any)["validate"].(map[string]any)["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["if"] = "${{ false }}"
+		}, "plugin validate"},
+		{"the job turned off", func(in Inputs) {
+			in[claudeLintWorkflow].(map[string]any)["jobs"].(map[string]any)["validate"].(map[string]any)["if"] = "false"
+		}, "plugin validate"},
 		{"validate only in a step name", func(in Inputs) {
 			in[claudeLintWorkflow] = map[string]any{"jobs": map[string]any{"validate": map[string]any{"steps": []any{
 				map[string]any{"name": "bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict", "run": "true\n"},
