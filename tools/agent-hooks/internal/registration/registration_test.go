@@ -192,3 +192,53 @@ func TestMainRefusesAnExplicitEmptyShell(t *testing.T) {
 		}
 	}
 }
+
+func registeredFalse() *bool {
+	off := false
+	return &off
+}
+
+// An unregistered hook keeps its support and block in the harness data but is
+// left out of the fragment; a block left with no hook goes, and an event left
+// with no block goes with it.
+func TestRenderLeavesUnregisteredHooksOut(t *testing.T) {
+	def, err := definition.Load(harnesses.FS, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks := []registration.Hook{
+		{ID: "formatter", Event: "post", Failure: "open", Registered: registeredFalse()},
+		{ID: "files-guard", Event: "pre", Failure: "closed"},
+		{ID: "secrets-guard", Event: "pre", Failure: "closed", Registered: registeredFalse()},
+		{ID: "command-guard", Event: "pre", Failure: "closed"},
+		{ID: "rtk", Event: "pre", Failure: "open"},
+	}
+	out, _, err := registration.Render(def, hooks, "linux", "", "/state/dotfiles/agent-hooks/current/claude/agent-hook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, gone := range []string{`"PostToolUse"`, `"formatter"`, `"secrets-guard"`} {
+		if strings.Contains(text, gone) {
+			t.Errorf("the fragment still has %s: %s", gone, text)
+		}
+	}
+	for _, kept := range []string{`"files-guard"`, `"command-guard"`, `"rtk"`, `"matcher":"Write|Edit|NotebookEdit"`} {
+		if !strings.Contains(text, kept) {
+			t.Errorf("the fragment lost %s: %s", kept, text)
+		}
+	}
+}
+
+func TestEveryHookIsRegisteredUnlessItSaysOtherwise(t *testing.T) {
+	if !(registration.Hook{ID: "rtk"}).IsRegistered() {
+		t.Error("a hook with no registered field must be registered")
+	}
+	on := true
+	if !(registration.Hook{ID: "rtk", Registered: &on}).IsRegistered() {
+		t.Error("registered: true must be registered")
+	}
+	if (registration.Hook{ID: "formatter", Registered: registeredFalse()}).IsRegistered() {
+		t.Error("registered: false must not be registered")
+	}
+}

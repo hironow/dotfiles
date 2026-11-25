@@ -238,3 +238,14 @@ func TestManifestPinsEveryStageDeadline(t *testing.T) {
 		}
 	}
 }
+
+func TestManifestReadsTheRegisteredField(t *testing.T) {
+	encoded := []byte(`{"hooks":[{"id":"formatter","event":"post","failure":"open","deadlineSeconds":20,"registered":false}]}`)
+	if _, err := decodeManifest(encoded); err != nil {
+		t.Fatalf("a manifest with registered must decode: %v", err)
+	}
+	unknown := []byte(`{"hooks":[{"id":"formatter","event":"post","failure":"open","deadlineSeconds":20,"enabled":false}]}`)
+	if _, err := decodeManifest(unknown); err == nil {
+		t.Fatal("an unknown field must still fail")
+	}
+}
