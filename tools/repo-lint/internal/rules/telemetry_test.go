@@ -29,7 +29,22 @@ func telemetryInputs() Inputs {
 		justfilePath:     "lint:\n    git ls-files -z -- '*.py' ':!emulator'\n",
 		pyprojectPath:    map[string]any{"tool": map[string]any{"ruff": map[string]any{"extend-exclude": []any{".semgrep", "emulator"}}}},
 		markdownlintPath: map[string]any{"ignores": []any{"emulator/**", "skills/**"}},
-		precommitPath:    map[string]any{"exclude": "(?x)^(\n  emulator/|\n  skills/\n)\n"},
+		precommitPath: map[string]any{
+			"exclude": "(?x)^(\n  emulator/|\n  skills/\n)\n",
+			// Leaves out emulator/telemetry/, not the root telemetry/.
+			"repos": []any{map[string]any{"hooks": []any{
+				map[string]any{"id": "check-yaml", "exclude": "^emulator/(telemetry/|cache/)"},
+			}}},
+		},
+	}
+}
+
+func hookExclude(exclude string) func(Inputs) {
+	return func(in Inputs) {
+		in[precommitPath].(map[string]any)["repos"] = []any{map[string]any{"hooks": []any{
+			map[string]any{"id": "check-json"},
+			map[string]any{"id": "check-toml", "exclude": exclude},
+		}}}
 	}
 }
 
@@ -86,11 +101,8 @@ func TestRootLintCoversTelemetry(t *testing.T) {
 		{"prek exclude", func(in Inputs) {
 			in[precommitPath] = map[string]any{"exclude": "(?x)^(\n  emulator/|\n  telemetry/|\n)\n"}
 		}, "exclude"},
-		{"one hook's exclude", func(in Inputs) {
-			in[precommitPath].(map[string]any)["repos"] = []any{map[string]any{"hooks": []any{
-				map[string]any{"id": "check-json"},
-				map[string]any{"id": "check-yaml", "exclude": "(?x)^(\n  telemetry/|\n  x/\n)"},
-			}}}
-		}, "check-yaml"},
+		{"one hook's verbose exclude", hookExclude("(?x)^(\n  telemetry/|\n  x/\n)"), "check-toml"},
+		{"one hook's one-line exclude", hookExclude("^telemetry/"), "check-toml"},
+		{"one hook's group exclude", hookExclude("^(telemetry/|x/)"), "check-toml"},
 	})
 }

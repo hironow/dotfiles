@@ -19,9 +19,12 @@ var (
 	lgtmImage    = regexp.MustCompile(`^docker\.io/grafana/otel-lgtm:\d+\.\d+\.\d+$`)
 	loopbackPort = regexp.MustCompile(`^127\.0\.0\.1:(\d+):(\d+)$`)
 	seconds      = regexp.MustCompile(`^\d+s$`)
-	// precommitTelemetry is telemetry/ at the start of a prek exclude pattern
-	// or of one of its alternatives.
-	precommitTelemetry = regexp.MustCompile(`(?m)(?:^|[\^(|])\s*telemetry/`)
+	// precommitTelemetry is a line of a prek exclude pattern that starts with
+	// telemetry/, after an optional `(?x)`, `^`, and `(`: the root telemetry/
+	// as the whole pattern or as one alternative on its own line. A
+	// telemetry/ further on, as in ^emulator/(telemetry/|cache/), is another
+	// directory.
+	precommitTelemetry = regexp.MustCompile(`(?m)^[ \t]*(?:\(\?x\))?\^?\(?telemetry/`)
 )
 
 // lgtmPorts is every port of the otel-lgtm image, sorted.

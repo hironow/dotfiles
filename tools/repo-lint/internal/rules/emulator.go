@@ -22,7 +22,10 @@ var (
 	// or as the default of a variable.
 	publishedPort = regexp.MustCompile(`^127\.0\.0\.1:(?:\$\{\w+:-(\d+)\}|(\d+)):\d+$`)
 	envLocalhost  = regexp.MustCompile(`(?m)^export (\w+)=localhost:(\d+)\s*$`)
-	goBuilder     = regexp.MustCompile(`(?m)^FROM docker\.io/library/golang:(\S+?)-`)
+	goBuilder     = regexp.MustCompile(`^docker\.io/library/golang:(\S+?)-`)
+	// continuation is a backslash that continues an instruction on the next
+	// line.
+	continuation = regexp.MustCompile(`\\[ \t]*\n`)
 	// stageLine is a Dockerfile FROM line: its image and, with AS, the stage
 	// name.
 	stageLine    = regexp.MustCompile(`(?mi)^FROM[ \t]+(?:--platform=\S+[ \t]+)?(\S+)(?:[ \t]+AS[ \t]+(\S+))?[ \t]*$`)
@@ -221,7 +224,11 @@ func emulatorGoBuilders() Rule {
 			builders := 0
 			for _, path := range slices.Sorted(maps.Keys(files)) {
 				text, _ := files[path].(string)
-				for _, m := range goBuilder.FindAllStringSubmatch(text, -1) {
+				for _, s := range dockerStages(text) {
+					m := goBuilder.FindStringSubmatch(s.image)
+					if m == nil {
+						continue
+					}
 					builders++
 					if m[1] != goVersion {
 						r.addAt(path, "the Go builder uses golang:%s; use %s from %s", m[1], goVersion, imageConfig)
@@ -237,12 +244,14 @@ func emulatorGoBuilders() Rule {
 }
 
 // stage is one build stage of a Dockerfile: the image of its FROM line, its
-// name (lower case; "" without AS), and the text up to the next FROM line.
+// name (lower case; "" without AS), and the text up to the next FROM line,
+// with continued lines joined into one, as Docker reads them.
 type stage struct {
 	image, name, body string
 }
 
 func dockerStages(text string) []stage {
+	text = continuation.ReplaceAllString(text, " ")
 	lines := stageLine.FindAllStringSubmatchIndex(text, -1)
 	out := make([]stage, 0, len(lines))
 	for i, m := range lines {

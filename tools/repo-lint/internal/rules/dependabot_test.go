@@ -97,6 +97,9 @@ func TestDependabotHoldsEveryPythonImageOnItsMinor(t *testing.T) {
 		{"an image from another registry", func(in Inputs) {
 			dockerfiles(in)["emulator/x/Dockerfile"] = "FROM registry.local:5000/team/python:3.12\n"
 		}, `"team/python"`},
+		{"a FROM line continued onto the next line", func(in Inputs) {
+			dockerfiles(in)["emulator/x/Dockerfile"] = heldPython + "FROM python:3.14 \\\nAS unheld\n"
+		}, `"python"`},
 		{"an image under a recursive directory glob", func(in Inputs) {
 			docker(in)["directories"] = []any{"/emulator/**"}
 			dockerfiles(in)["emulator/nested/worker/Dockerfile"] = "FROM python:3.14\n"
