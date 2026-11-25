@@ -1,7 +1,7 @@
 # 0029. Gate the distributed Claude config with claudelint + official plugin validate
 
 **Date:** 2026-06-22
-**Status:** Accepted (PR #200). Superseded by [0041](./0041-retire-third-party-claudelint.md) (partial — the third-party claudelint half is retired after an operator trust review; the gate concept survives with the official `claude plugin validate --strict` running locally AND in CI, plus a stdlib effective-settings checker).
+**Status:** Accepted (PR #200). Superseded by [0041](./0041-retire-third-party-claudelint.md) (partial — the third-party claudelint half is retired after an operator trust review; the gate concept survives with the official `claude plugin validate --strict` running locally AND in CI, plus a stdlib effective-settings checker). The marketplace check it names, `tests/unit/test_marketplace_manifest.py`, moved to the repo-lint rule `claude-marketplace-matches-plugin-manifests` (#NNN), per [ADR-0093](0093-tests-check-code-not-file-text.md).
 
 ## Context
 
