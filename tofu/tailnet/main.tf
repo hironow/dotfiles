@@ -30,7 +30,7 @@ terraform {
     # cooldown and a changelog read. The same version the old stack last ran.
     tailscale = {
       source  = "tailscale/tailscale"
-      version = "0.29.3"
+      version = "0.30.0"
     }
   }
 

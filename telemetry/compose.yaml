@@ -4,7 +4,7 @@
 # Dependabot bumps the tag after a 7-day cooldown (.github/dependabot.yaml).
 services:
   lgtm:
-    image: docker.io/grafana/otel-lgtm:0.40.0
+    image: docker.io/grafana/otel-lgtm:0.41.0
     ports:
       - "127.0.0.1:3000:3000"   # Grafana
       - "127.0.0.1:3200:3200"   # Tempo HTTP API
