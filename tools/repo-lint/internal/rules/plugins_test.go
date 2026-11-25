@@ -109,6 +109,10 @@ func TestMarketplaceEntriesMatchTheirPluginManifests(t *testing.T) {
 		{"another name", func(in Inputs) { entry(in)["name"] = "grill" }, "grill"},
 		{"another version", func(in Inputs) { entry(in)["version"] = "0.3.1" }, "0.3.1"},
 		{"no version on one side", func(in Inputs) { delete(entry(in), "version") }, "version"},
+		{"a number against a string", func(in Inputs) {
+			entry(in)["version"] = float64(1)
+			in[pluginManifests].(map[string]any)["plugins/grilling/.claude-plugin/plugin.json"] = map[string]any{"name": "grilling", "version": "1"}
+		}, "version"},
 	})
 }
 
@@ -145,6 +149,9 @@ func TestEGMIsOnePinnedBundleForEveryAgent(t *testing.T) {
 		{"pi left on the old tag", func(in Inputs) {
 			in[piPackages] = []any{"git:github.com/google/elephant-goldfish-model@v0.1.0"}
 		}, "pi-packages"},
+		{"codex moved back by a later assignment", func(in Inputs) {
+			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.0\"\n"
+		}, "EGM_SOURCE"},
 		{"codex left on the old tag", func(in Inputs) {
 			in[piInstaller] = strings.Replace(in[piInstaller].(string), "@v0.1.1", "@v0.1.0", 1)
 		}, "EGM_SOURCE"},
@@ -160,6 +167,7 @@ func TestTheEGMReviewerIsReadOnlyAndStartsFresh(t *testing.T) {
 	}
 	runCases(t, piEgmReviewerReadOnly(), pluginInputs, []ruleCase{
 		{"a write tool", edit("tools: read, grep, find, ls", "tools: read, grep, find, ls, write"), "tools"},
+		{"a write tool behind an indented copy", edit("tools: read, grep, find, ls\n", "tools: read, grep, find, ls, bash\ndescription: |\n  tools: read, grep, find, ls\n"), "tools"},
 		{"an extension", edit("extensions:\n", "extensions: rtk\n"), "extensions"},
 		{"project context inherited", edit("inheritProjectContext: false", "inheritProjectContext: true"), "inheritProjectContext"},
 		{"system prompt appended", edit("systemPromptMode: replace", "systemPromptMode: append"), "systemPromptMode"},

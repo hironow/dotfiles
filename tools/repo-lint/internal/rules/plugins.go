@@ -1,9 +1,9 @@
 package rules
 
 import (
-	"fmt"
 	"maps"
 	"path"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -139,7 +139,7 @@ func marketplaceMatchesManifests() Rule {
 					r.add("%s: its plugin.json names it %q", name, got)
 				}
 				want, _ := at(entry, "version")
-				if got, _ := at(manifest, "version"); fmt.Sprint(got) != fmt.Sprint(want) {
+				if got, _ := at(manifest, "version"); !reflect.DeepEqual(got, want) {
 					r.add("%s: marketplace version %v, plugin.json version %v; bump both together", name, want, got)
 				}
 			}
@@ -243,8 +243,9 @@ func egmPinnedBundle() Rule {
 			if want := "git:github.com/" + egmRepo + "@" + tag; !slices.Contains(strs(in[piPackages]), want) {
 				r.addAt(piPackages, "pi-packages.json must pin %s, the tag of the Claude marketplace", want)
 			}
+			// The last assignment is the value the module holds once imported.
 			text, _ := in[piInstaller].(string)
-			pkg, src := egmPackageLine.FindStringSubmatch(text), egmSourceLine.FindStringSubmatch(text)
+			pkg, src := lastMatch(egmPackageLine, text), lastMatch(egmSourceLine, text)
 			switch {
 			case pkg == nil || src == nil:
 				r.addAt(piInstaller, "EGM_PACKAGE and EGM_SOURCE must be string constants")
@@ -254,6 +255,15 @@ func egmPinnedBundle() Rule {
 			return r.out
 		},
 	}
+}
+
+// lastMatch is the submatches of the last match of re in text, or nil.
+func lastMatch(re *regexp.Regexp, text string) []string {
+	all := re.FindAllStringSubmatch(text, -1)
+	if len(all) == 0 {
+		return nil
+	}
+	return all[len(all)-1]
 }
 
 // piEgmReviewerReadOnly: the Pi EGM reviewer reads only what it is given: it has
@@ -273,8 +283,13 @@ func piEgmReviewerReadOnly() Rule {
 				r.add("egm-reviewer.md has no front matter")
 				return r.out
 			}
+			// Only a line that starts at the first column is a key of its own;
+			// an indented line belongs to the value above it.
 			front := map[string]string{}
 			for line := range strings.SplitSeq(parts[1], "\n") {
+				if line == "" || line[0] == ' ' || line[0] == '\t' {
+					continue
+				}
 				if k, v, ok := strings.Cut(line, ":"); ok {
 					front[strings.TrimSpace(k)] = strings.TrimSpace(v)
 				}
