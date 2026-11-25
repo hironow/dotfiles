@@ -2,7 +2,7 @@
 
 - **id**: ADR-0080
 - **title**: 用語は業界と open source の確立したものを使い、独自の用語は作らない
-- **status**: Accepted
+- **status**: Accepted; partly superseded by [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D7's test clause)
 - **date**: 2026-11-18
 - **decided-date**: 2026-11-18
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code（owner session）
 - **author-contact**: @hironow
 - **supersedes**: none
-- **superseded-by**: none
+- **superseded-by**: [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D7's test clause only)
 - **related**: [0043](0043-self-authored-skills-through-the-skills-cli.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0052](0052-renew-global-agent-instructions.md)
 - **consultation-trace**: 2026-11-18 の本セッションでの所有者の指示（下の「相談の記録」）。[公開 PR #641 の所有者の裁定](https://github.com/hironow/dotfiles/pull/641#issuecomment-6958036546)
 
