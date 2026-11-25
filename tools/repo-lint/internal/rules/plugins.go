@@ -30,8 +30,11 @@ var (
 	// namedSkill is how the instructions name a skill: the `x` skill, or the
 	// `plugin:x` skill.
 	namedSkill     = regexp.MustCompile("\\bthe `([a-z0-9][a-z0-9:-]*)` skill\\b")
-	egmPackageLine = regexp.MustCompile(`(?m)^EGM_PACKAGE = "([^"]+)"$`)
-	egmSourceLine  = regexp.MustCompile(`(?m)^EGM_SOURCE = "([^"]+)"$`)
+	egmPackageLine = regexp.MustCompile(`(?m)^EGM_PACKAGE\b.*$`)
+	egmSourceLine  = regexp.MustCompile(`(?m)^EGM_SOURCE\b.*$`)
+	// stringConstant is a module-level assignment of a string literal, with
+	// an optional type annotation and trailing comment.
+	stringConstant = regexp.MustCompile(`^\w+\s*(?::\s*\w+\s*)?=\s*"([^"\\]*)"\s*(?:#.*)?$`)
 )
 
 // unpinnedMarketplaces publish no tags, so they are declared without a ref
@@ -128,14 +131,17 @@ func marketplaceMatchesManifests() Rule {
 			}
 			manifests, _ := in[pluginManifests].(map[string]any)
 			for _, entry := range tables(in[marketplacePath], "plugins") {
-				name, _ := str(entry, "name")
+				name, named := str(entry, "name")
 				source, _ := str(entry, "source")
+				if !named {
+					r.add("the entry for %s has no name", source)
+				}
 				manifest, ok := manifests[path.Join(strings.TrimPrefix(source, "./"), ".claude-plugin/plugin.json")]
 				if !ok {
 					r.add("%s: %s has no .claude-plugin/plugin.json", name, source)
 					continue
 				}
-				if got, _ := str(manifest, "name"); got != name {
+				if got, ok := str(manifest, "name"); !ok || got != name {
 					r.add("%s: its plugin.json names it %q", name, got)
 				}
 				want, _ := at(entry, "version")
@@ -243,27 +249,33 @@ func egmPinnedBundle() Rule {
 			if want := "git:github.com/" + egmRepo + "@" + tag; !slices.Contains(strs(in[piPackages]), want) {
 				r.addAt(piPackages, "pi-packages.json must pin %s, the tag of the Claude marketplace", want)
 			}
-			// The last assignment is the value the module holds once imported.
 			text, _ := in[piInstaller].(string)
-			pkg, src := lastMatch(egmPackageLine, text), lastMatch(egmSourceLine, text)
+			pkg, pkgOK := lastConstant(egmPackageLine, text)
+			src, srcOK := lastConstant(egmSourceLine, text)
 			switch {
-			case pkg == nil || src == nil:
-				r.addAt(piInstaller, "EGM_PACKAGE and EGM_SOURCE must be string constants")
-			case src[1] != pkg[1]+"@"+tag:
-				r.addAt(piInstaller, "EGM_SOURCE %q must be %s@%s, the tag of the Claude marketplace", src[1], pkg[1], tag)
+			case !pkgOK || !srcOK:
+				r.addAt(piInstaller, "the last EGM_PACKAGE and EGM_SOURCE lines must each assign a string constant")
+			case src != pkg+"@"+tag:
+				r.addAt(piInstaller, "EGM_SOURCE %q must be %s@%s, the tag of the Claude marketplace", src, pkg, tag)
 			}
 			return r.out
 		},
 	}
 }
 
-// lastMatch is the submatches of the last match of re in text, or nil.
-func lastMatch(re *regexp.Regexp, text string) []string {
-	all := re.FindAllStringSubmatch(text, -1)
+// lastConstant is the string a module holds once imported, read from the last
+// line that line matches; false when that line is anything but a string
+// constant, so a value this rule cannot read never passes.
+func lastConstant(line *regexp.Regexp, text string) (string, bool) {
+	all := line.FindAllString(text, -1)
 	if len(all) == 0 {
-		return nil
+		return "", false
 	}
-	return all[len(all)-1]
+	m := stringConstant.FindStringSubmatch(all[len(all)-1])
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // piEgmReviewerReadOnly: the Pi EGM reviewer reads only what it is given: it has

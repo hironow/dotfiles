@@ -117,6 +117,12 @@ func TestSkillOverridesStayClearedAndDeclared(t *testing.T) {
 				"settings": map[string]any{"skillOverrides": map[string]any{"plugin:x": "off"}},
 			}
 		}, "settings.profiles/claude.json"},
+		{"a profile adds overrides as a list", func(in Inputs) {
+			in[settingsProfiles].(map[string]any)[".claude/settings.profiles/claude.json"] = map[string]any{
+				"settings": map[string]any{"skillOverrides": []any{"no-such-skill"}},
+			}
+		}, "no-such-skill"},
+		{"the shared layer holds a list", func(in Inputs) { set(shared(in), []any{}, "settings", "skillOverrides") }, "explicit {}"},
 		{"an override names an undeclared skill", func(in Inputs) {
 			set(shared(in), map[string]any{"no-such-skill": "off"}, "settings", "skillOverrides")
 		}, "no-such-skill"},

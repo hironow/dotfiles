@@ -109,6 +109,10 @@ func TestMarketplaceEntriesMatchTheirPluginManifests(t *testing.T) {
 		{"another name", func(in Inputs) { entry(in)["name"] = "grill" }, "grill"},
 		{"another version", func(in Inputs) { entry(in)["version"] = "0.3.1" }, "0.3.1"},
 		{"no version on one side", func(in Inputs) { delete(entry(in), "version") }, "version"},
+		{"no name on either side", func(in Inputs) {
+			delete(entry(in), "name")
+			in[pluginManifests].(map[string]any)["plugins/grilling/.claude-plugin/plugin.json"] = map[string]any{"version": "0.3.0"}
+		}, "name"},
 		{"a number against a string", func(in Inputs) {
 			entry(in)["version"] = float64(1)
 			in[pluginManifests].(map[string]any)["plugins/grilling/.claude-plugin/plugin.json"] = map[string]any{"name": "grilling", "version": "1"}
@@ -151,6 +155,12 @@ func TestEGMIsOnePinnedBundleForEveryAgent(t *testing.T) {
 		}, "pi-packages"},
 		{"codex moved back by a later assignment", func(in Inputs) {
 			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.0\"\n"
+		}, "EGM_SOURCE"},
+		{"codex moved back by a later commented assignment", func(in Inputs) {
+			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = \"git:github.com/google/elephant-goldfish-model@v0.1.0\"  # stale\n"
+		}, "EGM_SOURCE"},
+		{"codex taken from an expression", func(in Inputs) {
+			in[piInstaller] = in[piInstaller].(string) + "EGM_SOURCE = EGM_PACKAGE + \"@v0.1.0\"\n"
 		}, "EGM_SOURCE"},
 		{"codex left on the old tag", func(in Inputs) {
 			in[piInstaller] = strings.Replace(in[piInstaller].(string), "@v0.1.1", "@v0.1.0", 1)

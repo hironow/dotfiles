@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -189,6 +190,22 @@ func settingsLeavePluginKeys() Rule {
 	}
 }
 
+// overrideNames is the skill names a skillOverrides value lists: a map's keys,
+// or a list's items.
+func overrideNames(v any) []string {
+	switch overrides := v.(type) {
+	case map[string]any:
+		return slices.Sorted(maps.Keys(overrides))
+	case []any:
+		names := make([]string, 0, len(overrides))
+		for _, item := range overrides {
+			names = append(names, fmt.Sprint(item))
+		}
+		return names
+	}
+	return nil
+}
+
 // skillOverrides: every skill is Claude Code's default "on". The shared layer
 // keeps an explicit {}, because sync only adds or updates top-level keys and
 // removing it would leave each home's old map in place. A skill dropped from
@@ -218,11 +235,11 @@ func skillOverrides() Rule {
 				r.addAt(claudeShared, "settings.skillOverrides must be an explicit {}, so sync clears each home's old overrides")
 			}
 			for _, p := range slices.Sorted(maps.Keys(all)) {
-				overrides, _ := table(all[p], "settings", "skillOverrides")
-				if p != claudeShared && len(overrides) > 0 {
-					r.addAt(p, "%s adds skillOverrides; only the shared layer holds them, and it holds none", p)
+				raw, set := at(all[p], "settings", "skillOverrides")
+				if empty, isMap := raw.(map[string]any); p != claudeShared && set && (!isMap || len(empty) > 0) {
+					r.addAt(p, "%s sets skillOverrides; only the shared layer holds them, and it holds none", p)
 				}
-				for _, name := range slices.Sorted(maps.Keys(overrides)) {
+				for _, name := range overrideNames(raw) {
 					if !strings.Contains(name, ":") && !declared[name] {
 						r.addAt(p, "skillOverrides names %s, which dump/harness/skill-lock.json does not declare", name)
 					}
