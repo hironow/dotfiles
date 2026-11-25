@@ -29,7 +29,8 @@ var (
 	bunCheckLine     = regexp.MustCompile(`(?:\bbun|BUN \}\}) check\b`)
 	importStatement  = regexp.MustCompile(`(?ms)^import\b[^;]*?from\s+["']([^"']+)["']`)
 	sentinelConstant = regexp.MustCompile(`(?m)^VENDORED_SENTINEL = ("(?:[^"\\]|\\.)*")$`)
-	offRule          = regexp.MustCompile(`":\s*(?:"off"|\[\s*"off")`)
+	// ruleKey is the line that opens a rule's entry: its key.
+	ruleKey = regexp.MustCompile(`^\s*"([^"]+)"\s*:`)
 )
 
 // oxlintCategories must each be error; oxlintDefaultPlugins stay listed.
@@ -150,16 +151,8 @@ func jsTypeCheckNotWeakened() Rule {
 					r.add("compilerOptions.%s must be %v", want.key, want.value)
 				}
 			}
-			include := strs(in[tsconfigPath], "include")
-			for _, f := range typeCheckedFiles {
-				if !slices.Contains(include, f) {
-					r.add("include must list %s so the type check reads it", f)
-				}
-			}
-			for _, f := range include {
-				if strings.HasPrefix(f, "site/vendor/") || f == piRtkExtension {
-					r.add("include lists %s; vendored bytes are not type checked", f)
-				}
+			if include := strs(in[tsconfigPath], "include"); !sameSet(include, typeCheckedFiles) {
+				r.add("include must be exactly the first-party files %v (no vendored bytes), not %v", typeCheckedFiles, include)
 			}
 			// JS is checked only where a file opts in, so the vendored bundle
 			// the page imports is loaded but not checked.
@@ -236,18 +229,32 @@ func oxlintStrict() Rule {
 			if v, _ := at(cfg, "options", "typeAware"); v != true {
 				r.add("options.typeAware must be true")
 			}
-			for _, p := range strs(cfg, "ignorePatterns") {
-				if !slices.Contains(oxlintVendored, p) {
-					r.add("ignorePatterns skips %s; only vendored bytes are skipped (%v)", p, oxlintVendored)
+			if ignored := strs(cfg, "ignorePatterns"); !sameSet(ignored, oxlintVendored) {
+				r.add("ignorePatterns must be exactly the vendored files %v, not %v", oxlintVendored, ignored)
+			}
+			off := map[string]bool{}
+			for _, b := range blocks {
+				rules, _ := table(b, "rules")
+				for name, level := range rules {
+					if list, isList := level.([]any); isList && len(list) > 0 {
+						level = list[0]
+					}
+					if level == "off" {
+						off[name] = true
+					}
 				}
 			}
 			lines := strings.Split(text, "\n")
+			offKey := func(line string) bool {
+				m := ruleKey.FindStringSubmatch(line)
+				return m != nil && off[m[1]]
+			}
 			for n, line := range lines {
-				if !offRule.MatchString(line) {
+				if !offKey(line) {
 					continue
 				}
 				above := n - 1
-				for above >= 0 && offRule.MatchString(lines[above]) {
+				for above >= 0 && offKey(lines[above]) {
 					above-- // several rules can share one reason
 				}
 				reason := ""

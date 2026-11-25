@@ -1,6 +1,6 @@
 // Package jsonc reads JSON with comments (JSONC), as devcontainer.json and
-// .oxlintrc.json are written: `//` and `/* */` comments and trailing commas,
-// outside strings.
+// .oxlintrc.json are written: `//`, `#` and `/* */` comments and trailing
+// commas, outside strings.
 package jsonc
 
 import (
@@ -40,8 +40,9 @@ func Strip(text string) string {
 		case c == '"':
 			inString = true
 			b.WriteByte(c)
-		case strings.HasPrefix(text[i:], "//"):
-			// A line comment ends at CR or LF, as jsonc-parser reads it.
+		case strings.HasPrefix(text[i:], "//") || c == '#':
+			// A line comment (// or #, as oxlint's json-strip-comments reads
+			// it) ends at CR or LF.
 			end := strings.IndexAny(text[i:], "\r\n")
 			if end < 0 {
 				return dropTrailingCommas(b.String())

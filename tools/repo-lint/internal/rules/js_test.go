@@ -52,6 +52,9 @@ func TestJSDevDependenciesArePinnedAndInstalledWithoutScripts(t *testing.T) {
 		{"a public package", func(in Inputs) { pkg(in)["private"] = false }, "private"},
 		{"a runtime dependency", func(in Inputs) { pkg(in)["dependencies"] = map[string]any{"x": "1.0.0"} }, "dependencies"},
 		{"a range", func(in Inputs) { set(in[packageJSON], "^1.93.0", "devDependencies", "oxlint") }, "^1.93.0"},
+		{"the script flag in a comment", func(in Inputs) {
+			in[justfilePath] = strings.Replace(jsJustfile, " --ignore-scripts", " # --ignore-scripts", 1)
+		}, "--ignore-scripts"},
 		{"install scripts run", func(in Inputs) {
 			in[justfilePath] = strings.Replace(jsJustfile, " --ignore-scripts", "", 1)
 		}, "--ignore-scripts"},
@@ -84,6 +87,12 @@ func TestTheTypeCheckIsNotWeakened(t *testing.T) {
 		}, "site/vendor/**"},
 		{"JS not loaded", func(in Inputs) { set(in[tsconfigPath], false, "compilerOptions", "allowJs") }, "allowJs"},
 		{"every JS file checked", func(in Inputs) { set(in[tsconfigPath], true, "compilerOptions", "checkJs") }, "checkJs"},
+		{"the type check behind a trailing comment", func(in Inputs) {
+			in[justfilePath] = strings.Replace(jsJustfile, "    {{ BUN }} check --no-script\n", "    @true # bun check --no-script\n", 1)
+		}, "js-typecheck"},
+		{"the rtk extension included as ./", func(in Inputs) {
+			set(in[tsconfigPath], []any{"site/copy.js", "config/pi/extensions/jev-sonnet-fallback.ts", "tests/unit/*.test.ts", "./config/pi/extensions/rtk.ts"}, "include")
+		}, "include"},
 		{"the type check only in a comment", func(in Inputs) {
 			in[justfilePath] = strings.Replace(jsJustfile, "    {{ BUN }} check --no-script\n", "    # {{ BUN }} check --no-script\n    @true\n", 1)
 		}, "js-typecheck"},
@@ -139,6 +148,11 @@ func TestOxlintKeepsEveryCheckAtError(t *testing.T) {
 		{"an opt-out with no reason", edit("// The two rules ban each other's only alternative, so both stay off.\n", ""), "import/no-default-export"},
 		{"an opt-out with a short reason", edit("// A test lives in tests/unit/ and imports the code it tests from config/.", "// tests"), "import/no-relative-parent-imports"},
 		{"unreadable", edit(`"options"`, `options`), "decode"},
+		{"vendored files linted", edit(`"ignorePatterns": ["site/vendor/**", "config/pi/extensions/rtk.ts"],`, `"ignorePatterns": [],`), "ignorePatterns"},
+		{"an opt-out over lines with no reason", edit(`"one-var": ["error", "never"],`, `"one-var": ["error", "never"],
+"eqeqeq": [
+"off"
+],`), "eqeqeq"},
 		{"an opt-out as a list with no reason", edit(`"one-var": ["error", "never"],`, `"one-var": ["error", "never"],
 "eqeqeq": ["off"],`), "eqeqeq"},
 	})

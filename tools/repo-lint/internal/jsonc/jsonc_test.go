@@ -41,3 +41,10 @@ func TestDecodeReportsBrokenJSON(t *testing.T) {
 		t.Fatal("broken JSON decoded")
 	}
 }
+
+func TestDecodeDropsHashLineComments(t *testing.T) {
+	got, err := Decode("# leading\n{\n  \"a\": \"# kept\", # trailing\n}\n")
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"a": "# kept"}) {
+		t.Fatalf("got %#v, %v", got, err)
+	}
+}

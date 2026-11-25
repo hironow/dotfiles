@@ -48,7 +48,11 @@ func precommitConfig() map[string]any {
 const prekJustfile = "FORBIDDEN_TOKEN_GATE := \"" + gateFlags + "\"\n\nmise-versions-check:\n    @mise exec -- go run tools/mise-versions/main.go check\n"
 
 func prekInputs() Inputs {
-	return Inputs{precommitPath: precommitConfig(), justfilePath: prekJustfile}
+	return Inputs{
+		precommitPath: precommitConfig(),
+		justfilePath:  prekJustfile,
+		siteFiles:     map[string]any{"site/copy.js": "", "site/vendor/ui-sdk/web.css": "", "site/vendor/ui-sdk/web.js": ""},
+	}
 }
 
 // prekHook is the hook with the id in the config.
@@ -128,12 +132,18 @@ func TestPrekHooksOnlyCheck(t *testing.T) {
 		{"an extra builtin hook", func(in Inputs) {
 			addHook(in, hook("id", "mixed-line-ending", "stages", []any{"pre-commit"}))
 		}, "mixed-line-ending"},
+		{"the fast check behind a comment", func(in Inputs) {
+			in[justfilePath] = strings.Replace(prekJustfile, "    @mise exec", "    @true # mise exec", 1)
+		}, "mise-versions"},
 		{"the fast check failure swallowed", func(in Inputs) {
 			in[justfilePath] = strings.Replace(prekJustfile, "main.go check\n", "main.go check || true\n", 1)
 		}, "mise-versions"},
 		{"the fast recipe checks nothing", func(in Inputs) {
 			in[justfilePath] = strings.Replace(prekJustfile, "@mise exec -- go run tools/mise-versions/main.go check", "@true", 1)
 		}, "mise-versions"},
+		{"the vendored styles excluded", func(in Inputs) {
+			set(in[precommitPath], "^site/vendor/.*\\.css$", "exclude")
+		}, "site/vendor/ui-sdk/web.css"},
 		{"the vendored folder excluded", func(in Inputs) {
 			set(in[precommitPath], "(?x)^(\n  emulator/|\n  site/\n)\n", "exclude")
 		}, "site/"},
@@ -213,6 +223,12 @@ func TestTemplatePrekHooksOnlyCheck(t *testing.T) {
 		}, "fmt"},
 		{"no minimum prek", func(in Inputs) { delete(in[templatePrecommitPath].(map[string]any), "minimum_prek_version") }, "minimum_prek_version"},
 		{"a prek without --check", func(in Inputs) { set(in[templatePrecommitPath], "0.5.3", "minimum_prek_version") }, "minimum_prek_version"},
+		{"a second hook under a required id", func(in Inputs) {
+			repos := in[templatePrecommitPath].(map[string]any)["repos"].([]any)
+			local := repos[1].(map[string]any)
+			local["hooks"] = append(local["hooks"].([]any), hook("id", "ruff-check", "stages", []any{"pre-commit"},
+				"language", "system", "entry", "uv run --locked --only-group lint ruff format"))
+		}, "ruff-check"},
 		{"ruff may change the lockfile", func(in Inputs) {
 			templateHook(in, "ruff-check")["entry"] = "uv run --only-group lint ruff check --no-fix --no-fix-only --force-exclude --"
 		}, "--locked"},

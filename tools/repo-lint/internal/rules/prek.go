@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-const templatePrecommitPath = "templates/agent-baseline/.pre-commit-config.yaml"
+const (
+	templatePrecommitPath = "templates/agent-baseline/.pre-commit-config.yaml"
+	siteFiles             = "site/**"
+)
 
 var (
 	forbiddenTokenGate = regexp.MustCompile(`(?m)^FORBIDDEN_TOKEN_GATE := "([^"]*)"$`)
@@ -55,8 +58,11 @@ var (
 // beyond them: a new hook, under any name, is a decision for ADR 0085.
 func exactHooks(r *report, hooks []map[string]any, required []string) {
 	for _, want := range required {
-		if hookByID(hooks, want) == nil {
+		switch n := countHooks(hooks, want); {
+		case n == 0:
 			r.add("hook %s is missing; it is one of the required read-only guards", want)
+		case n > 1:
+			r.add("hook %s is declared %d times; each guard runs once", want, n)
 		}
 	}
 	for _, h := range hooks {
@@ -66,18 +72,48 @@ func exactHooks(r *report, hooks []map[string]any, required []string) {
 	}
 }
 
-// recipeCommands is the recipe's command lines, trimmed, without blank lines
-// and comments.
+func countHooks(hooks []map[string]any, id string) int {
+	n := 0
+	for _, h := range hooks {
+		if hookID(h) == id {
+			n++
+		}
+	}
+	return n
+}
+
+// recipeCommands is the recipe's command lines, trimmed, with the shell's
+// comments (from a # that starts a word, outside quotes) and blank lines
+// dropped.
 func recipeCommands(justfile, name string) []string {
 	body, _ := recipeBody(justfile, name)
 	var out []string
 	for line := range strings.SplitSeq(body, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "#") {
+		if line = strings.TrimSpace(dropShellComment(line)); line != "" {
 			out = append(out, line)
 		}
 	}
 	return out
+}
+
+// dropShellComment cuts a line at a # that starts a word outside quotes.
+func dropShellComment(line string) string {
+	var quote rune
+	wordStart := true
+	for i, c := range line {
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '#' && wordStart:
+			return line[:i]
+		}
+		wordStart = quote == 0 && (c == ' ' || c == '\t')
+	}
+	return line
 }
 
 // fastRecipe is the whole body of the fast version check: one command whose
@@ -177,9 +213,13 @@ func hookByID(hooks []map[string]any, id string) map[string]any {
 func prekCheckOnlyHooks() Rule {
 	const id = "prek-check-only-hooks"
 	return Rule{
-		ID:     id,
-		Why:    "the git hooks only check: no pre-push, no rewriting, no recipe but the fast version check (ADR 0083/0084/0085)",
-		Inputs: []Input{{Path: precommitPath, Format: YAML}, {Path: justfilePath, Format: Text}},
+		ID:  id,
+		Why: "the git hooks only check: no pre-push, no rewriting, no recipe but the fast version check (ADR 0083/0084/0085)",
+		Inputs: []Input{
+			{Path: precommitPath, Format: YAML},
+			{Path: justfilePath, Format: Text},
+			{Path: siteFiles, Format: Text, Glob: true},
+		},
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: precommitPath}
 			cfg := in[precommitPath]
@@ -214,8 +254,15 @@ func prekCheckOnlyHooks() Rule {
 				r.addAt(justfilePath, "mise-versions-check must run exactly `%s`, not %q", fastRecipe, cmds)
 			}
 			if exclude, ok := str(cfg, "exclude"); ok {
-				if re, err := excludeRegexp(exclude); err == nil && re.MatchString("site/vendor/x.js") {
-					r.add("the exclude leaves site/ out; the other hooks must still read the vendored files")
+				re, err := excludeRegexp(exclude)
+				if err != nil {
+					r.add("cannot read the exclude as an RE2 regexp (%v)", err)
+				}
+				files, _ := in[siteFiles].(map[string]any)
+				for _, f := range slices.Sorted(maps.Keys(files)) {
+					if err == nil && re.MatchString(f) {
+						r.add("the exclude leaves %s out; the hooks must still read the vendored files", f)
+					}
 				}
 			}
 			return r.out
