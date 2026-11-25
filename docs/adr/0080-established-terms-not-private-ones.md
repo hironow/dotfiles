@@ -2,7 +2,7 @@
 
 - **id**: ADR-0080
 - **title**: 用語は業界と open source の確立したものを使い、独自の用語は作らない
-- **status**: Accepted; partly superseded by [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D7's test clause)
+- **status**: Accepted; partly superseded by [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D7's test clause); the check that a skill the instructions name is declared moved from `tests/unit/test_named_skills_declared.py` to the repo-lint rule `named-skills-installed` (#698), per [ADR-0093](0093-tests-check-code-not-file-text.md)
 - **date**: 2026-11-18
 - **decided-date**: 2026-11-18
 - **decision-maker**: Hiroto N.

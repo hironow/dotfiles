@@ -1,6 +1,5 @@
 """EGM is a complete pinned plugin/package, not seven detached skills."""
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -15,55 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DESIGN_DOC = "skills/egm-draft/references/design_doc.md"
 
 
-def _egm_tag() -> str:
-    """The EGM tag the Claude declaration pins; every other pin follows it."""
-    claude = json.loads(
-        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
-    )
-    repo, _, tag = claude["marketplaces"]["egm"].partition("#")
-    assert repo == "google/elephant-goldfish-model"
-    assert tag
-    return tag
-
-
-def test_egm_is_declared_as_a_complete_pinned_bundle() -> None:
-    claude = json.loads(
-        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
-    )
-    assert "egm@egm" in claude["plugins"]
-    pi = json.loads(
-        (ROOT / "dump/harness/pi-packages.json").read_text(encoding="utf-8")
-    )
-    assert f"git:github.com/google/elephant-goldfish-model@{_egm_tag()}" in pi
-    skills = json.loads(
-        (ROOT / "dump/harness/skill-lock.json").read_text(encoding="utf-8")
-    )["skills"]
-    assert not any(
-        record["source"] == "google/elephant-goldfish-model" for record in skills
-    )
-
-
-def test_only_the_approved_duplicate_entry_points_are_retired() -> None:
-    records = json.loads(
-        (ROOT / "dump/harness/skill-lock.json").read_text(encoding="utf-8")
-    )["skills"]
-    sources = {record["installed_dir"]: record["source"] for record in records}
-    assert "to-spec" not in sources
-    assert sources["to-prd"] == "hironow/skills"
-    assert sources["intent-handover-governance"] == "hironow/skills"
-    plugin = ROOT / "plugins/grilling"
-    assert not (plugin / "skills/handover").exists()
-    assert (plugin / "skills/grit-grill/SKILL.md").is_file()
-    manifest = json.loads(
-        (plugin / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
-    )
-    marketplace = json.loads(
-        (ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
-    )
-    entry = next(p for p in marketplace["plugins"] if p["name"] == "grilling")
-    assert entry["version"] == manifest["version"] == "0.3.0"
-
-
 def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
     # Claude Code and Pi read EGM from their declarations; Codex and
     # Antigravity get it from the deploy step that follows the Pi pin.
@@ -76,22 +26,6 @@ def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
         "claude_plugins.py",
     ):
         assert step in deploy
-
-
-def test_pi_reviewer_profile_is_restricted_without_overriding_route() -> None:
-    text = (ROOT / "config/pi/agents/egm-reviewer.md").read_text(encoding="utf-8")
-    front = dict(
-        line.split(":", 1)
-        for line in text.split("---", 2)[1].splitlines()
-        if ":" in line
-    )
-    assert set(front["tools"].strip().split(", ")) == {"read", "grep", "find", "ls"}
-    assert front["extensions"].strip() == ""
-    for key in ("inheritProjectContext", "inheritGlobalContext", "inheritSkills"):
-        assert front[key].strip() == "false"
-    assert front["systemPromptMode"].strip() == "replace"
-    assert front["defaultContext"].strip() == "fresh"
-    assert not {"model", "thinking", "memory", "allowNestedSubagents"} & front.keys()
 
 
 def _git(root: Path, *args: str) -> str:
@@ -182,12 +116,6 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
         installer.verify_egm(bundle)
     assert _git(bundle, "rev-parse", "HEAD") == head
     assert (target.read_bytes() if target.exists() else None) == before
-
-
-def test_every_egm_pin_names_the_same_tag() -> None:
-    # `just agent-bump egm` rewrites the pins together, and Codex takes its
-    # ref from EGM_SOURCE; one left behind would split the agents.
-    assert installer.EGM_SOURCE == f"{installer.EGM_PACKAGE}@{_egm_tag()}"
 
 
 def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:

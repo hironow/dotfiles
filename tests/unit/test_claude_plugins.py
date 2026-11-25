@@ -28,66 +28,6 @@ DECLARED = plugins.Declaration(
 )
 
 
-def test_the_repo_declares_the_codex_plugin_pinned_to_a_tag() -> None:
-    declared = plugins.load(ROOT / "dump/harness/claude-plugins.json")
-    assert "codex@openai-codex" in declared.plugins
-    repo, ref = plugins.parse_source(declared.marketplaces["openai-codex"])
-    assert repo == "openai/codex-plugin-cc"
-    assert ref is not None and ref.startswith("v")
-
-
-def test_the_repo_declares_the_antigravity_plugin_pinned_to_a_tag() -> None:
-    # ADR 0082: the plugin Claude Code delegates to agy through
-    declared = plugins.load(ROOT / "dump/harness/claude-plugins.json")
-    assert "antigravity@antigravity-for-claude-code" in declared.plugins
-    repo, ref = plugins.parse_source(
-        declared.marketplaces["antigravity-for-claude-code"]
-    )
-    assert repo == "yuting0624/antigravity-for-claude-code"
-    assert ref is not None and ref.startswith("v")
-
-
-# ADR 0056: official has no tags and the CLI clones `--branch <ref>`, so it
-# cannot take a commit SHA; a `./` source is this repo's own tracked content
-UNPINNED = {"claude-plugins-official"}
-
-
-def test_every_remote_marketplace_is_pinned_to_a_tag_but_the_unpinned_one() -> None:
-    raw = json.loads(
-        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
-    )
-    for name, source in raw["marketplaces"].items():
-        if source.startswith("./"):
-            assert (ROOT / source).is_file(), name
-            continue
-        ref = plugins.parse_source(source)[1]
-        if name in UNPINNED:
-            assert ref is None, name
-        else:
-            assert ref is not None and plugins._version(ref), name
-
-
-def test_the_unpinned_exception_names_a_declared_marketplace() -> None:
-    # a stale exception would let a later marketplace of that name go unpinned
-    raw = json.loads(
-        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
-    )
-    assert set(raw["marketplaces"]) >= UNPINNED
-
-
-def test_every_declared_plugin_comes_from_a_declared_marketplace() -> None:
-    declared = plugins.load(plugins.DECLARATION)
-    assert len(declared.plugins) == len(set(declared.plugins))
-    for pid in declared.plugins:
-        assert pid.partition("@")[2] in declared.marketplaces, pid
-
-
-def test_pyright_is_never_declared() -> None:
-    # ADR 0044: ty is the only Python type checker
-    declared = plugins.load(plugins.DECLARATION)
-    assert not [pid for pid in declared.plugins if "pyright" in pid]
-
-
 def test_egm_only_never_reconciles_other_plugins_or_probes_lsp(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -304,23 +244,6 @@ def test_doctor_checks_and_deploy_installs_the_plugins() -> None:
     deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
     # one of the agent steps every OS runs (test_deploy_pi_extensions)
     assert "claude_plugins.py claude-plugins-install" in deploy
-
-
-@pytest.mark.parametrize(
-    "fragment",
-    sorted(
-        [*(ROOT / ".claude").glob("settings.shared*.json")]
-        + [*(ROOT / ".claude/settings.profiles").glob("*.json")]
-    ),
-    ids=lambda path: path.name,
-)
-def test_no_settings_fragment_claims_the_plugin_keys(fragment: Path) -> None:
-    # The plugin CLI owns them (ADR 0037, ADR 0048): a fragment declaring them
-    # would replace what claude_plugins.py installed on every sync
-    data = json.loads(fragment.read_text(encoding="utf-8"))
-    sections = [data, data.get("settings", {})]
-    for key in ("enabledPlugins", "extraKnownMarketplaces"):
-        assert all(key not in section for section in sections)
 
 
 def test_main_prints_each_home_then_the_summary(

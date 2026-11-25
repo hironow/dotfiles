@@ -22,7 +22,6 @@ headroom itself whether its beacon is on.
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
@@ -41,13 +40,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import ai_tools_check
 import jev_headroom as hr
-
-
-def test_claude_sessions_and_hooks_get_the_telemetry_off() -> None:
-    shared = json.loads(
-        (ROOT / ".claude/settings.shared.json").read_text(encoding="utf-8")
-    )
-    assert {name: shared["env"].get(name) for name in TELEMETRY_OFF} == TELEMETRY_OFF
 
 
 def test_harden_env_persists_the_telemetry_off_for_windows() -> None:

@@ -77,6 +77,15 @@ func All() []Rule {
 		dependabotPythonHeld(),
 		dependabotUVSyncedTools(),
 		claudeLintRunsOfficialValidate(),
+		claudeTelemetryOff(),
+		claudeMdExcludes(),
+		settingsLeavePluginKeys(),
+		skillOverrides(),
+		claudePluginsPinned(),
+		marketplaceMatchesManifests(),
+		namedSkillsDeclared(),
+		egmPinnedBundle(),
+		piEgmReviewerReadOnly(),
 	}
 }
 
