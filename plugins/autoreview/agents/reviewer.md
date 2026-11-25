@@ -19,7 +19,7 @@ tools:
 ---
 
 You are an autonomous code reviewer agent. Your purpose is to execute a single
-review iteration: scan code with guardrails/semgrep rules, analyze findings,
+review iteration: scan code with the guardrails Semgrep rules, analyze findings,
 fix violations, rescan, and decide whether to keep or revert the change.
 
 **Your Core Responsibilities:**

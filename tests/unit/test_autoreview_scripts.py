@@ -12,6 +12,7 @@ the prose used to state (skills/review-loop/references/decision-logic.md).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -248,3 +249,67 @@ def test_parse_results_header_only_file_has_zero_iterations(tmp_path: Path) -> N
     summary = _parse(tsv)
     assert summary["total_iterations"] == 0
     assert "error" in summary
+
+
+# --- resolve-guardrails.sh ------------------------------------------------
+
+RESOLVE = SCRIPTS / "resolve-guardrails.sh"
+
+
+def _git_repo(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    return path
+
+
+def test_resolve_guardrails_finds_the_rules_in_the_repository(tmp_path: Path) -> None:
+    # given a repository whose rules live in .semgrep/rules/guardrails/
+    repo = _git_repo(tmp_path / "repo")
+    rules = repo / ".semgrep" / "rules" / "guardrails"
+    (rules / "naming").mkdir(parents=True)
+    # when the script runs inside it
+    result = run_bash(RESOLVE, cwd=repo, capture_output=True, text=True)
+    # then it prints that directory
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()).resolve() == rules.resolve()
+
+
+def test_resolve_guardrails_falls_back_to_the_plugins_own_repository(
+    tmp_path: Path,
+) -> None:
+    # given the plugin inside a dotfiles checkout, and a working directory
+    # in another repository that has no rules
+    dotfiles = tmp_path / "dotfiles"
+    rules = dotfiles / ".semgrep" / "rules" / "guardrails"
+    (rules / "naming").mkdir(parents=True)
+    plugin = dotfiles / "plugins" / "autoreview"
+    plugin.mkdir(parents=True)
+    other = _git_repo(tmp_path / "other")
+    # when the script runs there with the plugin root set
+    result = run_bash(
+        RESOLVE,
+        cwd=other,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin)},
+    )
+    # then it prints the rules beside the plugin
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()).resolve() == rules.resolve()
+
+
+def test_next_target_takes_every_rule_category_but_the_fixtures(
+    tmp_path: Path,
+) -> None:
+    # given no configured categories and a rules directory with two categories
+    # and the fixtures directory
+    repo = _git_repo(tmp_path)
+    rules = repo / ".semgrep" / "rules" / "guardrails"
+    for name in ("naming", "security", "tests"):
+        (rules / name).mkdir(parents=True)
+    _setup(repo, _config([]), None)
+    # when the next target is picked
+    result = _next(repo)
+    # then it comes from a rule category, never from the fixtures
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split("\t")[0] in {"naming", "security"}, result.stdout

@@ -1,8 +1,8 @@
 # autoreview
 
 Claude Code plugin that reviews and fixes code in a keep/revert loop, using the
-[guardrails/semgrep](../../guardrails/semgrep/) rules. Its rule categories and
-counts are listed in that repo's README.
+guardrails Semgrep rules in [`.semgrep/rules/guardrails/`](../../.semgrep/rules/guardrails/),
+one directory per rule category.
 
 ## Modes
 
@@ -36,7 +36,7 @@ Other skills:
 ## Prerequisites
 
 - `semgrep` on PATH.
-- The rules at `guardrails/semgrep/.semgrep/`: initialize the
-  `guardrails/semgrep` submodule. `scripts/resolve-guardrails.sh` looks for
-  them under the git root, then two levels above the plugin.
+- The rules at `.semgrep/rules/guardrails/` of this repository.
+  `scripts/resolve-guardrails.sh` looks for them under the git root, then two
+  levels above the plugin.
 - `jq` on PATH (without it the scope hook does nothing).
