@@ -2,9 +2,9 @@
 
 - **id**: ADR-0094
 - **title**: Vendor the semgrep-guardrails rules into dotfiles
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-25
-- **decided-date**: pending
+- **decided-date**: 2026-11-26
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0014](0014-vendor-emulator-telemetry-from-submodules.md), [0090](0090-keep-one-justfile-no-modules.md), [0092](0092-generated-docs-code-as-spec-provable-glossary.md), [0093](0093-tests-check-code-not-file-text.md)
-- **consultation-trace**: the owner's requests in a Claude Code session on 2026-11-25 (19:34 and 21:25 JST), quoted in the pull request that adds this record
+- **consultation-trace**: the owner's requests in a Claude Code session on 2026-11-25 (19:34 and 21:25 JST), quoted in the pull request that adds this record ([PR #691](https://github.com/hironow/dotfiles/pull/691)); the owner accepted the record on 2026-11-26 ("どちらも承認します！(0093,94)、続けてください"), quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN)
 
 ## Plain summary
 
@@ -27,7 +27,7 @@ The old repository is archived once the move is merged.
 - The autoreview plugin reads the rules through `plugins/autoreview/scripts/resolve-guardrails.sh` and treats each directory except `tests/` as a rule category.
 - ADR-0014 vendored two of the owner's repositories the same way, for the same reasons.
 
-## Decision (proposed)
+## Decision
 
 - D1. The rules and their fixtures MUST live at `.semgrep/rules/guardrails/`, one directory per category and `tests/` for the fixtures, copied unchanged from `3754cfe`. The `guardrails/semgrep` submodule is removed.
 - D2. `just semgrep-test` MUST validate these rules and fail when their fixtures give no finding, which is the check the old repository ran.
@@ -59,9 +59,8 @@ Restore the submodule from git history and unarchive the repository.
 - ADR-0092 D3 (no new hand-written docs): the old READMEs are not copied; one row in the existing `.semgrep/README.md` table.
 - ADR-0093 (tests check code): the fixtures are inputs of the rules, and the gate runs the rules on them.
 
-## Decision (pending)
+## Decision (2026-11-26)
 
-- [ ] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), ____
-- Action if accepted: archive hironow/semgrep-guardrails (D6).
-- Action if rejected: restore the submodule from git history.
+- [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 02:05 JST. After #691 had merged, the owner wrote "どちらも承認します！(0093,94)、続けてください" (translated: I approve both, 0093 and 0094; please continue). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN).
+- Action: done. #691 moved the rules, and the owner archived hironow/semgrep-guardrails (D6; the repository reads `archived: true` on 2026-11-26).
