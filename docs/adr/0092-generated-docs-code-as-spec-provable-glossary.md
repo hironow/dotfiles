@@ -2,7 +2,7 @@
 
 - **id**: ADR-0092
 - **title**: Documentation is generated for humans, code is the spec, a provable glossary proves its words, and Markdown is not tested
-- **status**: Accepted
+- **status**: Accepted; partly superseded by [ADR-0093](0093-tests-check-code-not-file-text.md) (D6, widened from Markdown to every file)
 - **date**: 2026-11-25
 - **decided-date**: 2026-11-25
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code (owner session)
 - **author-contact**: @hironow
 - **supersedes**: part of [0078](0078-frontend-ci-under-two-minutes.md) D8 and of [0080](0080-established-terms-not-private-ones.md) D7 (their clauses that a test keeps the rule text), and part of [0090](0090-keep-one-justfile-no-modules.md) D1 (the provable glossary's module only)
-- **superseded-by**: none
+- **superseded-by**: part of D6 by [0093](0093-tests-check-code-not-file-text.md)
 - **related**: [0078](0078-frontend-ci-under-two-minutes.md), [0080](0080-established-terms-not-private-ones.md), [0090](0090-keep-one-justfile-no-modules.md), [0088](0088-ci-speed-standard-for-every-language.md), [0091](0091-review-against-requirements-three-rounds.md)
 - **consultation-trace**: the owner's request in a Claude Code session on 2026-11-25 (16:24 JST), the owner's answers to four questions (16:35 JST) and to a fifth one raised by the plan review (17:05 JST), quoted in the pull request that adds this record ([PR #686](https://github.com/hironow/dotfiles/pull/686)); the owner accepted the record on 2026-11-25 ("0092 approveします"), quoted in [PR #688](https://github.com/hironow/dotfiles/pull/688)
 

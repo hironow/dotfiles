@@ -2,7 +2,7 @@
 
 - **id**: ADR-0089
 - **title**: dotfiles' own CI follows ADR-0088; the dev container tests leave pull requests
-- **status**: Accepted
+- **status**: Accepted; the workflow checks of `tests/unit/test_ci_sandbox_pause.py` and `test_podman_ci_workflows.py`, which the Reversal names, moved in part to the Semgrep rules in `.semgrep/rules/workflow/` (#690), per [ADR-0093](0093-tests-check-code-not-file-text.md)
 - **date**: 2026-11-22
 - **decided-date**: 2026-11-23
 - **decision-maker**: Hiroto N.
