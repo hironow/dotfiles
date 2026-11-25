@@ -244,14 +244,15 @@ func emulatorGoBuilders() Rule {
 }
 
 // stage is one build stage of a Dockerfile: the image of its FROM line, its
-// name (lower case; "" without AS), and the text up to the next FROM line,
-// with continued lines joined into one, as Docker reads them.
+// name (lower case; "" without AS), and the text up to the next FROM line.
 type stage struct {
 	image, name, body string
 }
 
+// dockerStages reads a Dockerfile's stages. It first joins each continued
+// line to the next with nothing between them, as BuildKit's parser does.
 func dockerStages(text string) []stage {
-	text = continuation.ReplaceAllString(text, " ")
+	text = continuation.ReplaceAllString(text, "")
 	lines := stageLine.FindAllStringSubmatchIndex(text, -1)
 	out := make([]stage, 0, len(lines))
 	for i, m := range lines {

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -19,13 +20,60 @@ var (
 	lgtmImage    = regexp.MustCompile(`^docker\.io/grafana/otel-lgtm:\d+\.\d+\.\d+$`)
 	loopbackPort = regexp.MustCompile(`^127\.0\.0\.1:(\d+):(\d+)$`)
 	seconds      = regexp.MustCompile(`^\d+s$`)
-	// precommitTelemetry is a line of a prek exclude pattern that starts with
-	// telemetry/, after an optional `(?x)`, `^`, and `(`: the root telemetry/
-	// as the whole pattern or as one alternative on its own line. A
-	// telemetry/ further on, as in ^emulator/(telemetry/|cache/), is another
-	// directory.
-	precommitTelemetry = regexp.MustCompile(`(?m)^[ \t]*(?:\(\?x\))?\^?\(?telemetry/`)
+	// leadingFlags is the inline flags at the start of a Python regexp.
+	leadingFlags = regexp.MustCompile(`^\(\?([a-zA-Z]+)\)`)
 )
+
+// telemetrySamples are files of telemetry/ that an exclude leaving the
+// directory out, or a kind of file in it, matches.
+var telemetrySamples = []string{"telemetry/compose.yaml", "telemetry/README.md", "telemetry/.gitignore"}
+
+// excludeRegexp compiles a prek exclude, a Python regexp that prek searches
+// each path with, as RE2. With the x flag, it first drops what Python's
+// verbose mode ignores.
+func excludeRegexp(pattern string) (*regexp.Regexp, error) {
+	if m := leadingFlags.FindStringSubmatch(pattern); m != nil && strings.Contains(m[1], "x") {
+		pattern = stripVerbose(pattern[len(m[0]):])
+		if rest := strings.ReplaceAll(m[1], "x", ""); rest != "" {
+			pattern = "(?" + rest + ")" + pattern
+		}
+	}
+	return regexp.Compile(pattern)
+}
+
+// stripVerbose drops what Python's re.VERBOSE ignores: whitespace, and a #
+// comment to the end of its line, outside a character class and unescaped.
+// An escaped whitespace character stays, without its backslash.
+func stripVerbose(p string) string {
+	var b strings.Builder
+	inClass, escaped, comment := false, false, false
+	for _, c := range p {
+		switch {
+		case comment:
+			comment = c != '\n'
+			continue
+		case escaped:
+			escaped = false
+			if !unicode.IsSpace(c) {
+				b.WriteRune('\\')
+			}
+		case c == '\\':
+			escaped = true
+			continue
+		case inClass:
+			inClass = c != ']'
+		case c == '[':
+			inClass = true
+		case c == '#':
+			comment = true
+			continue
+		case unicode.IsSpace(c):
+			continue
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}
 
 // lgtmPorts is every port of the otel-lgtm image, sorted.
 var lgtmPorts = []string{"3000", "3200", "4040", "4317", "4318", "9090"}
@@ -170,14 +218,24 @@ func rootLintCoversTelemetry() Rule {
 			if slices.ContainsFunc(strs(in[markdownlintPath], "ignores"), telemetryPath) {
 				r.addAt(markdownlintPath, "ignores leaves telemetry out")
 			}
-			if exclude, _ := str(in[precommitPath], "exclude"); precommitTelemetry.MatchString(exclude) {
-				r.addAt(precommitPath, "the exclude leaves telemetry/ out")
+			checkExclude := func(where, exclude string) {
+				re, err := excludeRegexp(exclude)
+				if err != nil {
+					r.addAt(precommitPath, "cannot read %s as an RE2 regexp (%v); write it so that this rule can check it", where, err)
+					return
+				}
+				if slices.ContainsFunc(telemetrySamples, re.MatchString) {
+					r.addAt(precommitPath, "%s leaves telemetry/ out", where)
+				}
+			}
+			if exclude, ok := str(in[precommitPath], "exclude"); ok {
+				checkExclude("the exclude", exclude)
 			}
 			for _, repo := range tables(in[precommitPath], "repos") {
 				for _, hook := range tables(repo, "hooks") {
-					if exclude, _ := str(hook, "exclude"); precommitTelemetry.MatchString(exclude) {
+					if exclude, ok := str(hook, "exclude"); ok {
 						hookID, _ := str(hook, "id")
-						r.addAt(precommitPath, "the exclude of hook %s leaves telemetry/ out", hookID)
+						checkExclude("the exclude of hook "+hookID, exclude)
 					}
 				}
 			}

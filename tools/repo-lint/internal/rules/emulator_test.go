@@ -120,6 +120,9 @@ func TestEmulatorGoBuildersUseTheImageGo(t *testing.T) {
 		{"an older builder", func(in Inputs) {
 			in[emuDockerfiles].(map[string]any)["emulator/x/Dockerfile"] = "FROM docker.io/library/golang:1.26.1-alpine AS b\n"
 		}, "1.26.1"},
+		{"an older builder split inside its tag", func(in Inputs) {
+			in[emuDockerfiles].(map[string]any)["emulator/x/Dockerfile"] = "FROM docker.io/library/golang:1.26.3-\\\nalpine AS builder\n"
+		}, "1.26.3"},
 		{"an older builder for the build platform", func(in Inputs) {
 			in[emuDockerfiles].(map[string]any)["emulator/x/Dockerfile"] = "FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26.2-alpine AS b\n"
 		}, "1.26.2"},

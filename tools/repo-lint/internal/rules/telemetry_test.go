@@ -30,10 +30,11 @@ func telemetryInputs() Inputs {
 		pyprojectPath:    map[string]any{"tool": map[string]any{"ruff": map[string]any{"extend-exclude": []any{".semgrep", "emulator"}}}},
 		markdownlintPath: map[string]any{"ignores": []any{"emulator/**", "skills/**"}},
 		precommitPath: map[string]any{
-			"exclude": "(?x)^(\n  emulator/|\n  skills/\n)\n",
-			// Leaves out emulator/telemetry/, not the root telemetry/.
+			"exclude": "(?x)^(\n  emulator/|  # the vendored stack\n  skills/|\n  \\.venv/\n)\n",
+			// These leave out emulator/telemetry/, not the root telemetry/.
 			"repos": []any{map[string]any{"hooks": []any{
 				map[string]any{"id": "check-yaml", "exclude": "^emulator/(telemetry/|cache/)"},
+				map[string]any{"id": "check-json", "exclude": "(?x)^emulator/(\n  telemetry/|\n  cache/\n)\n"},
 			}}},
 		},
 	}
@@ -65,10 +66,7 @@ func TestTelemetryIsOnePinnedLoopbackLGTM(t *testing.T) {
 		{"another host port", func(in Inputs) { lgtm(in)["ports"] = lgtmPortList("127.0.0.1:3001:3000") }, "3001"},
 		{"a port dropped", func(in Inputs) { lgtm(in)["ports"] = lgtmPortList("127.0.0.1:3000:3000")[:5] }, "9090"},
 		{"bind mount", func(in Inputs) { lgtm(in)["volumes"] = []any{"lgtm-data:/data", "./grafana:/etc/grafana"} }, "bind"},
-		{"another volume", func(in Inputs) {
-			set(in[telCompose], nil, "volumes", "extra")
-			in[telCompose].(map[string]any)["volumes"].(map[string]any)["extra"] = nil
-		}, "extra"},
+		{"another volume", func(in Inputs) { in[telCompose].(map[string]any)["volumes"].(map[string]any)["extra"] = nil }, "extra"},
 		{"another network", func(in Inputs) { set(in[telCompose], "otel", "networks", "default", "name") }, "shared-otel-net"},
 	})
 }
@@ -89,6 +87,38 @@ func TestDependabotBumpsTheLGTMTagAfterACooldown(t *testing.T) {
 	})
 }
 
+func TestExcludeRegexpReadsPythonVerbosePatterns(t *testing.T) {
+	for _, c := range []struct {
+		pattern   string
+		match     []string
+		unmatched []string
+	}{
+		{
+			"(?x)^(\n  emulator/|  # the vendored stack\n  \\.venv/|\n  docs/changelogs\\.md\n)",
+			[]string{"emulator/compose.yaml", ".venv/bin/python", "docs/changelogs.md"},
+			[]string{"docs/changelogsXmd", "xvenv/a", "telemetry/compose.yaml", "the vendored stack"},
+		},
+		{"(?x) a [ #] b \\ c", []string{"a#b c", "a b c"}, []string{"ab c", "a#bc"}},
+		{"(?xi)^README", []string{"readme.md"}, []string{"docs/README"}},
+		{"^a b", []string{"a b"}, []string{"ab"}},
+	} {
+		re, err := excludeRegexp(c.pattern)
+		if err != nil {
+			t.Fatalf("%q: %v", c.pattern, err)
+		}
+		for _, s := range c.match {
+			if !re.MatchString(s) {
+				t.Errorf("%q (as %q) does not match %q", c.pattern, re, s)
+			}
+		}
+		for _, s := range c.unmatched {
+			if re.MatchString(s) {
+				t.Errorf("%q (as %q) matches %q", c.pattern, re, s)
+			}
+		}
+	}
+}
+
 func TestRootLintCoversTelemetry(t *testing.T) {
 	runCases(t, rootLintCoversTelemetry(), telemetryInputs, []ruleCase{
 		{"justfile pathspec", func(in Inputs) {
@@ -104,5 +134,9 @@ func TestRootLintCoversTelemetry(t *testing.T) {
 		{"one hook's verbose exclude", hookExclude("(?x)^(\n  telemetry/|\n  x/\n)"), "check-toml"},
 		{"one hook's one-line exclude", hookExclude("^telemetry/"), "check-toml"},
 		{"one hook's group exclude", hookExclude("^(telemetry/|x/)"), "check-toml"},
+		{"a later alternative on the same line", hookExclude("^(emulator/|telemetry/)"), "check-toml"},
+		{"a verbose alternative after a comment", hookExclude("(?x)^(\n  emulator/|  # vendored\n  telemetry/\n)"), "check-toml"},
+		{"only telemetry's Markdown", hookExclude(`^telemetry/.*\.md$`), "check-toml"},
+		{"an exclude RE2 cannot read", hookExclude("^(?!emulator/)"), "cannot read"},
 	})
 }
