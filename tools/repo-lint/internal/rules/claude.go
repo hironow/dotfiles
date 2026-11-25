@@ -8,8 +8,10 @@ import (
 
 const claudeLintWorkflow = ".github/workflows/claude-lint.yaml"
 
-// pinnedValidate runs the official validator from a version-pinned bunx run.
-var pinnedValidate = regexp.MustCompile(`\bbunx @anthropic-ai/claude-code@\d+\.\d+\.\d+ plugin validate --strict\b`)
+// pinnedValidate is a command line that runs the official validator from a
+// version-pinned bunx run. It must start the line, so text that only names the
+// command (an echo, a comment) does not count.
+var pinnedValidate = regexp.MustCompile(`(?m)^[ \t]*bunx[ \t]+@anthropic-ai/claude-code@\d+\.\d+\.\d+[ \t]+plugin[ \t]+validate[ \t]+--strict\b`)
 
 // claudeLintRunsOfficialValidate: before ADR-0041 the official half of the
 // Claude config lint never ran in CI; only the retired third-party claudelint
