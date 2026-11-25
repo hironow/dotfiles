@@ -15,6 +15,24 @@ These instructions do not require a test directory or a test-file layout.
 | e2e         | the full system with **real** dependencies only       |
 | scenario    | API, CLI, or agent workflows written as `runn` YAML   |
 
+## Do not test Markdown
+
+A test checks what code does. Do not write a test that checks what a Markdown
+file says: its wording, its headings or sections, or whether a rule or a
+phrase is in it. Such a test only repeats the text, and it breaks on every
+rewording. A change to Markdown alone needs no new test; review and the checks
+below cover it.
+
+These checks stay, because they do not test what the text says:
+
+- lint and format (markdownlint);
+- a link check that a referenced file or anchor exists;
+- a size limit, such as the instruction budget;
+- the check that committed generated docs equal their generator's output
+  (docs/agents/docs-discipline.md);
+- a test of code that reads or writes Markdown (a parser, a generator, a sync
+  tool): it checks what the code does with a file, not what the file says.
+
 ## Mock policy by test kind
 
 - **Unit** — Test the core with plain values; it needs no fake and no mock.
