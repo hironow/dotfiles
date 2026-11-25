@@ -15,22 +15,34 @@ These instructions do not require a test directory or a test-file layout.
 | e2e         | the full system with **real** dependencies only       |
 | scenario    | API, CLI, or agent workflows written as `runn` YAML   |
 
-## Do not test Markdown
+## Test what code does, never what a file says
 
-A test checks what code does. Do not write a test that checks what a Markdown
-file says: its wording, its headings or sections, or whether a rule or a
-phrase is in it. Such a test only repeats the text, and it breaks on every
-rewording. A change to Markdown alone needs no new test; review and the checks
-below cover it.
+A test runs code and checks what it does: call the function, run the recipe,
+the script, or the binary with fakes, and check the result. Do not write a
+test that reads a file of the repository and checks what it says: the text
+of a Markdown file, a justfile, a workflow, a config file, or the source of a
+script or program; its lines, its sections, its keys and values read as text,
+or whether a phrase or a rule is in it. Such a test only repeats the file, and
+it breaks on every rewording while the behavior stays the same. A change to a
+file that no code runs needs no new test; review and the checks below cover it.
 
-These checks stay, because they do not test what the text says:
+- **A policy about files is a lint rule.** "Every Actions step is pinned to a
+  full SHA", "every job has a timeout", "no recipe calls `npm`": write it as a
+  Semgrep rule with its own fixtures (`semgrep --test`, docs/agents/semgrep.md),
+  or as a setting of the file's own linter (actionlint, ruff), and run it in
+  the gate. Do not read the repository's files from a test to hold it.
+- **Rewrite, do not only delete, a test that guards authorization, secrets,
+  migrations, or concurrency**: run the code it guards
+  (docs/agents/ci-speed.md, "Fewer tests, on evidence").
 
-- lint and format (markdownlint);
-- a link check that a referenced file or anchor exists;
+These checks stay, because they do not test what a file says:
+
+- lint and format (markdownlint, ruff, `just --fmt --check`, and the like);
+- a link or reference check: a referenced file, anchor, or name exists;
 - a size limit, such as the instruction budget;
-- the check that committed generated docs equal their generator's output
+- the check that committed generated files equal their generator's output
   (docs/agents/docs-discipline.md);
-- a test of code that reads or writes Markdown (a parser, a generator, a sync
+- a test of code that reads or writes files (a parser, a generator, a sync
   tool): it checks what the code does with a file, not what the file says.
 
 ## Mock policy by test kind

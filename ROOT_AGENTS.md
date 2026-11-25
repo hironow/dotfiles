@@ -197,10 +197,11 @@ proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill.
   names its types, functions, and values with its terms, so humans and agents
   use the same words. A new domain term goes into the glossary before it goes
   into code (docs/agents/naming.md).
-- **Do not test Markdown.** No test checks what a Markdown file says: its
-  wording, its sections, or whether a rule is in it. Lint, link checks, size
-  limits, and the check that generated docs match their generator stay
-  (docs/agents/testing.md).
+- **Test what code does, never what a file says.** A test runs code and checks
+  the result. No test reads a file (Markdown, a justfile, a workflow, config,
+  or source) to check its text. A policy about files is a lint rule with its
+  own fixtures. Lint, link checks, size limits, and the check that generated
+  files match their generator stay (docs/agents/testing.md).
 - `docs/intent.md` says why we are doing this work now. A human writes it;
   never guess it, ask. `docs/handover.md` says where we are and what comes
   next; update it every session.
