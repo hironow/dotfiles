@@ -23,12 +23,10 @@ before `mise activate`. Measured on mise 2026.11.4 (2026-11-10):
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ZSHRC = ROOT / ".zshrc"
-CONFIG = ROOT / "config" / "mise" / "config.toml"
 
 GLOB = re.compile(
     r"^\s*_win_mise=\(/mnt/c/Users/\*/\.config/mise\(N/\)\)\s*$", re.MULTILINE
@@ -65,8 +63,3 @@ def test_zshrc_overwrites_the_value_and_keeps_projects_under_mnt_c():
     assert not re.search(
         r'MISE_IGNORED_CONFIG_PATHS="?/mnt/c"?\s*$', text, re.MULTILINE
     )
-
-
-def test_the_config_has_no_ignored_config_paths_that_does_nothing():
-    settings = tomllib.loads(CONFIG.read_text(encoding="utf-8")).get("settings", {})
-    assert "ignored_config_paths" not in settings

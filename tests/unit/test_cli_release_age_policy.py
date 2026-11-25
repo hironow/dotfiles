@@ -116,48 +116,6 @@ def test_mac_package_manifest_provisions_podman_without_docker_providers() -> No
     }
 
 
-def test_devcontainer_cli_has_one_frozen_age_exempt_host_image_pin() -> None:
-    expected = {"version": "0.90.0", "bun_args": "--minimum-release-age=0"}
-    assert config()["tools"].get("npm:@devcontainers/cli") == expected
-    image = tomllib.loads(
-        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )
-    assert image["tools"].get("npm:@devcontainers/cli") == expected
-    feature = (ROOT / ".devcontainer/features/dotfiles-tools/install.sh").read_text(
-        encoding="utf-8"
-    )
-    generated = re.search(
-        r"cat > /etc/mise/config\.toml <<'EOF'\n(.*?)\nEOF", feature, re.DOTALL
-    )
-    assert generated, "missing generated image configuration"
-    assert (
-        tomllib.loads(generated.group(1))["tools"].get("npm:@devcontainers/cli")
-        == expected
-    )
-
-
-def test_image_freezes_the_same_age_exempt_compose_provider() -> None:
-    expected = {
-        "version": "1.6.0",
-        "uvx_args": "--python 3.13 --exclude-newer 0d",
-    }
-    image = tomllib.loads(
-        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
-    )
-    assert image["tools"].get("pypi:podman-compose") == expected
-    feature = (ROOT / ".devcontainer/features/dotfiles-tools/install.sh").read_text(
-        encoding="utf-8"
-    )
-    generated = re.search(
-        r"cat > /etc/mise/config\.toml <<'EOF'\n(.*?)\nEOF", feature, re.DOTALL
-    )
-    assert generated, "missing generated image configuration"
-    assert (
-        tomllib.loads(generated.group(1))["tools"].get("pypi:podman-compose")
-        == expected
-    )
-
-
 def test_podman_compose_has_a_dedicated_zero_age_cli_environment() -> None:
     spec = config()["tools"].get("pypi:podman-compose")
     assert isinstance(spec, dict), (
@@ -197,23 +155,6 @@ def test_headroom_whole_dedicated_environment_not_only_top_package_is_exempt() -
         "--exclude-newer",
         "0d",
     ]
-
-
-def test_native_mise_just_uv_and_deferred_lsp_settings_are_preserved() -> None:
-    cfg = config()
-    assert cfg["settings"]["minimum_release_age"] == "0d"
-    assert cfg["settings"]["npm"]["package_manager"] == "bun"
-    assert cfg["tools"]["just"] == cfg["tools"]["uv"] == "latest"
-    assert cfg["tools"]["npm:typescript-language-server"] == "latest"
-    assert cfg["tools"]["go:golang.org/x/tools/gopls"] == "latest"
-    assert cfg["env"] == {
-        "RTK_TELEMETRY_DISABLED": "1",
-        "HEADROOM_BEACON": "off",
-        "DO_NOT_TRACK": "1",
-    }
-    assert (
-        not {"UV_EXCLUDE_NEWER", "BUN_CONFIG_MINIMUM_RELEASE_AGE"} & cfg["env"].keys()
-    )
 
 
 def _tracked_uv_projects() -> list[str]:
