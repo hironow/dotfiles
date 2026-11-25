@@ -12,7 +12,7 @@ them.
 
 | file              | answers                                  | mutability             |
 | ----------------- | ---------------------------------------- | ---------------------- |
-| `docs/*.md`       | What does the system do **now**?         | always current         |
+| `docs/*.md`       | What does the system do **now**? (for humans) | generated; never edited by hand |
 | `docs/adr/*.md`   | **Why** did we decide X (in the past)?   | immutable once accepted|
 | `docs/intent.md`  | **Why** are we doing this right now?     | updated when intent shifts |
 | `docs/handover.md`| **Where** are we, what's **next**?       | updated each session   |
@@ -21,22 +21,36 @@ them.
 | `docs/plan/*.md`  | **How** will we implement X (phased)?    | mutable until done, then graduates |
 | `docs/research/*.md` | What did we **find** (dated)?         | snapshot; superseded by newer |
 
-## `docs/*.md` — current state only
+## `docs/*.md` — generated, for humans
 
-- Describe only the current implementation. No history, no "why we changed
-  from X to Y" (that belongs in an ADR), no TODOs, no roadmap, no notes on
-  deprecated features.
-- Keep docs and code consistent at all times. When code changes, update the
-  docs in the **same commit**. Outdated docs are bugs.
-- Point to code where you can; it keeps docs accurate.
-- These are exempt from "current state only": `docs/adr/`, `docs/intent.md`,
-  `docs/handover.md`, and the opt-in categories `docs/decision-queue.md`,
-  `docs/pdr/`, `docs/plan/`, `docs/research/`.
+- Documentation explains the system to humans. Generate it from the code and
+  the project's provable glossary with a root `just` recipe. Never write it or
+  edit it by hand. A check fails when the committed docs differ from what the
+  generator makes now, so the docs cannot fall behind the code.
+- Agents do not read documentation as the spec. The spec is the code (types,
+  tests, recipes, checks) and the glossary's proved terms and claims
+  (docs/agents/naming.md).
+- To explain something, write it where the generator reads it: a type, a
+  test, a recipe's `[doc]` text, a check, or a glossary term or claim. Do not
+  add a hand-written doc.
+- A README keeps only a few hand-written lines: what the project is, and how
+  to generate its docs and where to find them.
+- Hand-written docs that a repo already has stay until generated docs replace
+  them. While they last, keep them correct, describe only the current
+  implementation (no history, no TODOs, no roadmap), and fix in the same
+  commit what a code change makes wrong. Do not add new ones or new sections.
+- Not documentation, and still written by hand:
+    - instruction files: `AGENTS.md`, `CLAUDE.md`, the spokes in
+      `docs/agents/`, and skills;
+    - working records: `docs/adr/`, `docs/intent.md`, `docs/handover.md`, the
+      opt-in `docs/decision-queue.md`, `docs/pdr/`, `docs/plan/`,
+      `docs/research/`, and the analysis documents of the provable glossary
+      (findings and limits, the comparison with industry practice).
 
 ## `docs/adr/` — Architecture Decision Records
 
 An ADR records the *why* behind a decision that the list below covers. Docs
-record only the *what*.
+and the glossary record only the *what*.
 
 Write one when you:
 

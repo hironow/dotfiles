@@ -54,6 +54,11 @@ rule below.
   Git's bash with `/usr/bin` first on PATH, as the agent-baseline `justfile`
   does). Give it no shell flags; each recipe keeps its own `set` line.
 - Start a helper's name with `_` so that `just --list` hides it.
+- The one exception to "exactly one justfile" is a provable glossary
+  (docs/agents/naming.md): it lives in `glossary/`, and the root `justfile`
+  loads its recipes with `mod glossary` from `glossary/mod.just`, as the
+  `provable-glossary` skill writes them. The root `justfile` stays the one
+  entry point (`just glossary check`).
 
 ## Container image layout
 

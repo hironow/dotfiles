@@ -37,7 +37,9 @@ silently stops being checked. Call Quint through one pinned variable, not bare
 
 Tools: **Quint** (`@informalsystems/quint`) plus the simulation. Apalache
 (`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are not
-used.
+used for this gate. The provable glossary is separate: it proves a project's
+domain terms with the tools its skill names, Lean among them
+(docs/agents/naming.md).
 
 Start by writing a small lease model (a lock without a lease, with a lease,
 with a fencing token), then grow it. Write findings to
