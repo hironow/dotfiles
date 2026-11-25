@@ -9,13 +9,14 @@ skipped.
 
 from __future__ import annotations
 
+import os
 import re
-import shutil
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
+from _bash_hook import resolve_bash
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = sorted((ROOT / ".github/workflows").glob("*.yaml"))
@@ -65,12 +66,11 @@ GATES = [
 
 
 def _run(script: str, results: str) -> int:
-    bash = shutil.which("bash")
-    if bash is None:
-        pytest.skip("needs bash, as GitHub's runner has")
+    # Git Bash on native Windows, never the WSL launcher in System32
+    # (docs/runbook/windows-host.md); the scripts use bash builtins only.
     done = subprocess.run(
-        [bash, "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-        env={"RESULTS": results, "PATH": "/usr/bin:/bin"},
+        [resolve_bash(), "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env={**os.environ, "RESULTS": results},
         capture_output=True,
         text=True,
         encoding="utf-8",
