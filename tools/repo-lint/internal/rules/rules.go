@@ -76,6 +76,7 @@ func All() []Rule {
 		rootLintCoversTelemetry(),
 		dependabotPythonHeld(),
 		dependabotUVSyncedTools(),
+		claudeLintRunsOfficialValidate(),
 	}
 }
 
