@@ -2,17 +2,17 @@
 
 - **id**: ADR-0092
 - **title**: Documentation is generated for humans, code is the spec, a provable glossary proves its words, and Markdown is not tested
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-25
-- **decided-date**: pending
+- **decided-date**: 2026-11-25
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
 - **author-contact**: @hironow
-- **supersedes**: none (on acceptance, partly: [0078](0078-frontend-ci-under-two-minutes.md) D8 and [0080](0080-established-terms-not-private-ones.md) D7, their clauses that a test keeps the rule text; [0090](0090-keep-one-justfile-no-modules.md) D1, for the provable glossary's module only)
+- **supersedes**: part of [0078](0078-frontend-ci-under-two-minutes.md) D8 and of [0080](0080-established-terms-not-private-ones.md) D7 (their clauses that a test keeps the rule text), and part of [0090](0090-keep-one-justfile-no-modules.md) D1 (the provable glossary's module only)
 - **superseded-by**: none
 - **related**: [0078](0078-frontend-ci-under-two-minutes.md), [0080](0080-established-terms-not-private-ones.md), [0090](0090-keep-one-justfile-no-modules.md), [0088](0088-ci-speed-standard-for-every-language.md), [0091](0091-review-against-requirements-three-rounds.md)
-- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-25 (16:24 JST), the owner's answers to four questions (16:35 JST) and to a fifth one raised by the plan review (17:05 JST), quoted in the pull request that adds this record
+- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-25 (16:24 JST), the owner's answers to four questions (16:35 JST) and to a fifth one raised by the plan review (17:05 JST), quoted in the pull request that adds this record ([PR #686](https://github.com/hironow/dotfiles/pull/686)); the owner accepted the record on 2026-11-25 ("0092 approveします"), quoted in the pull request that settled it
 
 ## Plain summary
 
@@ -47,7 +47,7 @@ Asked four questions in the session, the owner chose the recommended option of e
 4. Relation to `feat/provable-glossary`: this change edits only the global rules, from `main`; the branch's migration of this repository is not touched.
 5. (17:05 JST, after the plan review found the conflict) The `provable-glossary` skill gives an existing repository a `glossary/mod.just` loaded by `mod glossary`, while the global rule keeps exactly one justfile and ADR-0090 D1 uses no `mod`. The owner chose to allow the glossary's module as the one exception.
 
-## Decision (proposed)
+## Decision
 
 In the hub (`ROOT_AGENTS.md`, "Documentation rules") and the spokes `docs-discipline.md`, `naming.md`, `testing.md` and `formal-methods.md`:
 
@@ -93,10 +93,8 @@ Restore the earlier hub section and spokes from git history; the deleted content
 - **Misreading**: ADR-0088 records that Lean is not used for the distributed-state gate; D7 keeps that and adds the glossary's use.
 - **Not affected**: ADR-0051 and the decision-record practice (D4 keeps records hand-written); ADR-0091's decisions.
 
-## Decision (pending)
+## Decision (2026-11-25)
 
-- [ ] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), ____
-- Action if accepted: mark ADR-0078, ADR-0080 and ADR-0090 as partly superseded (status lines only); delete this repository's Markdown content tests in a follow-up pull request.
-- Action if rejected: restore the earlier rules from git history and run `just sync-agents all`.
-- Action if deferred: keep the rules in force and revisit when the follow-up pull request is ready.
+- [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-25 17:49 JST. After both pull requests had passed CI and merged (#686, the rules; #687, this repository's Markdown content tests removed), the owner wrote "0092 approveします" (translated: I approve 0092). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in the pull request that settled the record.
+- Action: ADR-0078, ADR-0080 and ADR-0090 say on their status lines that this record replaced part of them; nothing else in them changes. The content tests were removed in #687.

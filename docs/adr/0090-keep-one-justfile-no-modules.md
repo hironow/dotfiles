@@ -2,7 +2,7 @@
 
 - **id**: ADR-0090
 - **title**: Keep one justfile; do not split it into just modules now
-- **status**: Accepted
+- **status**: Accepted; partly superseded by [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D1, for the provable glossary's module only)
 - **date**: 2026-11-23
 - **decided-date**: 2026-11-23
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code (owner session)
 - **author-contact**: @hironow
 - **supersedes**: none
-- **superseded-by**: none
+- **superseded-by**: [ADR-0092](0092-generated-docs-code-as-spec-provable-glossary.md) (D1, for the provable glossary's module only)
 - **related**: [0089](0089-dev-container-tests-off-pull-requests.md)
 - **consultation-trace**: the owner's request in a Claude Code session on 2026-11-23 ("group や doc や mod なども…整理してください"); the plan and its three Codex reviews are in the PR
 
