@@ -12,7 +12,7 @@
 - **supersedes**: part of [ADR-0026](0026-antigravity-cli-instruction-layer.md) Decision 3 (MCP only: dotfiles now asks Antigravity's own CLI to add the declared servers)
 - **superseded-by**: none
 - **related**: [0048](0048-required-claude-plugins.md), [0049](0049-headroom-mandatory-base-tooling.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0056](0056-common-claude-plugin-set.md), [0057](0057-shared-plugins-need-no-per-home-settings.md), [0096](0096-retire-hookify-from-the-shared-plugins.md)
-- **consultation-trace**: the owner's choices in a Claude Code session on 2026-11-20 and 2026-11-21; the owner accepted the record on 2026-11-26 ("3件承認します"), quoted in [PR #RULING](https://github.com/hironow/dotfiles/pull/RULING) (see "Consultation")
+- **consultation-trace**: the owner's choices in a Claude Code session on 2026-11-20 and 2026-11-21; the owner accepted the record on 2026-11-26 ("3件承認します"), quoted in [PR #703](https://github.com/hironow/dotfiles/pull/703) (see "Consultation")
 
 ## Plain summary
 
@@ -89,10 +89,10 @@ At acceptance (2026-11-26) the records filed after this one (0088 to 0096) were 
 - 2026-11-20 (AskUserQuestion): after the endpoint check, the owner chose to install deepwiki, bun, aws and livekit, openai docs and cloudflare docs automatically, vercel as a plugin, guidance only for google-dev-knowledge (and to drop it from the README), and claude, codex, pi and agy as the agents.
 - 2026-11-21 (AskUserQuestion): asked which servers on this host but not in the declaration to add; the owner chose context7, and cloudflare and vercel; stdio servers not now; headroom waits for the LiteLLM decision.
 - The plan passed an independent review (Antigravity, Gemini Pro), whose seven findings were applied.
-- 2026-11-26 22:59 JST: shown Claude's recommendation (accept; the declaration and this Mac's registrations match D1 to D5), the owner wrote "3件承認します" (translated: I approve all three), quoted in [PR #RULING](https://github.com/hironow/dotfiles/pull/RULING).
+- 2026-11-26 22:59 JST: shown Claude's recommendation (accept; the declaration and this Mac's registrations match D1 to D5), the owner wrote "3件承認します" (translated: I approve all three), quoted in [PR #703](https://github.com/hironow/dotfiles/pull/703).
 
 ## Decision (2026-11-26)
 
 - [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 22:59 JST. Asked which records were still Proposed and shown Claude's recommendation for each, the owner wrote "3件承認します" (translated: I approve all three), approving ADR-0065, ADR-0085 and ADR-0087 together. The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #RULING](https://github.com/hironow/dotfiles/pull/RULING).
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 22:59 JST. Asked which records were still Proposed and shown Claude's recommendation for each, the owner wrote "3件承認します" (translated: I approve all three), approving ADR-0065, ADR-0085 and ADR-0087 together. The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #703](https://github.com/hironow/dotfiles/pull/703).
 - Action: the implementation landed in #667. At acceptance the queue row moves to the decision log and ADR-0026's status line names the partial supersession. Each machine gets the servers on its next `just deploy`; OAuth servers need one sign-in per agent, and Codex's by hand.
