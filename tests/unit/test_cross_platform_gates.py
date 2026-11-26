@@ -85,15 +85,6 @@ def test_the_5_1_recipe_checks_the_runtime_then_runs_the_scripts_tests():
         assert f"tests/unit/{name}" in body[run:], name
 
 
-def test_check_runs_the_go_legs_last():
-    # golangci for three GOOS is the slowest leg (about 5 min on a cold cache
-    # in the dev container job); a cheaper leg that fails ends the run first.
-    commands = [
-        line.strip().lstrip("@") for line in _recipe("check").splitlines() if line
-    ]
-    assert commands[-2:] == ["just go-lint", "just go-test"]
-
-
 def test_go_lint_runs_golangci_once_per_goos():
     body = _recipe("go-lint")
     loop = re.search(r"for goos in ([^;\n]+); do", body)

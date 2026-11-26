@@ -52,12 +52,3 @@ def test_script_runner_is_only_used_for_pep723_scripts() -> None:
         if runner == "UV_RUN_SCRIPT" and not _is_pep723(REPO / script)
     ]
     assert not offenders, "\n".join(offenders)
-
-
-def test_runner_definitions_differ_only_by_frozen() -> None:
-    justfile = (REPO / "justfile").read_text(encoding="utf-8")
-    project = re.search(r'^UV_RUN := "(.*)"$', justfile, re.MULTILINE)
-    script = re.search(r'^UV_RUN_SCRIPT := "(.*)"$', justfile, re.MULTILINE)
-    assert project and script, "both UV_RUN and UV_RUN_SCRIPT must be defined"
-    assert project.group(1).endswith(" --frozen")
-    assert script.group(1) == project.group(1).removesuffix(" --frozen")

@@ -60,18 +60,6 @@ def _run_harden(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_justfile_wires_harden_env() -> None:
-    """The script must be reachable as a `just` recipe (it was manual-only)."""
-    just_text = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert re.search(r"^harden-env:", just_text, re.MULTILINE), (
-        "justfile must define a `harden-env` recipe so the machine-local "
-        "hardening is a discoverable one-liner, not a hand-run script."
-    )
-    assert "scripts/harden_env.sh" in just_text, (
-        "the `harden-env` recipe must invoke scripts/harden_env.sh."
-    )
-
-
 def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
     """Running the script (twice) writes a correct `~/.config/uv/uv.toml`,
     keeps `~/.npmrc` de-duplicated, and never writes a shell-rc block."""

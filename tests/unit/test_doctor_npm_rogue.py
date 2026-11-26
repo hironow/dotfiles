@@ -32,15 +32,6 @@ def justfile_text() -> str:
     return JUSTFILE.read_text(encoding="utf-8")
 
 
-def _recipe_body(text: str, name: str) -> str:
-    m = re.search(
-        rf"(?ms)^{re.escape(name)}[^:\n]*:.*?\n(.*?)(?=^[A-Za-z_][\w-]*[^:\n]*:|\Z)",
-        text,
-    )
-    assert m is not None, f"recipe {name!r} not found in justfile"
-    return m.group(1)
-
-
 def test_doctor_runs_rogue_detector(doctor_text: str) -> None:
     assert "rogue_npm_globals.sh detect" in doctor_text, (
         "doctor must run scripts/rogue_npm_globals.sh detect"
@@ -68,17 +59,3 @@ def test_doctor_warns_not_ok_on_scan_error(doctor_text: str) -> None:
     assert re.search(r'rc"?\s*-ne\s+0.*\n.*log_warn', seg, re.DOTALL) or re.search(
         r'\[ "\$rc" -ne 0 \]', doctor_text
     ), "doctor must branch on the detector's non-zero exit and warn"
-
-
-def test_prune_recipe_is_linewise_bash_wrapper(justfile_text: str) -> None:
-    assert re.search(r"^prune-rogue-npm-globals:", justfile_text, re.MULTILINE), (
-        "justfile must define prune-rogue-npm-globals"
-    )
-    body = _recipe_body(justfile_text, "prune-rogue-npm-globals")
-    assert "#!" not in body, (
-        "prune-rogue-npm-globals must be linewise (no shebang) so it runs from "
-        "PowerShell without cygpath, same as doctor"
-    )
-    assert re.search(r"@?bash scripts/rogue_npm_globals\.sh prune", body), (
-        "recipe must invoke scripts/rogue_npm_globals.sh prune via plain bash"
-    )

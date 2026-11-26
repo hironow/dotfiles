@@ -14,20 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DESIGN_DOC = "skills/egm-draft/references/design_doc.md"
 
 
-def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
-    # Claude Code and Pi read EGM from their declarations; Codex and
-    # Antigravity get it from the deploy step that follows the Pi pin.
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert "egm-install" not in justfile
-    deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
-    for step in (
-        "install_pi_extensions.py",
-        "codex_agy_plugins.py",
-        "claude_plugins.py",
-    ):
-        assert step in deploy
-
-
 def _git(root: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *args],

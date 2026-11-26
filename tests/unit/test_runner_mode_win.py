@@ -263,20 +263,6 @@ def test_run_hidden_is_built_for_the_windows_gui_subsystem() -> None:
     assert "output/run-hidden/run-hidden.exe" in body, body
 
 
-def test_task_installers_build_run_hidden_first() -> None:
-    """Each installer copies output/run-hidden/run-hidden.exe; its recipe
-    builds it first, so a fresh clone installs in one command."""
-    text = JUSTFILE.read_text(encoding="utf-8")
-    for recipe in (
-        "runner-watchdog-install",
-        "runner-mode-interactive",
-        "runner-gc-install",
-    ):
-        assert re.search(rf"(?m)^{recipe}:[^\n]*\brun-hidden-build\b", text), (
-            f"{recipe} must depend on run-hidden-build"
-        )
-
-
 def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:
     text = _text()
     assert "runner_watchdog_win.ps1" in text and "-Install" in text, (

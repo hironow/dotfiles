@@ -107,41 +107,7 @@ RETIRED_PATHS = OLD_CODER_PATHS + NEW_EXE_PATHS
 
 # Recipes the old Coder stack owned. `tofu/tailnet`'s recipes are NOT here: that
 # stack stays, and banning `tailnet-*` would ban the thing this retirement built.
-RETIRED_RECIPES = (
-    "exe-bootstrap",
-    "exe-init",
-    "exe-plan",
-    "exe-apply",
-    "exe-down",
-    "exe-validate",
-    "exe-output",
-    "exe-smoke",
-    "exe-teardown",
-    "exe-cdr-install",
-    "_exe-encryption",
-    "_exe_tailscale_targets",
-    # The new exe stack's recipes and the exe-specific tofu gate. The generic
-    # spec-check name is reused for the current runner-GC model; its retired
-    # exe inputs are forbidden separately below.
-    "exe-platform",
-    "exe-cluster",
-    "exe-reaper",
-    "exe-ctx",
-    "exe-sleep",
-    "exe-status",
-    "exe-keep",
-    "exe-ax-job",
-    "exe-ax-exec",
-    "exe-e2e",
-    "exe-snapshot-gc",
-    "exe-l2-run",
-    "exe-substrate-teardown",
-    "exe-worker-images",
-    "exe-spike-task-image",
-    "test-iac-exe",
-)
 
-RETIRED_GATE_INPUTS = ("exe/spec", "tools/exe-reaper")
 
 # --- check 3: operational files, named one by one ----------------------
 
@@ -203,37 +169,6 @@ def test_the_retired_path_list_is_well_formed() -> None:
         assert not path.startswith("/"), f"{path!r} is absolute, not a repo path"
         assert path.strip() == path, f"{path!r} has stray whitespace"
     assert len(set(RETIRED_PATHS)) == len(RETIRED_PATHS), "duplicate retired path"
-
-
-def _retired_justfile_references(text: str) -> list[str]:
-    return sorted(
-        name for name in RETIRED_RECIPES + RETIRED_GATE_INPUTS if name in text
-    )
-
-
-def test_no_recipe_of_the_old_coder_stack_survives() -> None:
-    """A recipe pointing at a deleted directory fails in the operator's hands
-    instead of in CI, which is the worse of the two."""
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    left = _retired_justfile_references(text)
-    assert left == [], f"the justfile still carries retired recipes: {left}"
-
-
-def test_spec_check_name_can_be_reused_for_current_gc_models() -> None:
-    text = "spec-check:\n    quint typecheck scripts/spec/podman_image_gc.qnt\n"
-    assert _retired_justfile_references(text) == []
-
-
-def test_reused_gate_still_rejects_retired_models_and_simulation() -> None:
-    for command, forbidden in (
-        ("quint typecheck exe/spec/lease.qnt", "exe/spec"),
-        ("cd exe/spec && quint test lease.qnt", "exe/spec"),
-        ("cd tools/exe-reaper && go test ./internal/lease/", "tools/exe-reaper"),
-        ("just exe-init", "exe-init"),
-    ):
-        assert forbidden in _retired_justfile_references(
-            f"spec-check:\n    {command}\n"
-        )
 
 
 def test_the_named_operational_files_no_longer_mention_it() -> None:

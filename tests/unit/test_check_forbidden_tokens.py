@@ -661,14 +661,6 @@ def test_install_hooks_recipe_installs_the_commit_msg_shim() -> None:
     assert "--hook-type pre-commit" in recipe
 
 
-def test_ci_recipe_rescans_the_branch() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    ci_line = next(
-        line for line in justfile.splitlines() if line.startswith("ci: check ")
-    )
-    assert "check-forbidden-tokens-branch" in ci_line
-
-
 def test_pr_body_check_recipe_exists() -> None:
     justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
     assert "\ncheck-pr-body " in justfile

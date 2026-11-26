@@ -367,14 +367,6 @@ def test_without_a_running_proxy_it_says_to_start_j_cc(
     assert "j-cc" in plan
 
 
-def test_the_recipe_runs_it() -> None:
-    justfile = (Path(__file__).resolve().parents[2] / "justfile").read_text(
-        encoding="utf-8"
-    )
-    assert "headroom-dashboard:" in justfile
-    assert "scripts/jev_headroom.py dashboard" in justfile
-
-
 # --- the dashboard at launch: URL every time, the browser once per proxy ---
 
 

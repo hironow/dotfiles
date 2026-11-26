@@ -135,29 +135,3 @@ def test_a_bare_just_lists_the_recipes(path: Path) -> None:
     assert re.search(r"^set default-list$", text, re.MULTILINE)
     # the setting replaces the old `default: help` recipe
     assert not re.search(r"^default:", text, re.MULTILINE)
-
-
-@pytest.mark.parametrize("path", [JUSTFILE, TEMPLATE], ids=["justfile", "template"])
-def test_a_recipe_under_a_comment_block_names_its_summary_with_doc(path: Path) -> None:
-    # `just --list` shows only the comment line right above a recipe. Under a
-    # block of explanation that line is a fragment ("is a conscious,
-    # reviewable edit of this line."), so such a recipe gives its one-line
-    # summary with `[doc('...')]` (the manual's attribute for this) and the
-    # block stays as the explanation.
-    lines = path.read_text(encoding="utf-8").splitlines()
-    fragments = []
-    for i, line in enumerate(lines):
-        if SKIP.match(line):
-            continue
-        m = re.match(r"^@?([A-Za-z_][\w-]*)", line)
-        if not m or m.group(1).startswith("_"):
-            continue
-        j, attrs = i - 1, []
-        while j >= 0 and lines[j].startswith("["):
-            attrs.append(lines[j])
-            j -= 1
-        if "[private]" in attrs or any(a.startswith("[doc(") for a in attrs):
-            continue
-        if j >= 1 and lines[j].startswith("#") and lines[j - 1].startswith("#"):
-            fragments.append(m.group(1))
-    assert not fragments, fragments

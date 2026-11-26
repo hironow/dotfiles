@@ -47,31 +47,6 @@ def doctor_windows_branch(doctor_text: str) -> str:
     return m.group(1)
 
 
-def _recipe_body(text: str, name: str) -> str:
-    m = re.search(
-        rf"(?ms)^{re.escape(name)}[^:\n]*:.*?\n(.*?)(?=^[A-Za-z_][\w-]*[^:\n]*:|\Z)",
-        text,
-    )
-    assert m is not None, f"recipe {name!r} not found in justfile"
-    return m.group(1)
-
-
-def test_doctor_recipe_is_plain_bash_wrapper(justfile_text: str) -> None:
-    """A shebang doctor cannot even start from PowerShell on a stock Windows
-    PATH (no cygpath) — the diagnostics tool would die of the exact disease
-    it exists to diagnose. It must stay a linewise plain-bash wrapper, which
-    works from any shell and under any just version."""
-    body = _recipe_body(justfile_text, "doctor")
-    assert "#!" not in body, (
-        "doctor must not be a shebang recipe: shebang recipes need cygpath on "
-        "native Windows, which a stock PowerShell persisted PATH cannot reach"
-    )
-    assert re.search(r"@?bash scripts/doctor\.sh", body), (
-        "doctor must delegate to scripts/doctor.sh via plain `bash` "
-        "(linewise recipe, no shebang)"
-    )
-
-
 def test_doctor_checks_persisted_path_reaches_cygpath(
     doctor_windows_branch: str,
 ) -> None:

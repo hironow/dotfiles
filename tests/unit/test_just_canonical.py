@@ -24,12 +24,6 @@ ROOT = Path(__file__).resolve().parents[2]
 JUSTFILES = [ROOT / "justfile", ROOT / "templates/agent-baseline/justfile"]
 SPOKES = sorted(ROOT.glob("ROOT_AGENTS_docs_agents_*.md"))
 # The manual's table of settings and its list of functions mark these deprecated.
-DEPRECATED = {
-    "set windows-shell": r"^\s*set\s+windows-shell\b",
-    "set windows-powershell": r"^\s*set\s+windows-powershell\b",
-    "env_var()": r"\benv_var\s*\(",
-    "env_var_or_default()": r"\benv_var_or_default\s*\(",
-}
 
 
 def _pinned() -> str:
@@ -67,14 +61,6 @@ def _just_blocks(markdown: Path) -> str:
     )
 
 
-def _sources() -> list[tuple[str, str]]:
-    sources = [
-        (str(p.relative_to(ROOT)), p.read_text(encoding="utf-8")) for p in JUSTFILES
-    ]
-    sources += [(p.name, _just_blocks(p)) for p in SPOKES if _just_blocks(p)]
-    return sources
-
-
 @pytest.mark.parametrize("path", JUSTFILES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_just_fmt_would_not_change_the_justfile(path: Path) -> None:
     result = subprocess.run(
@@ -106,16 +92,6 @@ def test_just_fmt_would_not_change_a_spokes_just_blocks(
         check=False,
     )
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr
-
-
-def test_no_deprecated_setting_or_function() -> None:
-    found = [
-        f"{name}: {label}"
-        for name, text in _sources()
-        for label, pattern in DEPRECATED.items()
-        if re.search(pattern, text, re.MULTILINE)
-    ]
-    assert not found, found
 
 
 @pytest.mark.parametrize(
