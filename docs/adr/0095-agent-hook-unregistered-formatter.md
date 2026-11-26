@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0044](0044-python-toolchain-uv-ruff-ty.md), [0037](0037-layered-claude-settings-fragments.md), [0091](0091-review-against-requirements-three-rounds.md)
-- **consultation-trace**: the owner's questions and choice in a Claude Code session on 2026-11-26 (05:44 to 05:56 JST), quoted in the pull request that adds this record ([PR #700](https://github.com/hironow/dotfiles/pull/700)); the owner accepted the record on 2026-11-26 ("0095 approveです。"), quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN)
+- **consultation-trace**: the owner's questions and choice in a Claude Code session on 2026-11-26 (05:44 to 05:56 JST), quoted in the pull request that adds this record ([PR #700](https://github.com/hironow/dotfiles/pull/700)); the owner accepted the record on 2026-11-26 ("0095 approveです。"), quoted in [PR #701](https://github.com/hironow/dotfiles/pull/701)
 
 ## Plain summary
 
@@ -59,5 +59,5 @@ Set the formatter's `registered` back to true (or remove the field) and restore 
 ## Decision (2026-11-26)
 
 - [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 17:35 JST. After #700 had merged and `just sync-agents all` had dropped the formatter from every Claude home and emptied Codex's group on the owner's Mac, the owner wrote "0095 approveです。" (translated: I approve 0095). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #NNN](https://github.com/hironow/dotfiles/pull/NNN).
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 17:35 JST. After #700 had merged and `just sync-agents all` had dropped the formatter from every Claude home and emptied Codex's group on the owner's Mac, the owner wrote "0095 approveです。" (translated: I approve 0095). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in [PR #701](https://github.com/hironow/dotfiles/pull/701).
 - Action: done in #700. Each other machine drops the formatter on its next `just sync-agents` that builds a release (D5).
