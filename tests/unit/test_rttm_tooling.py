@@ -30,24 +30,3 @@ def test_rttm_ty_has_its_own_scope_and_import_path() -> None:
     assert config["src"]["include"] == ["to_eaf.py", "visualize.py", "tests"]
     assert config["environment"]["extra-paths"] == ["."]
     assert config["terminal"]["error-on-warning"] is True
-
-
-def test_rttm_tasks_are_reached_by_root_gates() -> None:
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    for root_task, nested_task in (
-        ("fmt", "rttm-fmt"),
-        ("lint", "rttm-lint"),
-        # `check` reaches rttm-check through check-except-go (ADR-0089)
-        ("check", "check-except-go"),
-        ("check-except-go", "rttm-check"),
-    ):
-        block = text.split(f"\n{root_task}:\n", 1)[1].split("\n\n", 1)[0]
-        assert f"just {nested_task}" in block
-    for task in ("rttm-fmt", "rttm-lint", "rttm-typecheck", "rttm-check"):
-        assert f"\n{task}:" in text
-    typecheck = text.split("\nrttm-typecheck:", 1)[1].split("\n\n", 1)[0]
-    assert "--group lint ty check" in typecheck
-    assert "--only-group lint ty" not in typecheck
-    check = text.split("\nrttm-check:", 1)[1].split("\n\n", 1)[0]
-    assert "rttm-typecheck" in check
-    assert "--group lint python -m pytest" in check

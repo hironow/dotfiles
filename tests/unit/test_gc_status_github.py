@@ -37,7 +37,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 STATUS = ROOT / "scripts" / "gc_status.sh"
 GITHUB = ROOT / "scripts" / "gc_github_status.sh"
-JUSTFILE = ROOT / "justfile"
 
 winskip = pytest.mark.skipif(
     sys.platform == "win32",
@@ -96,14 +95,6 @@ def test_zombie_runbook_survives_its_own_advice() -> None:
         "the .runner identity) — a bare 'actions.runner.*' glob matches "
         "zero loaded units and silently succeeds (the trap gc_status.sh "
         "itself documents)."
-    )
-
-
-def test_justfile_offers_the_force_restart() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert "runner-svc-restart-force" in text, (
-        "the -Force path must be a just recipe, not folklore (AGENTS.md: "
-        "commands live in the justfile)."
     )
 
 

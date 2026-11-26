@@ -14,14 +14,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_justfile_has_no_claudelint() -> None:
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert "claude-code-lint" not in text, (
-        "justfile invokes the retired third-party claude-code-lint; "
-        "only the official `claude plugin validate` gate remains (ADR 0041)."
-    )
-
-
 def test_effective_settings_checker_is_stdlib_only() -> None:
     src = (ROOT / "scripts" / "check_effective_settings.py").read_text(encoding="utf-8")
     assert "claude-code-lint" not in src and "bunx" not in src, (

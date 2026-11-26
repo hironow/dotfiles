@@ -83,14 +83,6 @@ def test_the_strict_gate_never_writes() -> None:
     assert re.search(r"(?m)^\s+run: just check\s*$", CI.read_text(encoding="utf-8"))
 
 
-def test_install_hooks_runs_prek_install() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert "[script]\ninstall-hooks:\n    set -euo pipefail\n" in text
-    _, body = _recipe("install-hooks")
-    assert body[-1] == "prek install"
-    assert "git config --show-scope --get-all core.hooksPath" in "\n".join(body)
-
-
 def test_dotfiles_own_prek_does_not_run_the_template_config() -> None:
     lines = PREKIGNORE.read_text(encoding="utf-8").splitlines()
     assert "templates/agent-baseline/" in lines

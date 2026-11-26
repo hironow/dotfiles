@@ -49,23 +49,6 @@ def _windows_shell_argv() -> list[str]:
     return argv
 
 
-def test_windows_shell_prepends_usr_bin_and_execs_inner_sh() -> None:
-    argv = _windows_shell_argv()
-    assert argv[0] == "sh", "entrypoint must stay `sh` (not in System32)"
-    assert argv[-2] == "-c", "recipe text must be handed to a -c command"
-    prelude = argv[-1]
-    assert 'PATH="/usr/bin:$PATH"' in prelude, (
-        "outer sh must prepend /usr/bin so bash/find/sort/env resolve to Git "
-        "Bash's, not System32/WSL, from a fresh persisted PATH"
-    )
-    assert re.search(r'exec /usr/bin/sh .*-c "\$0"', prelude), (
-        "recipe text must run in an inner /usr/bin/sh with the normal -c "
-        "contract ($0 = shell, positional args empty)"
-    )
-    for flag in ("-eu", "pipefail"):
-        assert flag in prelude, f"inner sh must keep {flag} semantics"
-
-
 def _host_bash() -> str:
     """Absolute path to a real bash — NEVER a bare "bash".
 

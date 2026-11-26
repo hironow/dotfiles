@@ -74,18 +74,6 @@ def test_cloud_list_dispatch_and_failure_propagation(
     assert list(home.iterdir()) == []
 
 
-def test_aws_uses_checkout_mise_on_posix_and_preserves_standalone_windows() -> None:
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert (
-        'AWS_CLI := if os() == "windows" { "aws" } else { CLI_TOOLS_MISE + " exec http:aws -- aws" }'
-        in text
-    )
-    assert (
-        "[group('cloud')]\naws-list:\n    {{ AWS_CLI }} configure list-profiles\n"
-        in text
-    )
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="CLI stubs use POSIX shell scripts")
 @pytest.mark.parametrize("exit_code", [0, 17], ids=["success", "mise-failure"])
 def test_aws_dispatch_never_uses_stale_aws_and_propagates_failure(

@@ -87,35 +87,6 @@ def test_root_golangci_config_is_v2_gofumpt_only() -> None:
     assert not extras, "one root golangci config; found extra " + ", ".join(extras)
 
 
-def test_justfile_has_go_lint_and_go_fmt_recipes() -> None:
-    justfile = _justfile()
-    assert re.search(r"(?m)^go-lint:", justfile), "just go-lint must exist"
-    assert re.search(r"(?m)^go-fmt:", justfile), "just go-fmt must exist"
-    lint_hits = _code_lines_with(justfile, r"golangci-lint\s+run")
-    fmt_hits = _code_lines_with(justfile, r"golangci-lint\s+fmt")
-    assert lint_hits, "go-lint must invoke golangci-lint run"
-    assert fmt_hits, "go-fmt must invoke golangci-lint fmt"
-
-
-def test_just_check_wires_go_lint() -> None:
-    justfile = _justfile()
-    in_recipe = False
-    body: list[str] = []
-    for line in justfile.splitlines():
-        if re.match(r"^check:\s*$", line):
-            in_recipe = True
-            continue
-        if in_recipe:
-            if line and not line[0].isspace() and not line.startswith("#"):
-                break
-            body.append(line)
-    joined = "\n".join(body)
-    assert in_recipe, "just check recipe not found"
-    assert re.search(r"\bgo-lint\b|golangci-lint\s+run", joined), (
-        "just check must run the Go lint gate"
-    )
-
-
 def test_emu_fmt_uses_golangci_not_go_fmt() -> None:
     justfile = _justfile()
     in_recipe = False

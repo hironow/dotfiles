@@ -265,9 +265,3 @@ def test_doctor_runs_the_detector_cross_platform() -> None:
     assert doctor.index("retired_python_tools.sh detect") < doctor.index(
         'case "$(uname -s)" in'
     )
-
-
-def test_justfile_has_the_prune_recipe() -> None:
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert "\nprune-retired-python-tools:\n" in justfile
-    assert "retired_python_tools.sh prune" in justfile

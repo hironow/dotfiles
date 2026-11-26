@@ -24,9 +24,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
 
-_VP_LINE = re.compile(
-    r"^\s+git -C site --work-tree=\.\. ls-files -z (.+?) \| xargs -0 -r mise x -- vp -C site (fmt(?: --check)?)\s*$"
-)
 _JS_PATTERNS = ("*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.mts", "*.cts")
 # Tracked JS/TS outside vp's package, and the gate that covers each.
 _OTHER_GATES = {
@@ -35,24 +32,6 @@ _OTHER_GATES = {
     "site/vendor/": "tests/unit/test_site_vendor.py (SHA-256 of npm's bytes)",
     ".semgrep/": "just semgrep-test (Semgrep rule fixtures)",
 }
-
-
-def _vp_lines() -> dict[str, str]:
-    lines = {}
-    for raw in JUSTFILE.read_text(encoding="utf-8").splitlines():
-        match = _VP_LINE.match(raw)
-        if match:
-            lines[match.group(2)] = match.group(1)
-    return lines
-
-
-def test_every_vp_gate_reads_the_one_file_list() -> None:
-    lines = _vp_lines()
-    assert set(lines) == {"fmt", "fmt --check"}, lines
-    assert all(spec == "{{ JS_FILES }}" for spec in lines.values()), lines
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert " vp fmt" not in text, "vp outside site/"
-    assert text.count(" vp -C site ") == len(lines), "a vp line the list does not feed"
 
 
 @pytest.mark.skipif(

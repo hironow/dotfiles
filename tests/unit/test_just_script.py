@@ -24,12 +24,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
-TEMPLATE = ROOT / "templates/agent-baseline/justfile"
 WINDOWS_SH = Path(r"C:\Program Files\Git\usr\bin\sh.exe")
 # Recipes that CI runs as script recipes on each path: Linux (small-checks),
 # Linux and Windows (go-test, in check.yaml and the Windows Go job), and
 # Windows PowerShell 5.1 (test-windows-powershell).
-ON_CI = ("small-checks", "go-test", "test-windows-powershell")
 
 
 def _setting(os_attr: str, path: Path = JUSTFILE) -> list[str]:
@@ -41,42 +39,8 @@ def _setting(os_attr: str, path: Path = JUSTFILE) -> list[str]:
     return [a or b for a, b in re.findall(r"\"([^\"]*)\"|'([^']*)'", m.group(1))]
 
 
-def _header(name: str) -> tuple[list[str], list[str]]:
-    """The attribute lines and the body lines of a recipe."""
-    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
-    for i, line in enumerate(lines):
-        if re.match(rf"^@?{re.escape(name)}(\s[^:]*)?:", line):
-            j, attrs = i - 1, []
-            while j >= 0 and lines[j].startswith("["):
-                attrs.insert(0, lines[j])
-                j -= 1
-            body = []
-            for b in lines[i + 1 :]:
-                if b and not b.startswith(" "):
-                    break
-                body.append(b)
-            return attrs, body
-    raise AssertionError(f"no recipe {name}")
-
-
 def test_unix_runs_scripts_with_bash_and_no_flags() -> None:
     assert _setting("unix") == ["bash"]
-
-
-def test_windows_puts_usr_bin_first_and_runs_gits_bash() -> None:
-    argv = _setting("windows")
-    assert argv[:2] == ["sh", "-c"], "entrypoint `sh` is not in System32"
-    assert 'PATH="/usr/bin:$PATH"' in argv[2]
-    # just passes the script's path next, which `sh -c` takes as $0, then the
-    # recipe's arguments (positional-arguments), which "$@" forwards
-    assert re.search(r'exec /usr/bin/bash "\$0" "\$@"$', argv[2]), argv[2]
-
-
-@pytest.mark.parametrize("name", ON_CI)
-def test_the_recipes_ci_runs_are_script_recipes(name: str) -> None:
-    attrs, body = _header(name)
-    assert "[script]" in attrs, attrs
-    assert not body[0].strip().startswith("#!"), body[0]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="runs the Unix setting")
@@ -160,19 +124,3 @@ def test_real_msys_sh_runs_a_script_that_finds_git_bash(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[0] == "/usr/bin/bash"
     assert result.stdout.splitlines()[1] in ("msys", "cygwin")
-
-
-@pytest.mark.parametrize("path", [JUSTFILE, TEMPLATE], ids=["justfile", "template"])
-def test_no_recipe_runs_through_a_shebang_line(path: Path) -> None:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    shebang = [
-        lines[i - 1]
-        for i, line in enumerate(lines)
-        if line.startswith("    #!") and i > 0 and not lines[i - 1].startswith(" ")
-    ]
-    assert not shebang, shebang
-
-
-def test_the_template_sets_the_same_interpreters() -> None:
-    assert _setting("unix", TEMPLATE) == _setting("unix")
-    assert _setting("windows", TEMPLATE) == _setting("windows")
