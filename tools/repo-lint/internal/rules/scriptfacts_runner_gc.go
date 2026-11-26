@@ -293,11 +293,13 @@ func noAndOrChains(files map[string]string) []string {
 // runnerManagedList: the runner-owned directories are named, not matched by
 // a leading underscore.
 func runnerManagedList(files map[string]string) []string {
-	_, after, ok := strings.Cut(files[gcSh], "_runner_managed=")
-	if !ok {
+	// text.split("_runner_managed=")[1]: up to the next marker, then the
+	// first line of that.
+	parts := strings.Split(files[gcSh], "_runner_managed=")
+	if len(parts) < 2 {
 		return []string{gcSh + " must list _runner_managed= explicitly"}
 	}
-	line, _, _ := strings.Cut(after, "\n")
+	line, _, _ := strings.Cut(parts[1], "\n")
 	var out []string
 	for _, owned := range []string{"_actions", "_tool", "_temp", "_diag", "_update"} {
 		if !strings.Contains(line, owned) {

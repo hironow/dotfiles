@@ -161,6 +161,7 @@ func TestRunnerGcFacts(t *testing.T) {
 		{"workspaces are aged on mtime", edit(g, " on .runner-gc-last-used", ""), "test_wsl_leg_sweeps_workspaces_too"},
 		{"a named root alone sweeps a busy runner", edit(g, `if [ -z "${RUNNER_GC_ROOT:-}" ] || [ "${RUNNER_GC_ALLOW_BUSY:-0}" != "1" ]; then :; fi`, `if [ -z "${RUNNER_GC_ROOT:-}" ]; then :; fi`), "test_workspace_sweep_is_exercisable_on_a_busy_runner"},
 		{"any root is swept", edit(g, `[ -f "${_rdir}/.runner" ] || exit 0`, ":"), "test_workspace_sweep_demands_proof_it_is_a_runner"},
+		{"a second marker names the missing dir", edit(g, `_runner_managed="_actions _tool _temp _diag _update"`, `_runner_managed="_actions _tool _temp _diag" # _runner_managed=_update`), "test_workspace_sweep_excludes_runner_dirs_by_name"},
 		{"runner dirs by prefix", edit(g, `_runner_managed="_actions _tool _temp _diag _update"`, `_runner_managed="_actions _tool"`), "test_workspace_sweep_excludes_runner_dirs_by_name"},
 		{"no 24h floor", edit(g, "-mmin +1440", "-mmin +120"), "test_superseded_runner_versions_need_a_live_symlink"},
 		{"no UAC relaunch", edit(iw, "-Verb RunAs ", ""), "test_gc_installer_offers_uac_elevation_for_s4u"},
