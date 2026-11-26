@@ -32,7 +32,6 @@ from _bash_hook import bash_path, resolve_bash, run_bash
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 COMPACT = SCRIPTS / "wsl_compact.sh"
-FSCK = SCRIPTS / "wsl_fsck.sh"
 VHDX_LIB = SCRIPTS / "wsl_vhdx_lib.sh"
 
 GIB = 1024**3
@@ -246,12 +245,6 @@ def test_registry_vhdx_file_name_is_honoured(tmp_path: Path) -> None:
     proc = run_compact(tmp_path, fact_lines=facts(), vhdx_name="disk.vhdx")
     assert "No vhdx found" not in proc.stdout, proc.stdout
     assert "disk/disk.vhdx" in proc.stdout
-
-
-def test_fsck_shares_the_locate_hint() -> None:
-    text = FSCK.read_text(encoding="utf-8")
-    assert "--get-location" not in text
-    assert "wsl_vhdx_locate_hint" in text
 
 
 def test_no_get_acl_in_shell_scripts() -> None:

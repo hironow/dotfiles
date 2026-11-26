@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -756,27 +755,6 @@ def test_other_native_reference_allows_positive_collection(
     assert final["removed"] == [IMAGE] and final["removed_containers"] == [], final
 
 
-def test_model_and_real_retention_and_guards_lockstep():
-    shell = (ROOT / "scripts/runner_gc.sh").read_text(encoding="utf-8")
-    ps = (ROOT / "scripts/runner_gc_win.ps1").read_text(encoding="utf-8")
-    model = (ROOT / "scripts/spec/podman_image_gc.qnt").read_text(encoding="utf-8")
-    assert 'RETENTION="${RUNNER_GC_RETENTION:-2h}"' in shell
-    assert "else { '2h' }" in ps
-    assert "RETENTION_SECONDS = 7200" in model
-    assert int("2") * 3600 == 7200
-    assert '"$created" -ge "$PODMAN_CUTOFF"' in shell
-    assert "$created -ge $Cutoff" in ps
-    assert "ageSeconds > RETENTION_SECONDS" in model
-    assert "podman rmi --no-prune" in shell
-    assert "@('rmi', '--no-prune', $imageId)" in ps
-    assert "ParentProtection = parentExists" in model
-    assert "ReferenceProtection = referenced implies imageExists" in model
-    assert (
-        "ConfigurationProtection = not(configurationOk) implies not(removed)" in model
-    )
-    assert "check_age(witness)" in FAKE and "2**63 - 1" in FAKE
-
-
 def test_powershell_runtime_required_when_selected():
     if os.environ.get("PODMAN_GC_REQUIRE_PWSH") == "1":
         assert PWSH is not None, (
@@ -1114,37 +1092,3 @@ def test_non_string_created_is_kept(tmp_path, platform, created):
     state = inventory(containers={"def": container(created=created, status="exited")})
     final = run_platform(platform, tmp_path / "container", state)
     assert final["removed"] == [] and final["removed_containers"] == [], final
-
-
-def _function_body(script, name):
-    match = re.search(
-        rf"^function {re.escape(name)} {{\n(.*?)^}}\n", script, re.MULTILINE | re.DOTALL
-    )
-    assert match is not None, name
-    return match.group(1)
-
-
-def test_get_podman_json_asks_the_real_cmdlet_for_date_kind():
-    """PowerShell 7.5+ reads JSON date strings as strings, like 5.1 does; older
-    ConvertFrom-Json has no DateKind and is called exactly as before."""
-    script = (ROOT / "scripts/runner_gc_win.ps1").read_text(encoding="utf-8")
-    body = _function_body(script, "Get-PodmanJson")
-    # module-qualified: a function named Get-Command (the replay wrapper's)
-    # cannot answer for the cmdlet
-    assert (
-        "$cmdlet = Microsoft.PowerShell.Core\\Get-Command -Name ConvertFrom-Json"
-        " -CommandType Cmdlet -ErrorAction Stop\n" in body
-    )
-    assert (
-        "if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }"
-        in body
-    )
-    # stored, then returned: 5.1 writes a JSON array as one Object[]
-    assert "$parsed = Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
-    assert "    return $parsed\n" in body
-    code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
-    # DateKind: only the capability test and the one use above
-    assert sum(line.count("DateKind") for line in code) == 2
-    assert "PSDefaultParameterValues" not in script
-    calls = [line for line in code if "ConvertFrom-Json" in line]
-    assert calls and all(line.strip() in body for line in calls), calls

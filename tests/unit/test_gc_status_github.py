@@ -35,7 +35,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-STATUS = ROOT / "scripts" / "gc_status.sh"
 GITHUB = ROOT / "scripts" / "gc_github_status.sh"
 
 winskip = pytest.mark.skipif(
@@ -49,53 +48,6 @@ winskip = pytest.mark.skipif(
 
 
 # --- static wiring ------------------------------------------------------------
-
-
-def test_status_feeds_the_github_section() -> None:
-    text = STATUS.read_text(encoding="utf-8")
-    assert "gc_github_status.sh" in text, (
-        "gc_status.sh must render the GitHub-truth section after the legs."
-    )
-
-
-def test_github_section_builds_slashless_endpoints_for_both_scopes() -> None:
-    text = GITHUB.read_text(encoding="utf-8")
-    assert "orgs/" in text and "repos/" in text, (
-        "gitHubUrl may be org-level (https://github.com/<org>) or repo-level "
-        "(<owner>/<repo>); both endpoint shapes must be constructed."
-    )
-    assert 'gh api "/' not in text and "gh api '/" not in text, (
-        "a leading-slash endpoint gets MSYS-mangled into a Git-install path "
-        "on Git Bash; build endpoints without it."
-    )
-    assert "--paginate" in text, (
-        "an org can have more runners than one page; unpaginated listings "
-        "silently miss the tail."
-    )
-    assert "--jq" in text, (
-        "use gh's built-in jq (external jq is not guaranteed); --paginate "
-        "without --jq concatenates page JSONs into a non-JSON stream."
-    )
-
-
-def test_zombie_runbook_survives_its_own_advice() -> None:
-    github = GITHUB.read_text(encoding="utf-8")
-    assert "5 min" in github, (
-        "the runbook must say to wait for the ~5-minute job-cancellation "
-        "self-heal first — that is how the live incident resolved."
-    )
-    status = STATUS.read_text(encoding="utf-8")
-    assert "runner-svc-restart" in status and "-Force" in status, (
-        "the Windows restart hint must name the -Force escape hatch: the "
-        "plain restart is REFUSED while Runner.Worker lives, which is "
-        "exactly the zombie state."
-    )
-    assert "systemctl restart" in status and "actions.runner.%s.%s.service" in status, (
-        "the WSL restart hint must carry a CONCRETE unit name (built from "
-        "the .runner identity) — a bare 'actions.runner.*' glob matches "
-        "zero loaded units and silently succeeds (the trap gc_status.sh "
-        "itself documents)."
-    )
 
 
 # --- behavioral: run the section against a stub gh ----------------------------

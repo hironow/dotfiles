@@ -116,6 +116,7 @@ func All() []Rule {
 		justfileListSurface(),
 		justfileRecipeSurface(),
 		justfileRecipeFacts(),
+		runnerGcFacts(),
 	}
 }
 
