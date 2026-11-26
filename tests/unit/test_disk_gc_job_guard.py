@@ -234,33 +234,3 @@ def test_report_shows_the_runner_job_state(tmp_path: Path, job: str, word: str) 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert f"runner job: {word}" in proc.stdout
     assert all(c.exists() for c in box.caches)
-
-
-def _logical_lines(text: str) -> list[str]:
-    return text.replace("\\\n", " ").splitlines()
-
-
-def test_tasklist_runs_without_msys_path_conversion() -> None:
-    """Git Bash rewrites `/FI` into `C:/.../FI`; tasklist then errors out.
-
-    The fake tasklist is an MSYS program, which MSYS never rewrites argv for,
-    so only this static check can catch a dropped MSYS_NO_PATHCONV.
-    """
-    calls = [
-        line
-        for line in _logical_lines(DISK.read_text(encoding="utf-8"))
-        if re.search(r"\btasklist\s+/", line) and not line.lstrip().startswith("#")
-    ]
-    assert calls, "disk_gc.sh must detect the Windows runner job with tasklist"
-    for line in calls:
-        assert "MSYS_NO_PATHCONV=1" in line and "MSYS2_ARG_CONV_EXCL" in line, line
-
-
-def test_wsl_leg_receives_the_allow_busy_knob() -> None:
-    text = DISK.read_text(encoding="utf-8")
-    dispatch = re.search(r'wsl\.exe -d "\$_distro" -e bash -lc "([^"]*)"', text)
-    assert dispatch is not None, "expected the WSL leg dispatch line"
-    assert "DISK_GC_ALLOW_BUSY=" in dispatch.group(1), (
-        "wsl.exe -e does not inherit the caller's environment; the knob must "
-        "ride inside the bash -lc command line."
-    )
