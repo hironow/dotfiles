@@ -29,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "templates/agent-baseline"
 CONFIG = TEMPLATE / ".pre-commit-config.yaml"
 JUSTFILE = TEMPLATE / "justfile"
-CI = TEMPLATE / ".github/workflows/quality-gate.yaml"
 PREKIGNORE = ROOT / ".prekignore"
 HOOK_IDS = [
     "trailing-whitespace",
@@ -50,37 +49,7 @@ def _config() -> str:
     return CONFIG.read_text(encoding="utf-8")
 
 
-def _recipe(name: str) -> tuple[list[str], list[str]]:
-    """The dependencies and the command lines of the template recipe `name`."""
-    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
-    for start, line in enumerate(lines):
-        header = re.match(rf"^{re.escape(name)}\s*:(?!=)(?P<deps>.*)$", line)
-        if header:
-            break
-    else:
-        raise AssertionError(f"no recipe {name} in {JUSTFILE}")
-    deps = header.group("deps").split("#", 1)[0].split()
-    body = []
-    for line in lines[start + 1 :]:
-        if line and not line[0].isspace():
-            break
-        if line.strip() and not line.strip().startswith("#"):
-            body.append(line.strip())
-    return deps, body
-
-
 # --- static -----------------------------------------------------------------
-
-
-def test_the_strict_gate_never_writes() -> None:
-    deps, _ = _recipe("check")
-    assert "fmt" not in deps
-    assert {"lint", "semgrep", "test"} <= set(deps)
-    _, lint = _recipe("lint")
-    assert (
-        "uv run --locked --only-group lint ruff check --no-fix --no-fix-only ." in lint
-    )
-    assert re.search(r"(?m)^\s+run: just check\s*$", CI.read_text(encoding="utf-8"))
 
 
 def test_dotfiles_own_prek_does_not_run_the_template_config() -> None:

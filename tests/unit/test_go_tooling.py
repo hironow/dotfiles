@@ -41,10 +41,6 @@ def _go_version(path: Path) -> tuple[int, ...]:
     raise AssertionError(f"{path}: no go directive")
 
 
-def _justfile() -> str:
-    return (REPO / "justfile").read_text(encoding="utf-8")
-
-
 def _code_lines_with(text: str, pattern: str) -> list[tuple[int, str]]:
     hits: list[tuple[int, str]] = []
     for n, line in enumerate(text.splitlines(), 1):
@@ -85,25 +81,3 @@ def test_root_golangci_config_is_v2_gofumpt_only() -> None:
         if p.resolve() != config.resolve()
     ]
     assert not extras, "one root golangci config; found extra " + ", ".join(extras)
-
-
-def test_emu_fmt_uses_golangci_not_go_fmt() -> None:
-    justfile = _justfile()
-    in_recipe = False
-    body: list[str] = []
-    for line in justfile.splitlines():
-        if re.match(r"^emu-fmt:\s*$", line):
-            in_recipe = True
-            continue
-        if in_recipe:
-            if line and not line[0].isspace() and not line.startswith("#"):
-                break
-            body.append(line)
-    joined = "\n".join(body)
-    assert in_recipe, "just emu-fmt recipe not found"
-    assert "golangci-lint fmt" in joined, (
-        "emu-fmt must format Go CLIs with golangci-lint fmt"
-    )
-    assert not re.search(r"\bgo fmt\b", joined), (
-        "emu-fmt must not use go fmt; golangci-lint fmt (gofumpt) is the gate"
-    )

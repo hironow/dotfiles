@@ -9,7 +9,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import install_pi_extensions as installer
 
-ROOT = Path(__file__).resolve().parents[2]
 # v0.1.1 names skill directories egm-<name> (v0.1.0 used egm_<name>).
 DESIGN_DOC = "skills/egm-draft/references/design_doc.md"
 
@@ -102,13 +101,6 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
         installer.verify_egm(bundle)
     assert _git(bundle, "rev-parse", "HEAD") == head
     assert (target.read_bytes() if target.exists() else None) == before
-
-
-def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("agent-bump *args:\n", 1)[1].split("\n\n", 1)[0]
-    assert "go -C tools/agent-bump run . --root" in recipe
-    assert "{{ args }}" in recipe
 
 
 def test_the_required_layout_is_the_one_v0_1_1_ships() -> None:

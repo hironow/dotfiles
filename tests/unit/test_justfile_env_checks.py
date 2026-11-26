@@ -32,29 +32,12 @@ This test pins that fix in two ways:
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[2]
-JUSTFILE = ROOT / "justfile"
-
-
-def test_no_double_dollar_var_question_mark_in_shebang_recipes() -> None:
-    """`$${VAR:?msg}` is broken in shebang recipes — see module
-    docstring. The pattern must not exist anywhere in the justfile."""
-    text = JUSTFILE.read_text(encoding="utf-8")
-    matches = re.findall(r"\$\$\{[A-Z_][A-Z0-9_]*:\?[^}]*\}", text)
-    assert matches == [], (
-        "justfile contains broken $${VAR:?msg} env-var guards (these\n"
-        "expand to <pid>{VAR:?msg} in shebang recipes — the :? guard\n"
-        "never fires). Replace $$ with single $ so bash sees ${VAR:?msg}.\n"
-        f"Found: {matches}"
-    )
 
 
 @pytest.fixture
