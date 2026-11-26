@@ -3,8 +3,8 @@
   "type": "tls-endpoint-and-version",
   "title": "eMudhra intermediate CA private key compromise",
   "source": "https://emudhra.we-have-a-problem.com/",
-  "reviewedAt": "2026-10-23",
-  "reviewAfter": "2026-11-20",
+  "reviewedAt": "2026-11-26",
+  "reviewAfter": "2026-12-24",
   "controlURL": "https://emudhra.we-have-a-problem.com/",
   "hosts": [
     "dv-g3b-emudhra.we-have-a-problem.com",
@@ -45,6 +45,8 @@
   "pending": [],
   "advice": [
     "OS/browser revocation, PEM bundles and runtime CA stores are independent; update each consumer.",
-    "Rust: inspect each Cargo.lock for rustls-webpki 0.103.16 and webpki-roots/webpki-root-certs 1.0.10 fixes or a documented backport; rustc alone is not evidence."
+    "Rust: inspect each Cargo.lock for rustls-webpki 0.103.16 or later and webpki-roots/webpki-root-certs 1.0.11 or later (1.0.10 removed emSign ECC Root CA - G3; 1.0.11 also removed emSign Root CA - C1 and emSign ECC Root CA - C3), or a documented backport; rustc alone is not evidence.",
+    "macOS 27.2.1, 26.7.3 and 15.8.3 block the 12 certificates in the command-line tools and remove the two roots from /etc/ssl/cert.pem (Apple, 2026-11-09): update macOS before editing the OS bundle.",
+    "Windows CPython takes trust anchors from the ROOT store and ignores the CTL; CPython 3.11.18, 3.12.16, 3.13.18, 3.14.10 and 3.15.2 (2026-10-25) carry the fix (gh-160040): update every Python, including the ones uv manages."
   ]
 }

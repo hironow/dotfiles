@@ -90,10 +90,11 @@ Instead of numeric comparisons, verified builds can be added one by one to an in
 | --- | --- | --- |
 | NVD / Tenable / Rapid7 | 9.8 | `AC:L` (low) |
 | Oracle internal record (marked provisional) | 8.1 | `AC:H` (requires winning a race) |
+| Red Hat (marked verified, 2026-11-26) | 9.8 | `AC:L` (low) |
 
-Red Hat rates priority as **high** rather than critical (Bugzilla is `NEW`, fixed version unconfirmed).
-EPSS is 0.00388 (about 0.4%), not listed in CISA KEV.
-**Not listed in KEV at time of observation. This is not evidence of absence of active exploitation, public exploits, or CISA evaluation status.**
+Red Hat raised its rating from high to **Critical** and has shipped fixes for RHEL 8, 9 and 10; Bugzilla 2553390 is still `NEW` with no fixed version.
+EPSS rose from 0.00388 (2026-10-29) to **0.8484** (FIRST, 2026-11-25, percentile 99.8%).
+**Not listed in the CISA KEV catalog (version 2026.11.25). This is not evidence of absence of active exploitation, public exploits, or CISA evaluation status.**
 
 There are two triggers, both requiring specific conditions:
 
@@ -150,8 +151,10 @@ WSL instances specifying a custom kernel via `kernel=` are managed separately an
 - CVE record: <https://osv.dev/vulnerability/CVE-2026-98432>
 - Oracle assessment (8.1 / `AC:H`): <https://linux.oracle.com/cve/CVE-2026-98432.html>
 - Red Hat Bugzilla 2553390: <https://bugzilla.redhat.com/show_bug.cgi?id=2553390>
-- Tenable (9.8 / EPSS / KEV): <https://www.tenable.com/cve/CVE-2026-98432>
+- Tenable (9.8 / EPSS): <https://www.tenable.com/cve/CVE-2026-98432>
+- CISA KEV catalog: <https://www.cisa.gov/known-exploited-vulnerabilities-catalog>
+- Microsoft WSL2 kernel releases: <https://github.com/microsoft/WSL2-Linux-Kernel/releases>
 - Red Hat CVE page: <https://access.redhat.com/security/cve/CVE-2026-98432>
 
-Reviewed on 2026-10-29; review deadline 2026-11-26.
+Reviewed on 2026-11-26; review deadline 2026-12-24.
 The source of truth for records is `tools/kernel-doctor/incidents/`.
