@@ -35,13 +35,19 @@ func TestIncidentManifestValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	reviewAfter := `"reviewAfter": "` + recorded.ReviewAfter + `"`
+	reviewed, err := time.Parse(time.DateOnly, recorded.ReviewedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dayBefore := reviewed.AddDate(0, 0, -1).Format(time.DateOnly)
 	for _, tc := range []struct{ name, old, new string }{
 		{"HTTP source", "https://emudhra.we-have-a-problem.com/", "http://emudhra.we-have-a-problem.com/"},
 		{"credentials", "https://emudhra.we-have-a-problem.com/", "https://user:password@emudhra.we-have-a-problem.com/"},
 		{"unknown mode", "tls-endpoint-and-version", "arbitrary-shell"},
 		{"invalid floor", "1.27.3", "1.27.3-rc.1"},
 		{"two-part floor", "26.2.2", "26.2"},
-		{"invalid date", reviewAfter, `"reviewAfter": "` + recorded.ReviewedAt + `"`},
+		{"review-after before reviewed-at", reviewAfter, `"reviewAfter": "` + dayBefore + `"`},
+		{"review-after equal to reviewed-at", reviewAfter, `"reviewAfter": "` + recorded.ReviewedAt + `"`},
 		{"unknown field", "\"title\":", "\"unrecognized\":true, \"title\":"},
 		{"untrusted root with colons", emsignECCG3, "86:A1:EC"},
 		{"untrusted root in upper case", emsignECCG3, strings.ToUpper(emsignECCG3)},
