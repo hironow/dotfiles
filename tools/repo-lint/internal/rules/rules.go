@@ -112,6 +112,8 @@ func All() []Rule {
 		justfileUVRunModes(),
 		justfileAWSCLI(),
 		justfileNoClaudeCodeLint(),
+		justfileListSurface(),
+		justfileRecipeSurface(),
 	}
 }
 
