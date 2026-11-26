@@ -61,7 +61,7 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		{"source with credentials", func(m map[string]any) { m["source"] = "https://u:p@osv.dev/x" }},
 		{"source with a port", func(m map[string]any) { m["source"] = "https://osv.dev:8443/x" }},
 		{"review-after before reviewed-at", func(m map[string]any) { m["reviewAfter"] = "2026-01-01" }},
-		{"review-after equal to reviewed-at", func(m map[string]any) { m["reviewAfter"] = "2026-10-29" }},
+		{"review-after equal to reviewed-at", func(m map[string]any) { m["reviewAfter"] = m["reviewedAt"] }},
 		{"review date not a date", func(m map[string]any) { m["reviewedAt"] = "29/10/2026" }},
 		{"no branches", func(m map[string]any) { m["branches"] = []any{} }},
 		{"duplicate branch", func(m map[string]any) {
