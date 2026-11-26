@@ -14,19 +14,25 @@ const (
 )
 
 // gateLeg is one fact a gate keeps. Each was a test that read the justfile
-// (ADR-0093), and each searches what its test searched: the recipe's header
-// line and body, comments included.
+// (ADR-0093), and each searches what its test searched, comments included.
 type gateLeg struct {
 	recipe string
 	// header: the header line, after the name, matches.
 	header *regexp.Regexp
-	// has: the header line and body hold it.
+	// has: the body holds it.
 	has string
-	// hasNot: the header line and body do not hold it.
-	hasNot string
+	// blockHas: the header line, after the name, or the body holds it.
+	blockHas string
+	// blockHasNot: neither the header line, after the name, nor the body
+	// holds it.
+	blockHasNot string
 	// noCode: no body line that is not a comment and holds no echo holds it.
 	noCode string
 }
+
+// bareGates take no dependency on their header line: the tests found each
+// as a line of its own name.
+var bareGates = []string{"check", "check-except-go", "fmt", "lint"}
 
 var runsHiddenBuild = regexp.MustCompile(`\brun-hidden-build\b`)
 
@@ -55,10 +61,10 @@ var gateLegs = []gateLeg{
 	{recipe: "check-except-go", has: "just rttm-check"},
 	{recipe: "rttm-fmt"},
 	{recipe: "rttm-lint"},
-	{recipe: "rttm-typecheck", has: "--group lint ty check"},
-	{recipe: "rttm-typecheck", hasNot: "--only-group lint ty"},
-	{recipe: "rttm-check", has: "rttm-typecheck"},
-	{recipe: "rttm-check", has: "--group lint python -m pytest"},
+	{recipe: "rttm-typecheck", blockHas: "--group lint ty check"},
+	{recipe: "rttm-typecheck", blockHasNot: "--only-group lint ty"},
+	{recipe: "rttm-check", blockHas: "rttm-typecheck"},
+	{recipe: "rttm-check", blockHas: "--group lint python -m pytest"},
 }
 
 var (
@@ -110,15 +116,7 @@ func justfileGateLegs() Rule {
 		Check: func(in Inputs) []Finding {
 			r := &report{rule: id, path: justfilePath}
 			text, _ := in[justfilePath].(string)
-			lines := strings.Split(text, "\n")
-			// a gate that stops scanning the branch lets a leaked token through
-			ci := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "ci: check ") })
-			switch {
-			case ci < 0:
-				r.add("recipe ci must start with `ci: check ` and depend on check-forbidden-tokens-branch")
-			case !strings.Contains(lines[ci], "check-forbidden-tokens-branch"):
-				r.add("recipe ci must depend on check-forbidden-tokens-branch")
-			}
+			checkCIScansTheBranch(r, text)
 			missing := map[string]bool{}
 			for _, leg := range gateLegs {
 				header, body, ok := recipeBlock(text, leg.recipe)
@@ -129,60 +127,118 @@ func justfileGateLegs() Rule {
 					}
 					continue
 				}
-				block := header + "\n" + body
-				switch {
-				case leg.header != nil && !leg.header.MatchString(header):
-					r.add("recipe %s must depend on %s", leg.recipe, leg.header)
-				case leg.has != "" && !strings.Contains(block, leg.has):
-					r.add("recipe %s must run %s", leg.recipe, leg.has)
-				case leg.hasNot != "" && strings.Contains(block, leg.hasNot):
-					r.add("recipe %s must not hold %s", leg.recipe, leg.hasNot)
-				case leg.noCode != "":
-					for line := range strings.SplitSeq(body, "\n") {
-						if !strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") && !strings.Contains(line, "echo") && strings.Contains(line, leg.noCode) {
-							r.add("recipe %s must not run %s: %s", leg.recipe, leg.noCode, strings.TrimSpace(line))
-						}
-					}
+				checkGateLeg(r, leg, header, body)
+			}
+			for _, gate := range bareGates {
+				if header, _, ok := recipeBlock(text, gate); ok && strings.TrimSpace(header) != "" {
+					r.add("recipe %s must stand on a line of its own name, with no dependency: %q", gate, header)
 				}
 			}
-			if header, body, ok := recipeBlock(text, "check"); ok && !checkRunsGoLint.MatchString(header+"\n"+body) {
+			if _, body, ok := recipeBlock(text, "check"); ok && !checkRunsGoLint.MatchString(body) {
 				r.add("recipe check must run the Go lint gate (go-lint or golangci-lint run)")
 			}
-			// supply-chain hardening is one recipe away
-			if _, _, ok := recipeBlock(text, "harden-env"); !ok {
-				r.add("recipe harden-env must exist")
-			}
-			if !strings.Contains(text, "scripts/harden_env.sh") {
-				r.add("the harden-env recipe must invoke scripts/harden_env.sh")
-			}
-			code := codeLines(text)
-			for _, g := range goTools {
-				if _, _, ok := recipeBlock(text, g.recipe); !ok {
-					r.add("recipe %s must exist", g.recipe)
-				}
-				if !slices.ContainsFunc(code, g.pattern.MatchString) {
-					r.add("%s must invoke %s", g.recipe, g.call)
-				}
-			}
-			for _, never := range vpNever {
-				if strings.Contains(text, never) {
-					r.add("no recipe may run %s; vp only formats (ADR-0079)", never)
-				}
-			}
+			checkFileWideLegs(r, text)
 			return r.out
 		},
+	}
+}
+
+// checkCIScansTheBranch: a gate that stops scanning the branch lets a leaked
+// token through.
+func checkCIScansTheBranch(r *report, text string) {
+	lines := strings.Split(text, "\n")
+	ci := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "ci: check ") })
+	switch {
+	case ci < 0:
+		r.add("recipe ci must start with `ci: check ` and depend on check-forbidden-tokens-branch")
+	case !strings.Contains(lines[ci], "check-forbidden-tokens-branch"):
+		r.add("recipe ci must depend on check-forbidden-tokens-branch")
+	}
+}
+
+// checkGateLeg checks one row against the recipe's header line and body.
+func checkGateLeg(r *report, leg gateLeg, header, body string) {
+	block := header + "\n" + body
+	switch {
+	case leg.header != nil && !leg.header.MatchString(header):
+		r.add("recipe %s must depend on %s", leg.recipe, leg.header)
+	case leg.has != "" && !strings.Contains(body, leg.has):
+		r.add("recipe %s must run %s", leg.recipe, leg.has)
+	case leg.blockHas != "" && !strings.Contains(block, leg.blockHas):
+		r.add("recipe %s must run %s", leg.recipe, leg.blockHas)
+	case leg.blockHasNot != "" && strings.Contains(block, leg.blockHasNot):
+		r.add("recipe %s must not hold %s", leg.recipe, leg.blockHasNot)
+	case leg.noCode != "":
+		for line := range strings.SplitSeq(body, "\n") {
+			if !strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") && !strings.Contains(line, "echo") && strings.Contains(line, leg.noCode) {
+				r.add("recipe %s must not run %s: %s", leg.recipe, leg.noCode, strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+// checkFileWideLegs: the facts their tests searched the whole file for.
+func checkFileWideLegs(r *report, text string) {
+	// supply-chain hardening is one recipe away
+	if _, _, ok := recipeBlock(text, "harden-env"); !ok {
+		r.add("recipe harden-env must exist")
+	}
+	if !strings.Contains(text, "scripts/harden_env.sh") {
+		r.add("the harden-env recipe must invoke scripts/harden_env.sh")
+	}
+	code := codeLines(text)
+	for _, g := range goTools {
+		if _, _, ok := recipeBlock(text, g.recipe); !ok {
+			r.add("recipe %s must exist", g.recipe)
+		}
+		if !slices.ContainsFunc(code, g.pattern.MatchString) {
+			r.add("%s must invoke %s", g.recipe, g.call)
+		}
+	}
+	for _, never := range vpNever {
+		if strings.Contains(text, never) {
+			r.add("no recipe may run %s; vp only formats (ADR-0079)", never)
+		}
 	}
 }
 
 // bashWrappers are the recipes PowerShell runs: a shebang recipe resolves
 // `env bash` to WSL's bash from PowerShell, so each stays a linewise call of
 // plain bash on its script.
-var bashWrappers = []struct{ recipe, command string }{
-	{"deploy", "bash scripts/deploy.sh"},
-	{"clean", "bash scripts/clean.sh"},
-	{"doctor", "bash scripts/doctor.sh"},
-	{"prune-rogue-npm-globals", "bash scripts/rogue_npm_globals.sh prune"},
+// Each header pattern is the one its test found the recipe by: doctor may
+// take parameters, the others may not.
+var bashWrappers = []struct {
+	recipe, command string
+	header          *regexp.Regexp
+}{
+	{"deploy", "bash scripts/deploy.sh", regexp.MustCompile(`(?m)^deploy\s*:.*$`)},
+	{"clean", "bash scripts/clean.sh", regexp.MustCompile(`(?m)^clean\s*:.*$`)},
+	{"doctor", "bash scripts/doctor.sh", regexp.MustCompile(`(?m)^doctor[^:\n]*:.*$`)},
+	{"prune-rogue-npm-globals", "bash scripts/rogue_npm_globals.sh prune", regexp.MustCompile(`(?m)^prune-rogue-npm-globals:.*$`)},
 }
+
+// bodyAfter is the indented body below the header the pattern finds.
+func bodyAfter(justfile string, header *regexp.Regexp) (string, bool) {
+	loc := header.FindStringIndex(justfile)
+	if loc == nil {
+		return "", false
+	}
+	var body []string
+	for line := range strings.SplitSeq(justfile[loc[1]:], "\n") {
+		if line != "" && line[0] != ' ' && line[0] != '\t' {
+			break
+		}
+		body = append(body, line)
+	}
+	return strings.Join(body, "\n"), true
+}
+
+// The Windows prelude each OS setting runs: /usr/bin first on PATH, then the
+// real shell, keeping errexit, nounset and pipefail for recipes.
+var (
+	shellPrelude      = regexp.MustCompile(`exec /usr/bin/sh .*-c "\$0"`)
+	interpreterRunner = regexp.MustCompile(`exec /usr/bin/bash "\$0" "\$@"$`)
+)
 
 var quotedArg = regexp.MustCompile(`"([^"]*)"|'([^']*)'`)
 
@@ -227,7 +283,7 @@ func justfileShellSafety() Rule {
 			text, _ := in[justfilePath].(string)
 			tpl, _ := in[templateJustfile].(string)
 			for _, w := range bashWrappers {
-				body, ok := recipeBody(text, w.recipe)
+				body, ok := bodyAfter(text, w.header)
 				if !ok {
 					r.add("recipe %s must exist and run `%s`", w.recipe, w.command)
 					continue
@@ -247,11 +303,21 @@ func justfileShellSafety() Rule {
 			// On Windows the entry point is `sh`, which System32 does not hold,
 			// so neither runs WSL's bash; the prelude after it is run by the
 			// mechanism tests.
-			if shell, ok := osSetting(text, "windows", "shell"); !ok || len(shell) < 2 || shell[0] != "sh" || shell[len(shell)-2] != "-c" {
+			shell, _ := osSetting(text, "windows", "shell")
+			if len(shell) < 2 || shell[0] != "sh" || shell[len(shell)-2] != "-c" {
 				r.add("the [windows] shell must start with `sh` and hand the recipe to `-c`: %q", shell)
+			} else {
+				prelude := shell[len(shell)-1]
+				if !strings.Contains(prelude, `PATH="/usr/bin:$PATH"`) || !shellPrelude.MatchString(prelude) ||
+					!strings.Contains(prelude, "-eu") || !strings.Contains(prelude, "pipefail") {
+					r.add("the [windows] shell must put /usr/bin first and exec /usr/bin/sh with -eu and pipefail on \"$0\": %q", prelude)
+				}
 			}
-			if interp, ok := osSetting(text, "windows", "script-interpreter"); !ok || len(interp) < 2 || interp[0] != "sh" || interp[1] != "-c" {
+			interp, _ := osSetting(text, "windows", "script-interpreter")
+			if len(interp) < 3 || interp[0] != "sh" || interp[1] != "-c" {
 				r.add("the [windows] script-interpreter must start with `sh -c`: %q", interp)
+			} else if !strings.Contains(interp[2], `PATH="/usr/bin:$PATH"`) || !interpreterRunner.MatchString(interp[2]) {
+				r.add("the [windows] script-interpreter must put /usr/bin first and exec /usr/bin/bash \"$0\" \"$@\": %q", interp[2])
 			}
 			for _, osAttr := range []string{"unix", "windows"} {
 				root, ok := osSetting(text, osAttr, "script-interpreter")

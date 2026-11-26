@@ -98,6 +98,8 @@ func TestJustfileGateLegs(t *testing.T) {
 		{"rttm-check stops type checking", edit(j, "rttm-check: rttm-lint rttm-typecheck", "rttm-check: rttm-lint"), "rttm-typecheck"},
 		{"check skips the non-Go legs", edit(j, "    @just check-except-go\n", ""), "@just check-except-go"},
 		{"check skips the Go lint", edit(j, "    just go-lint\n    just go-test", "    just go-test"), "go-lint"},
+		{"a header comment is not a leg", edit(j, "lint:\n    @just rttm-lint rttm-typecheck\n    just js-lint\n    just js-typecheck\n", "lint: # just js-typecheck\n    @just rttm-lint rttm-typecheck\n    just js-lint\n"), "just js-typecheck"},
+		{"a gate takes a dependency", edit(j, "check:\n", "check: lint\n"), "line of its own name"},
 		{"a comment that fixes is not a leg", edit(j, "    @just rttm-check\n", "    @just rttm-check # then ruff --fix\n"), "--fix"},
 		{"lint skips the type check", edit(j, "lint:\n    @just rttm-lint rttm-typecheck\n    just js-lint\n    just js-typecheck\n", "lint:\n    @just rttm-lint rttm-typecheck\n    just js-lint\n"), "just js-typecheck"},
 		{"check-except-go skips the Pi tests", edit(j, "    just pi-jev-test\n    git", "    git"), "just pi-jev-test"},
@@ -167,6 +169,12 @@ func TestJustfileShellSafety(t *testing.T) {
 	base := func() Inputs {
 		return Inputs{justfilePath: safeJustfile, templateJustfile: safeTemplate}
 	}
+	// doctor's test found it with parameters too
+	withParams := base()
+	edit(justfilePath, "doctor:\n", "doctor verbose='':\n")(withParams)
+	if got := findingsOf(t, justfileShellSafety(), withParams); len(got) != 0 {
+		t.Errorf("doctor may take parameters: %v", got)
+	}
 	j, tpl := justfilePath, templateJustfile
 	runCases(t, justfileShellSafety(), base, []ruleCase{
 		{"doctor becomes a shebang recipe", edit(j, "doctor:\n    @bash scripts/doctor.sh", "doctor:\n    #!/usr/bin/env bash\n    bash scripts/doctor.sh"), "doctor"},
@@ -181,6 +189,11 @@ func TestJustfileShellSafety(t *testing.T) {
 		{"the justfile sets no windows interpreter", edit(j, windowsInterpreter, ""), "[windows]"},
 		{"the windows shell starts with bash", edit(j, "set shell := [\"sh\",", "set shell := [\"bash\","), "[windows] shell"},
 		{"the windows shell hands the recipe elsewhere", edit(j, "\"pipefail\", \"-c\", 'PATH", "\"pipefail\", \"-x\", 'PATH"), "[windows] shell"},
+		{"the windows shell loses nounset", edit(j, "exec /usr/bin/sh -eu -o pipefail", "exec /usr/bin/sh -e -o pipefail"), "-eu"},
+		{"the windows shell loses pipefail", edit(j, "exec /usr/bin/sh -eu -o pipefail -c", "exec /usr/bin/sh -eu -c"), "pipefail"},
+		{"the windows shell keeps System32 first", edit(j, "'PATH=\"/usr/bin:$PATH\"; exec /usr/bin/sh", "'exec /usr/bin/sh"), "/usr/bin first"},
+		{"the windows interpreter runs another bash", edit(j, "exec /usr/bin/bash", "exec bash"), "script-interpreter"},
+		{"deploy takes a parameter", edit(j, "deploy:\n", "deploy target='':\n"), "deploy"},
 		{"the windows interpreter starts with bash", edit(j, "set script-interpreter := [\"sh\", \"-c\"", "set script-interpreter := [\"bash\", \"-c\""), "[windows] script-interpreter"},
 	})
 }
