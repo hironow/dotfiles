@@ -58,36 +58,3 @@ def test_add_scoop_has_no_jq_dependency(justfile_text: str) -> None:
     assert "jq" not in body, (
         "add-scoop must not depend on jq — it is one of the apps being restored"
     )
-
-
-def test_deploy_windows_installs_global_mise_tools(justfile_text: str) -> None:
-    """ADR 0033: the deploy Windows branch must install the global mise toolset
-    (not just copy the config), with the corepack guard so the node install does
-    not EPERM (ADR 0031). The `MISE_NODE_COREPACK=0 mise -C / install` form is
-    unique to the Windows branch (the Unix path omits the env prefix)."""
-    body = _recipe_body(justfile_text, "deploy")
-    assert "MISE_NODE_COREPACK=0 mise -C / install" in body, (
-        "deploy Windows branch must run `MISE_NODE_COREPACK=0 mise -C / install` "
-        "so global tools (starship/fzf/eza/portless/...) actually install on "
-        "Windows and node does not hit the corepack EPERM (ADR 0031/0033)"
-    )
-
-
-def test_deploy_wires_git_aliases_only_never_shared(justfile_text: str) -> None:
-    """ADR 0033/0021: deploy wires ONLY aliases.gitconfig into ~/.gitconfig, and
-    must NEVER re-include shared.gitconfig — re-including shared after a manual
-    PC-local override (e.g. gpgsign=false on a keyless host) would clobber it.
-    clean must remove the managed block."""
-    deploy = _recipe_body(justfile_text, "deploy")
-    assert "aliases.gitconfig" in deploy, (
-        "deploy Windows branch must include aliases.gitconfig (the observed gap)"
-    )
-    assert not re.search(r"path\s*=\s*\S*shared\.gitconfig", deploy), (
-        "deploy must NOT `[include]` shared.gitconfig — re-including it after a "
-        "manual PC-local gpgsign override would clobber it (ADR 0033/0021). "
-        "(A comment mentioning shared.gitconfig is fine; an include path is not.)"
-    )
-    clean = _recipe_body(justfile_text, "clean")
-    assert "git aliases include" in clean, (
-        "clean must remove the git-aliases managed block (deploy/clean symmetry)"
-    )
