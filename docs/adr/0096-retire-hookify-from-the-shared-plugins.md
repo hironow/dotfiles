@@ -2,17 +2,17 @@
 
 - **id**: ADR-0096
 - **title**: Retire hookify from the shared Claude plugin set
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-26
-- **decided-date**: pending
+- **decided-date**: 2026-11-26
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session)
 - **author-contact**: @hironow
-- **supersedes**: none (on acceptance, part of [0057](0057-shared-plugins-need-no-per-home-settings.md) D3: hookify leaves the declared set)
+- **supersedes**: part of [0057](0057-shared-plugins-need-no-per-home-settings.md) D3 (hookify leaves the declared set)
 - **superseded-by**: none
 - **related**: [0056](0056-common-claude-plugin-set.md), [0057](0057-shared-plugins-need-no-per-home-settings.md), [0095](0095-agent-hook-unregistered-formatter.md)
-- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-26 (17:36 JST), quoted in the pull request that adds this record
+- **consultation-trace**: the owner's request in a Claude Code session on 2026-11-26 (17:36 JST), quoted in the pull request that adds this record ([PR #702](https://github.com/hironow/dotfiles/pull/702)); the owner accepted the record on 2026-11-26 ("0096もacceptedです"), quoted in the same pull request
 
 ## Plain summary
 
@@ -26,7 +26,7 @@ The shared Claude plugin set no longer includes hookify.
 - After ADR-0095 unregistered the agent-hook formatter, the owner asked to remove the hookify declaration too (17:36 JST: "hookifyの宣言も外しましょうか").
 - ADR-0057: a plugin in neither `plugins`, `disabled` nor `retired` is left as it is, so removing hookify from `plugins` alone would leave it enabled in every home that has it.
 
-## Decision (proposed)
+## Decision
 
 - D1. `dump/harness/claude-plugins.json` MUST NOT declare `hookify@claude-plugins-official` in `plugins`.
 - D2. It MUST be retired by the migration `2026-11-26-hookify` (ADR-0057 D5): the plugin sync switches it off at user scope once per home and records the id, and never touches it again.
@@ -54,9 +54,8 @@ Add hookify back to `plugins`. The migration stays recorded, so the plugin sync 
 - ADR-0056 (the union of the homes' plugins): its D1 set was already replaced by ADR-0057; unchanged.
 - ADR-0095 (the agent-hook formatter): a separate cause of the same delay; unchanged.
 
-## Decision (pending)
+## Decision (2026-11-26)
 
-- [ ] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
-- Decision-maker and date: Hiroto N. (@hironow), ____
-- Action if accepted: ADR-0057's status line says ADR-0096 replaced part of D3; nothing else changes.
-- Action if rejected: add hookify back to `plugins` (see Reversal).
+- [x] Accept / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-26 17:55 JST. While the pull request that adds this record ([PR #702](https://github.com/hironow/dotfiles/pull/702)) was in CI, the owner wrote "0096もacceptedです" (translated: 0096 is accepted too). The decision fields were filled in on the owner's behalf from that ruling, which is quoted in that pull request.
+- Action: ADR-0057's status line says this record replaced part of D3; nothing else in it changes. The plugin sync retires hookify on each machine's next run.

@@ -1,7 +1,7 @@
 # 0057. 共通セットの plugin は、home ごとの設定なしで動くものに限る
 
 **Date:** 2026-10-16
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0096](0096-retire-hookify-from-the-shared-plugins.md) (D3: hookify leaves the declared set and is retired once per home)
 **ID:** ADR-0057
 **Title:** 共通セットの plugin は、home ごとの設定なしで動くものに限る
 **Decided-date:** 2026-10-16
