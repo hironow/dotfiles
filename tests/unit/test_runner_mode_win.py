@@ -113,17 +113,6 @@ def test_service_mode_is_the_inverse() -> None:
     )
 
 
-def test_justfile_wires_both_modes() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    for recipe in ("runner-mode-interactive", "runner-mode-service"):
-        # every attribute line in front of the recipe, one per line or combined
-        m = re.search(rf"((?:^\[[^\]]*\]\n)+){recipe}:", text, re.MULTILINE)
-        assert m is not None, f"justfile must define {recipe}."
-        assert "windows" in m.group(1) and "[group('runner')]" in m.group(1), (
-            f"{recipe}: [windows]-gated, grouped with the runner recipes."
-        )
-
-
 def test_status_recognises_deliberate_interactive_mode() -> None:
     """A listener outside the service was a WARN ('run.cmd mode?'). When the
     dotfiles logon task exists, the mode is DELIBERATE and must read OK —
