@@ -235,15 +235,12 @@ def test_a_complete_home_has_no_steps() -> None:
     assert _run(cli, check=True) == ([], [])
 
 
-def test_doctor_checks_and_deploy_installs_the_plugins() -> None:
+def test_doctor_checks_the_plugins() -> None:
+    # The recipe is the repo-lint rule justfile-recipe-surface; deploy runs
+    # the step on every OS (test_deploy_pi_extensions runs it).
     import ai_tools_check
 
     assert "claude_plugins.py" in ai_tools_check.CHECKERS["claude"][1]
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert "claude-plugins-install *args:" in justfile
-    deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
-    # one of the agent steps every OS runs (test_deploy_pi_extensions)
-    assert "claude_plugins.py claude-plugins-install" in deploy
 
 
 def test_main_prints_each_home_then_the_summary(

@@ -661,11 +661,6 @@ def test_install_hooks_recipe_installs_the_commit_msg_shim() -> None:
     assert "--hook-type pre-commit" in recipe
 
 
-def test_pr_body_check_recipe_exists() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    assert "\ncheck-pr-body " in justfile
-
-
 @pytest.mark.skipif(shutil.which("prek") is None, reason="prek not on PATH")
 @pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX file modes do not exist on Windows"

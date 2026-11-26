@@ -31,7 +31,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 SVC = SCRIPTS / "install_runner_svc_win.ps1"
 STATUS = SCRIPTS / "gc_status.sh"
-JUSTFILE = ROOT / "justfile"
 
 
 def _text() -> str:
@@ -182,21 +181,6 @@ def test_installer_verifies_the_machine_path_onion() -> None:
         "the PATH check wording must note that per-user tool state is not "
         "visible to SYSTEM; proof is the next green job."
     )
-
-
-def test_justfile_wires_the_service_recipes() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    for recipe in ("runner-svc-install", "runner-svc-restart"):
-        # every attribute line in front of the recipe, one per line or combined
-        m = re.search(rf"((?:^\[[^\]]*\]\n)+){recipe}:", text, re.MULTILINE)
-        assert m is not None, f"justfile must define a [windows] {recipe} recipe."
-        assert "windows" in m.group(1), (
-            f"{recipe} manages a Windows service; it must be [windows]-gated."
-        )
-        assert "[group('runner')]" in m.group(1), (
-            f"{recipe} belongs with the runner-gc recipes in group('runner') — "
-            "just status (runner) is what reports the service."
-        )
 
 
 def test_status_surfaces_a_stopped_or_disabled_service() -> None:
