@@ -103,6 +103,15 @@ func All() []Rule {
 		wslConfHardens(),
 		wslconfigSafeSubset(),
 		ghosttyKeysReachZsh(),
+		justfileGateLegs(),
+		justfileShellSafety(),
+		justfileNoDeprecated(),
+		justfileRecipeDoc(),
+		justfileBunOnly(),
+		justfileOneJSFileList(),
+		justfileUVRunModes(),
+		justfileAWSCLI(),
+		justfileNoClaudeCodeLint(),
 	}
 }
 
