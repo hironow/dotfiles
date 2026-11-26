@@ -319,6 +319,11 @@ func justfileShellSafety() Rule {
 			} else if !strings.Contains(interp[2], `PATH="/usr/bin:$PATH"`) || !interpreterRunner.MatchString(interp[2]) {
 				r.add("the [windows] script-interpreter must put /usr/bin first and exec /usr/bin/bash \"$0\" \"$@\": %q", interp[2])
 			}
+			// On Unix a [script] recipe runs as plain bash; the recipe sets its
+			// own errexit (set -euo pipefail).
+			if unix, ok := osSetting(text, "unix", "script-interpreter"); ok && !slices.Equal(unix, []string{"bash"}) {
+				r.add("the [unix] script-interpreter must be exactly [\"bash\"], not %q", unix)
+			}
 			for _, osAttr := range []string{"unix", "windows"} {
 				root, ok := osSetting(text, osAttr, "script-interpreter")
 				if !ok {

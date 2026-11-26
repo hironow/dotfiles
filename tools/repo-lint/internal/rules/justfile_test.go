@@ -187,6 +187,10 @@ func TestJustfileShellSafety(t *testing.T) {
 		{"the template's unix interpreter differs", edit(tpl, "set script-interpreter := [\"bash\"]", "set script-interpreter := [\"bash\", \"-eu\"]"), "[unix]"},
 		{"the template's windows interpreter differs", edit(tpl, "exec /usr/bin/bash", "exec bash"), "[windows]"},
 		{"the justfile sets no windows interpreter", edit(j, windowsInterpreter, ""), "[windows]"},
+		{"the unix interpreter takes flags", func(in Inputs) {
+			edit(j, `set script-interpreter := ["bash"]`, `set script-interpreter := ["bash", "-eu"]`)(in)
+			edit(tpl, `set script-interpreter := ["bash"]`, `set script-interpreter := ["bash", "-eu"]`)(in)
+		}, "exactly"},
 		{"the windows shell starts with bash", edit(j, "set shell := [\"sh\",", "set shell := [\"bash\","), "[windows] shell"},
 		{"the windows shell hands the recipe elsewhere", edit(j, "\"pipefail\", \"-c\", 'PATH", "\"pipefail\", \"-x\", 'PATH"), "[windows] shell"},
 		{"the windows shell loses nounset", edit(j, "exec /usr/bin/sh -eu -o pipefail", "exec /usr/bin/sh -e -o pipefail"), "-eu"},

@@ -115,6 +115,7 @@ func All() []Rule {
 		justfileNoClaudeCodeLint(),
 		justfileListSurface(),
 		justfileRecipeSurface(),
+		justfileRecipeFacts(),
 	}
 }
 
