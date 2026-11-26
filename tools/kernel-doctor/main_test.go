@@ -36,7 +36,10 @@ func (f *fakeCollector) collect(string) Probe {
 // The freshness boundary the review asked to pin: still fresh on the
 // review-after date, overdue from 00:00 the next day.
 func TestFreshnessBoundary(t *testing.T) {
+	// The boundary is pinned to a fixed date, not to the record's own,
+	// so refreshing the record does not change this test.
 	incident := mustIncident(t)
+	incident.ReviewAfter = "2026-11-26"
 	freshAt := func(stamp string) bool {
 		now, err := time.Parse(time.RFC3339, stamp)
 		if err != nil {
