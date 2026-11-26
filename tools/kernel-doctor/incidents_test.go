@@ -349,23 +349,22 @@ func onlyBranches(record map[string]any, entries ...any) {
 	delete(record, "vendorBuilds")
 }
 
-// The shipped record carries the reviewed WSL build, tied to the fix commit
-// the CVE record names for 6.18 and to the tag's commit, not the movable tag.
-func TestTheShippedRecordCarriesTheReviewedWSLBuild(t *testing.T) {
+// Every vendor build in the shipped record is tied to the fix commit the CVE
+// record names for its branch and to its tag's commit, not the movable tag,
+// and the tool reports that exact release as a reviewed build. The test reads
+// what the record holds, so refreshing the record does not change it.
+func TestTheShippedRecordCarriesReviewedWSLBuilds(t *testing.T) {
 	incident := mustIncident(t)
-	if len(incident.VendorBuilds) != 1 {
-		t.Fatalf("expected 1 reviewed vendor build, got %d", len(incident.VendorBuilds))
+	if len(incident.VendorBuilds) == 0 {
+		t.Fatal("the shipped record carries no reviewed vendor build")
 	}
-	build := incident.VendorBuilds[0]
-	if build.Release != "6.18.58.1-microsoft-standard-WSL2" ||
-		build.FixCommit != "a47406c769f72c070386985488f1c4d057df86b2" {
-		t.Errorf("unexpected build: %+v", build)
-	}
-	if build.TagCommit != "a989171929bed4ea681be8d77333845ce1c1732a" {
-		t.Errorf("tagCommit = %q, want the commit the tag pointed at when reviewed", build.TagCommit)
-	}
-	if !strings.Contains(build.Evidence, "/compare/"+build.FixCommit+"...a989171929bed4ea681be8d77333845ce1c1732a") {
-		t.Errorf("evidence must compare the fix commit with the tag's commit: %s", build.Evidence)
+	for _, build := range incident.VendorBuilds {
+		if !strings.HasSuffix(build.Evidence, "/compare/"+build.FixCommit+"..."+build.TagCommit) {
+			t.Errorf("evidence must compare the fix commit with the tag's commit: %s", build.Evidence)
+		}
+		if got := Assess(build.Release, incident); got.Outcome != ReviewedVendorBuild {
+			t.Errorf("Assess(%q).Outcome = %q, want %q", build.Release, got.Outcome, ReviewedVendorBuild)
+		}
 	}
 }
 

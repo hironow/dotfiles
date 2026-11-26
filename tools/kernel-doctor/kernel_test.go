@@ -88,7 +88,7 @@ func TestAssessNeverAttestsTheRunningPatchState(t *testing.T) {
 	}
 }
 
-// recordedWSL is the one vendor build in the shipped record.
+// recordedWSL is a vendor build in the shipped record.
 const recordedWSL = "6.18.58.1-microsoft-standard-WSL2"
 
 // A build recorded under vendorBuilds, matched as the whole string, is the
