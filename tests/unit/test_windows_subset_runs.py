@@ -75,11 +75,14 @@ def _stub(bin_dir: Path, name: str, body: str) -> None:
 
 
 def _fake_bin(tmp_path: Path, uname: str, log: Path) -> Path:
-    """uname, a git that logs and fails, and on macOS a GNU-style `sed -i`."""
+    """uname, a git that logs and fails, a mise that does nothing, and on
+    macOS a GNU-style `sed -i`. The fakes come first on PATH, so a real git or
+    mise in /usr/bin never runs and nothing reaches the network."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     _stub(bin_dir, "uname", f'printf "%s\\n" "{uname}"\n')
     _stub(bin_dir, "git", f'echo "git $*" >> "{log}"\nexit 1\n')
+    _stub(bin_dir, "mise", "exit 0\n")
     if sys.platform == "darwin":
         # Git Bash ships GNU sed; macOS's BSD sed takes `-i ''`.
         _stub(
