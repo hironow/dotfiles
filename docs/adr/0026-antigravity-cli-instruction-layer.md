@@ -1,7 +1,7 @@
 # 0026. Antigravity CLI: instruction 層のみ共有、skills/settings/mcp は agy 委譲
 
 **Date:** 2026-06-10
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0087](0087-declared-mcp-servers-for-every-agent.md) (Decision 3 の MCP の部分だけ: dotfiles はファイルを書かず、宣言した server の追加を `antigravity mcp add` に頼む)
 
 ## Context
 
