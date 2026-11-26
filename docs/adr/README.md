@@ -120,6 +120,7 @@ and what outlived it.
 | 0093 | [Tests check what code does, never what a file says; file policies are lint rules](./0093-tests-check-code-not-file-text.md) | Accepted (2026-11-26); partial supersession of 0092 (D6) and 0052 (Decision 1, repo-lint's `go run`) | 2026-11-25 | `ROOT_AGENTS.md`, `ROOT_AGENTS_docs_agents_testing.md` |
 | 0094 | [Vendor the semgrep-guardrails rules into dotfiles](./0094-vendor-semgrep-guardrails.md) | Accepted (2026-11-26) | 2026-11-25 | `.semgrep/rules/guardrails/`, `justfile`, `plugins/autoreview/` |
 | 0095 | [A hook can be declared unregistered; the formatter is unregistered](./0095-agent-hook-unregistered-formatter.md) | Accepted (2026-11-26) | 2026-11-26 | `tools/agent-hooks/manifest.json`, `tools/agent-hooks/internal/registration/`, `.claude/settings.hooks.json`, `scripts/agent_hook_doctor.py` |
+| 0096 | [Retire hookify from the shared Claude plugin set](./0096-retire-hookify-from-the-shared-plugins.md) | Proposed; would partly supersede 0057 (D3, the declared set) | 2026-11-26 | `dump/harness/claude-plugins.json` |
 
 ## Reading order for newcomers
 
@@ -231,3 +232,4 @@ and what outlived it.
 - 2026-11-26: Accepted [ADR-0094](./0094-vendor-semgrep-guardrails.md) as written. The rules moved in #691, and the owner archived hironow/semgrep-guardrails.
 - 2026-11-26: Proposed [ADR-0095](./0095-agent-hook-unregistered-formatter.md). A manifest hook can say `"registered": false`: `agent-hook render` leaves it out while its code and tests stay. The formatter is the first; `.claude/settings.hooks.json` drops its block too.
 - 2026-11-26: Accepted [ADR-0095](./0095-agent-hook-unregistered-formatter.md) as written. #700 unregistered the formatter; this Mac's homes no longer run it.
+- 2026-11-26: Proposed [ADR-0096](./0096-retire-hookify-from-the-shared-plugins.md). hookify leaves the shared plugin set and is retired once per home; on acceptance it partly supersedes ADR-0057 D3.
