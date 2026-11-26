@@ -184,6 +184,10 @@ func TestJustfileRecipeFacts(t *testing.T) {
 		{"the template's check formats", edit(tpl, "check: lint semgrep test", "check: fmt lint semgrep test"), "fmt"},
 		{"the template's check skips semgrep", edit(tpl, "check: lint semgrep test", "check: lint test"), "semgrep"},
 		{"the template's lint fixes", edit(tpl, "ruff check --no-fix --no-fix-only .", "ruff check --fix ."), "--no-fix"},
+		{"a lint variable is not the lint recipe", func(in Inputs) {
+			edit(tpl, "check: lint semgrep test", "lint := \"\"\"\n    uv run --locked --only-group lint ruff check --no-fix --no-fix-only .\n\"\"\"\n\ncheck: lint semgrep test")(in)
+			edit(tpl, "ruff check --no-fix --no-fix-only .\n    uv run ty", "ruff check --fix .\n    uv run ty")(in)
+		}, "--no-fix"},
 		{"the template's lint checks one OS", edit(tpl, "    uv run ty check --python-platform darwin\n", "    uv run ty check\n"), "ty check"},
 		{"the template's CI skips the gate", edit(templateGate, "run: just check", "run: just lint"), "just check"},
 		{"update-all fails without Pi", edit(j, "update-all:\n    if command -v pi >/dev/null; then pi update --extensions || echo warn; fi", "update-all:\n    pi update --extensions || echo warn"), "command -v pi"},

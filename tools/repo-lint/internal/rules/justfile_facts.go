@@ -338,7 +338,7 @@ func templateFacts(r *report, f factFiles) {
 		}
 	}
 	const noFix = "uv run --locked --only-group lint ruff check --no-fix --no-fix-only ."
-	lines, _ := linesAfter(f.template, regexp.MustCompile(`^lint\s*:`), atColumnZero)
+	lines, _ := linesAfter(f.template, regexp.MustCompile(`^lint\s*:([^=].*|)$`), atColumnZero)
 	if !slices.ContainsFunc(lines, func(l string) bool { return strings.TrimSpace(l) == noFix }) {
 		r.addAt(templateJustfile, "the template's lint must run %q", noFix)
 	}
