@@ -117,6 +117,7 @@ func All() []Rule {
 		justfileRecipeSurface(),
 		justfileRecipeFacts(),
 		runnerGcFacts(),
+		windowsHostFacts(),
 	}
 }
 
