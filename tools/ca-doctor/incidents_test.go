@@ -28,13 +28,26 @@ func TestIncidentManifestValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The record's own dates feed the date cases, so refreshing the record
+	// does not change this test.
+	recorded, err := ParseIncident(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewAfter := `"reviewAfter": "` + recorded.ReviewAfter + `"`
+	reviewed, err := time.Parse(time.DateOnly, recorded.ReviewedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dayBefore := reviewed.AddDate(0, 0, -1).Format(time.DateOnly)
 	for _, tc := range []struct{ name, old, new string }{
 		{"HTTP source", "https://emudhra.we-have-a-problem.com/", "http://emudhra.we-have-a-problem.com/"},
 		{"credentials", "https://emudhra.we-have-a-problem.com/", "https://user:password@emudhra.we-have-a-problem.com/"},
 		{"unknown mode", "tls-endpoint-and-version", "arbitrary-shell"},
 		{"invalid floor", "1.27.3", "1.27.3-rc.1"},
 		{"two-part floor", "26.2.2", "26.2"},
-		{"invalid date", "2026-11-20", "2026-10-01"},
+		{"review-after before reviewed-at", reviewAfter, `"reviewAfter": "` + dayBefore + `"`},
+		{"review-after equal to reviewed-at", reviewAfter, `"reviewAfter": "` + recorded.ReviewedAt + `"`},
 		{"unknown field", "\"title\":", "\"unrecognized\":true, \"title\":"},
 		{"untrusted root with colons", emsignECCG3, "86:A1:EC"},
 		{"untrusted root in upper case", emsignECCG3, strings.ToUpper(emsignECCG3)},
@@ -63,8 +76,11 @@ func TestIncidentManifestValidation(t *testing.T) {
 	if got := []string{incident.UntrustedRoots[0].SHA256, incident.UntrustedRoots[1].SHA256}; len(incident.UntrustedRoots) != 2 || got[0] != emsignECCG3 || got[1] != aaaCertificateServices {
 		t.Fatalf("untrusted roots = %+v", incident.UntrustedRoots)
 	}
-	date := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
-	if got := IncidentFreshness(incident, date); got.Level != "WARN" {
+	after, err := time.Parse(time.DateOnly, incident.ReviewAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := IncidentFreshness(incident, after.AddDate(0, 0, 1)); got.Level != "WARN" {
 		t.Fatal(got)
 	}
 }

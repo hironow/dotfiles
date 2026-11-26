@@ -159,6 +159,9 @@ In that case, use a fixed managed Python or an application-provided CA setting.
 Apps using Python's standard ssl can explicitly pass `ssl.create_default_context(cafile="<absolute path of the updated CA bundle>")`, though this does not automatically apply to other HTTP libraries.
 If you continue using system Python and connections are still accepted, keep the `ERR`.
 
+macOS 27.2.1, 26.7.3 and 15.8.3 (Apple, published 2026-11-09) block the incident's 12 certificates in the command-line tools and remove its two roots, and three other eMudhra roots, from `/etc/ssl/cert.pem`.
+Update macOS first; the two steps below are for a Mac that cannot update.
+
 LibreSSL clients such as Apple-bundled Python read the OS PEM bundle `/private/etc/ssl/cert.pem` (verified again on 2026-11-09 with Python 3.9.6 / LibreSSL 2.8.3).
 To remove incident `untrustedRoots` from this bundle, run two steps:
 
@@ -180,10 +183,11 @@ In the eMudhra incident, the seven intermediate CAs signed by AAA Certificate Se
 Windows itself rejects these seven, so do not infer Python's result from Go or other tools that use the Windows verifier.
 
 CPython's fix (gh-160040, CVE-2026-115557) rejects chains containing the leaked keys.
-Once a fixed release ships, update Python on PATH and any Pythons managed by uv or other tools, then re-run `just ca-doctor`.
+The fix shipped on 2026-10-25 in 3.11.18, 3.12.16, 3.13.18, 3.14.10 and 3.15.2.
+Update Python on PATH and any Pythons managed by uv or other tools, then re-run `just ca-doctor`.
 EOL branches receive no fix.
 
-Until a fix ships, do not modify the intended purpose (EKU properties) of AAA Certificate Services in the OS store.
+Do not modify the intended purpose (EKU properties) of AAA Certificate Services in the OS store.
 On 2026-10-26, we observed two issues when doing so:
 
 - Windows root auto-update reverted the properties within about 30 minutes.
@@ -191,7 +195,7 @@ On 2026-10-26, we observed two issues when doing so:
 
 Do not disable auto-update either, because that stops blocklist distribution.
 Do not point only the diagnostic Python to another CA bundle or suppress warnings with `sitecustomize.py`.
-Leave the `ERR` until a fixed release is available.
+If a Python still accepts the connection, leave the `ERR` and update that Python; an EOL Python stays `ERR`.
 
 ## Adding and updating incident rules
 
