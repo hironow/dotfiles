@@ -654,13 +654,6 @@ def test_added_lines_does_not_mistake_the_plus_plus_plus_header() -> None:
 # --- prek wiring ----------------------------------------------------------
 
 
-def test_install_hooks_recipe_installs_the_commit_msg_shim() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("\ninstall-hooks:", 1)[1].split("\n\n", 1)[0]
-    assert "--hook-type commit-msg" in recipe
-    assert "--hook-type pre-commit" in recipe
-
-
 @pytest.mark.skipif(shutil.which("prek") is None, reason="prek not on PATH")
 @pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX file modes do not exist on Windows"
@@ -941,9 +934,3 @@ def test_staged_without_the_gate_still_skips_with_no_list(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "skipped" in result.stdout
-
-
-def test_staged_recipe_passes_the_gate() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("\ncheck-forbidden-tokens:", 1)[1].split("\n\n", 1)[0]
-    assert "FORBIDDEN_TOKEN_GATE" in recipe

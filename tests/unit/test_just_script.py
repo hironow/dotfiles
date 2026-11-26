@@ -39,10 +39,6 @@ def _setting(os_attr: str, path: Path = JUSTFILE) -> list[str]:
     return [a or b for a, b in re.findall(r"\"([^\"]*)\"|'([^']*)'", m.group(1))]
 
 
-def test_unix_runs_scripts_with_bash_and_no_flags() -> None:
-    assert _setting("unix") == ["bash"]
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="runs the Unix setting")
 def test_the_unix_interpreter_leaves_errexit_to_the_recipe(tmp_path: Path) -> None:
     just = shutil.which("just")

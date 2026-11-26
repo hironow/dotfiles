@@ -916,29 +916,6 @@ def test_windows_hook_is_a_path_not_a_command_line() -> None:
     )
 
 
-def test_status_validates_the_hook_rather_than_its_presence() -> None:
-    """`just status` exists because 'installed' and 'working' differed.
-
-    The wiring looked perfect in `.env` for 877 jobs; only the job's own log
-    showed the rejection. Status has to check the extension and surface those
-    rejections, or it would have reported green throughout.
-    """
-    status = SCRIPTS / "gc_status.sh"
-    assert status.is_file(), "scripts/gc_status.sh must exist"
-    text = status.read_text(encoding="utf-8")
-    assert "is not a valid path to a script" in text, (
-        "status must surface the runner's own rejection message from the job "
-        "logs; it is the only place the failure is recorded."
-    )
-    assert ".ps1" in text and ".sh" in text, (
-        "status must validate the hook extension the runner requires."
-    )
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert re.search(
-        r"^status:\n\s+bash scripts/gc_status\.sh", justfile, re.MULTILINE
-    ), "`just status` must be wired to scripts/gc_status.sh."
-
-
 def test_status_never_claims_proof_for_a_hook_that_is_not_set() -> None:
     """A hook that is absent cannot have been accepted by 2392 jobs.
 

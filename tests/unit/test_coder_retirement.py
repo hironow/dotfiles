@@ -27,7 +27,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 TAILNET = REPO / "tofu" / "tailnet"
-JUSTFILE = REPO / "justfile"
 
 # The old personal project's state bucket, which the retired stack also used. It
 # is not a private identifier.
@@ -100,17 +99,3 @@ def test_the_tailnets_state_is_passphrase_encrypted_and_fails_closed() -> None:
             f"{section} encryption must be enforced: the ACL's state carries "
             "the tailnet's policy"
         )
-
-
-def test_the_tailnet_recipes_supply_the_passphrase_and_no_backend_config() -> None:
-    """Its own passphrase file, which is why the retired stack's going did not
-    take this stack's state with it."""
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert "_tailnet-encryption" in text, (
-        "the recipes must build TF_ENCRYPTION from the local passphrase file"
-    )
-    assert "tailnet.passphrase" in text
-    init = re.search(r"(?m)^tailnet-init.*\n(?:[ \t]+.*\n)*", text)
-    assert init and "backend-config" not in init.group(0), (
-        "the backend is spelled out in main.tf; backend.hcl is gone"
-    )

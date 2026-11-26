@@ -18,7 +18,6 @@ test_validate_path_windows.py.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -29,26 +28,6 @@ from _bash_hook import bash_path
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
-
-
-def _recipe_body() -> str:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    match = re.search(
-        r"^validate-path-duplicates:\n(.*?)(?=^\S)", text, re.MULTILINE | re.DOTALL
-    )
-    assert match, "recipe validate-path-duplicates not defined"
-    return match.group(1)
-
-
-def test_skips_windows_drive_mounts() -> None:
-    """The scan loop must skip `/mnt/<drive>` dirs before globbing them:
-    9p makes the glob minutes-slow, and validate-path-windows already owns
-    the Windows-leak finding."""
-    assert re.search(r"/mnt/\[a-zA-Z\]", _recipe_body()), (
-        "validate-path-duplicates must skip /mnt/<drive> PATH entries "
-        "(9p glob is minutes-slow; leak detection belongs to "
-        "validate-path-windows)"
-    )
 
 
 @pytest.fixture

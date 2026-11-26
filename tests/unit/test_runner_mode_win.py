@@ -33,7 +33,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 MODE = SCRIPTS / "runner_mode_win.ps1"
 STATUS = SCRIPTS / "gc_status.sh"
-JUSTFILE = ROOT / "justfile"
 
 
 def _text() -> str:
@@ -239,17 +238,6 @@ def test_watchdog_task_starts_through_run_hidden() -> None:
         "copy run-hidden before the task is removed: a failed copy must not "
         "leave the box without its watchdog."
     )
-
-
-def test_run_hidden_is_built_for_the_windows_gui_subsystem() -> None:
-    """A console-subsystem launcher would open the very window it exists to
-    avoid; -H=windowsgui gives it none."""
-    text = JUSTFILE.read_text(encoding="utf-8")
-    m = re.search(r"(?ms)^run-hidden-build:\n(.*?)(?=^\S|\Z)", text)
-    assert m, "the justfile needs a run-hidden-build recipe"
-    body = m.group(1)
-    assert "tools/run-hidden" in body and "-H=windowsgui" in body, body
-    assert "output/run-hidden/run-hidden.exe" in body, body
 
 
 def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:

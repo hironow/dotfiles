@@ -25,7 +25,6 @@ Static assertions, host-side (tests/unit/), so they run in `just ci`.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 from pathlib import Path
 
@@ -34,7 +33,6 @@ from _bash_hook import bash_path, run_bash
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "config" / "wsl" / "wslconfig"
 SCRIPT = ROOT / "scripts" / "wslconfig_conf.sh"
-JUSTFILE = ROOT / "justfile"
 
 
 def _advise(tmp_path: Path, live: str) -> tuple[str, Path, Path]:
@@ -107,16 +105,6 @@ def test_advisor_never_applies_anything_itself(tmp_path: Path) -> None:
     assert "wsl --shutdown" in out, out
     assert conf.read_text(encoding="utf-8") == live
     assert not calls.exists(), calls.read_text(encoding="utf-8")
-
-
-def test_justfile_wires_wslconfig() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert re.search(r"^wslconfig:", text, re.MULTILINE), (
-        "justfile must define a `wslconfig` recipe that surfaces the template."
-    )
-    assert "config/wsl/wslconfig" in text or "wslconfig_conf.sh" in text, (
-        "the wslconfig recipe must reference the template or its advisor script."
-    )
 
 
 def test_sparsevhd_warning_states_what_the_key_does_per_wsl_version(

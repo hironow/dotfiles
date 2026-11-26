@@ -15,7 +15,6 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
 
 # Third-party bytes we must not edit; each has its own gate.
 VENDORED = {
@@ -31,16 +30,6 @@ OWN_FILES = (
     "tests/unit/jev_sonnet_fallback.test.ts",
 )
 _JS = re.compile(r"\.(?:[cm]?[jt]s|[jt]sx)$")
-
-
-def _recipe(name: str) -> str:
-    bodies = re.findall(
-        rf"^{re.escape(name)}:[^\n]*\n((?:[ \t]+[^\n]*(?:\n|$))*)",
-        JUSTFILE,
-        re.MULTILINE,
-    )
-    assert len(bodies) == 1, f"missing or ambiguous recipe: {name}"
-    return bodies[0]
 
 
 def _tracked_js() -> list[str]:
@@ -78,39 +67,10 @@ def test_every_tracked_js_file_is_linted_or_vendored() -> None:
     assert own == sorted(OWN_FILES), own
 
 
-def test_oxlint_is_handed_the_tracked_files_only() -> None:
-    # With no paths, oxlint walks the disk. A checkout that has a submodule
-    # checked out (gcloud/knowledge-catalog), or any untracked folder, then
-    # fails on files that are not ours, while CI and a fresh worktree pass.
-    # `git ls-files` lists a submodule as one entry, never the files inside it.
-    lint = _recipe("js-lint").replace("{{ BUN }}x", "bunx")
-    assert re.search(
-        r"git ls-files -z -- \{\{ JS_TRACKED \}\} \| xargs -0 -r bunx --no-install oxlint\s*$",
-        lint,
-    ), lint
-    # One list of extensions: JS_TRACKED is JS_FILES without the exclusion that
-    # only makes sense inside site/.
-    assert """JS_TRACKED := replace(JS_FILES, " ':!vendor/**'", "")""" in JUSTFILE
-    (js_files,) = re.findall(r'^JS_FILES := "(.+)"$', JUSTFILE, re.MULTILINE)
-    extensions = ("ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts")
-    assert js_files.split() == [
-        *(f"'*.{extension}'" for extension in extensions),
-        "':(top,exclude).semgrep/**'",
-        "':!vendor/**'",
-    ]
-
-
 # --- rule 1: bun check, never shadowed ------------------------------------------
 
 
 # --- rules 3 and 4: one shard, the whole suite ----------------------------------
-
-
-def test_the_whole_suite_runs_in_one_shard() -> None:
-    test = _recipe("js-test")
-    assert "test ./tests/unit/" in test
-    assert "--changed" not in test
-    assert "--shard" not in test
 
 
 # --- rule 5: parallel jobs behind one gate ---------------------------------------

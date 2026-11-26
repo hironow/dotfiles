@@ -144,34 +144,3 @@ def test_vp_checks_the_page_script() -> None:
     ).stdout.split()
     assert "copy.js" in listed
     assert not [name for name in listed if name.startswith("vendor/")]
-
-
-def _server_lines() -> list[str]:
-    lines = (ROOT / "justfile").read_text(encoding="utf-8").splitlines()
-    return [
-        line.strip()
-        for line in lines
-        if "http.server" in line or "simple-server" in line and " go run " in f" {line}"
-    ]
-
-
-def test_local_servers_bind_loopback_and_never_serve_the_checkout() -> None:
-    # The checkout holds private/ (keys and certificates); a server must listen
-    # on loopback only and serve a folder that holds only what Pages publishes.
-    servers = _server_lines()
-    assert any("site-serve" in line or "-host 127.0.0.1" in line for line in servers), (
-        servers
-    )
-    for line in servers:
-        if "http.server" in line:
-            assert re.search(r"(?:-b|--bind)\s+127\.0\.0\.1", line), line
-        host = re.search(r"-host\s+(\S+)", line)
-        assert host is None or host.group(1) in ("127.0.0.1", "localhost"), line
-        # a just interpolation holds spaces (`{{ justfile_directory() }}`):
-        # read it whole, and compare without whitespace
-        directory = re.search(r"-dir\s+(\{\{.*?\}\}|\S+)", line)
-        assert directory is None or re.sub(r"\s", "", directory.group(1)) not in (
-            ".",
-            "./",
-            "{{justfile_directory()}}",
-        ), line

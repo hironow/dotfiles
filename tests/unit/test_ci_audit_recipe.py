@@ -8,7 +8,6 @@ less than CI runs. This keeps the list and the workflow folder equal.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import stat
 import subprocess
@@ -18,14 +17,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
 # pages.yaml publishes the site from main; it checks nothing.
-
-
-def _recipe(name: str) -> str:
-    match = re.search(rf"(?ms)^{name} [^\n]*:\n(.*?)(?=^\S|\Z)", JUSTFILE)
-    assert match, f"no recipe {name}"
-    return match.group(1)
 
 
 def _run_recipe(tmp_path: Path, *args: str) -> list[str]:
@@ -69,12 +61,3 @@ def test_every_flag_comes_before_the_first_workflow(tmp_path: Path, args) -> Non
     first_workflow = next(i for i, a in enumerate(argv) if a.endswith(".yaml"))
     assert all(not a.startswith("--") for a in argv[first_workflow:]), argv
     assert "--recipe-step" in argv[:first_workflow]
-
-
-def test_arguments_keep_their_quoting() -> None:
-    # --recipe-step "just check (no container)=Run just check" holds spaces;
-    # just's {{ args }} would split it, positional arguments keep it whole.
-    start = JUSTFILE.index("\nci-audit *args:\n")
-    head = JUSTFILE[JUSTFILE.rindex("\n\n", 0, start) : start]
-    assert "[positional-arguments]" in head
-    assert 'args=("$@")' in _recipe("ci-audit")

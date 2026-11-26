@@ -16,6 +16,7 @@ copy of the justfile, so nothing touches the tracked dump/ or the machine.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -26,24 +27,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
 INSTALLED = 'state.name="Installed" OR state.name="Update Available"'
-
-
-def _recipe(text: str, name: str) -> str:
-    start = text.index(f"\n{name}")
-    end = text.index("\n\n", start + 1)
-    return text[start:end]
-
-
-def test_dump_and_restore_share_one_definition_of_installed() -> None:
-    text = JUSTFILE.read_text(encoding="utf-8")
-    assert "GCLOUD_INSTALLED := " in text
-    # the justfile string escapes the quotes the gcloud filter needs
-    assert INSTALLED.replace('"', '\\"') in text
-    for name in ("dump:", "add-gcloud host"):
-        body = _recipe(text, name)
-        assert "{{ GCLOUD_INSTALLED }}" in body, name
-    assert "state.name=Installed'" not in text  # the old, too narrow filter
-    assert "state.name:(" not in text  # substring match: "Not Installed" too
 
 
 @pytest.fixture
@@ -113,6 +96,15 @@ def _record(sandbox: dict) -> Path:
 def _calls(sandbox: dict) -> str:
     calls = sandbox["calls"]
     return calls.read_text(encoding="utf-8") if calls.exists() else ""
+
+
+def test_dump_and_restore_list_with_one_filter(sandbox: dict) -> None:
+    # One definition of "installed": an "Update Available" component is
+    # installed, so a restore must not install it again.
+    assert _run(sandbox, "dump", GCLOUD_OUT="alpha\\n").returncode == 0
+    assert _run(sandbox, "add-gcloud", GCLOUD_OUT="alpha\\n").returncode == 0
+    filters = re.findall(r"--filter=(.*?) --format=", _calls(sandbox))
+    assert filters == [INSTALLED, INSTALLED]
 
 
 def test_dump_records_what_gcloud_reports_installed(sandbox: dict) -> None:
