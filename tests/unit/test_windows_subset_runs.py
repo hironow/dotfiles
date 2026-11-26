@@ -138,6 +138,11 @@ class Host:
         return self.log.read_text(encoding="utf-8")
 
 
+def _present(path: Path) -> bool:
+    """True for a file, a directory, or a symlink, even a broken one."""
+    return path.exists() or path.is_symlink()
+
+
 def _ok(done: subprocess.CompletedProcess[str]) -> None:
     assert done.returncode == 0, done.stdout[-3000:] + done.stderr[-3000:]
 
@@ -180,7 +185,7 @@ def test_windows_deploy_places_only_the_cross_platform_subset(windows: Host) -> 
         ).read_bytes(), target
     # The Unix path never ran: the branch ends before it.
     for unix_only in UNIX_ONLY:
-        assert not (windows.home / unix_only).exists(), unix_only
+        assert not _present(windows.home / unix_only), unix_only
     assert windows.calls() == ""
 
 
@@ -289,7 +294,7 @@ def test_windows_clean_undoes_deploy_and_nothing_else(windows: Host) -> None:
     assert "dotfiles managed block" not in gitconfig
     assert gitconfig.startswith(GIT_OVERRIDE)
     for target in SUBSET:
-        assert not (windows.home / target).exists(), target
+        assert not _present(windows.home / target), target
     # The Unix rm block never ran.
     for rel, path in users.items():
         assert path.read_text(encoding="utf-8") == f"the user's {rel}\n", rel
