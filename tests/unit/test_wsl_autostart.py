@@ -44,14 +44,18 @@ comes back:
   command line and reports "already attached" forever (same trap as
   `pgrep -f Runner.Worker` in runner_gc.sh).
 
-Static checks plus behavioral runs against a stub wsl.exe (`-WslExe` exists
-so the stub can be injected) whenever pwsh is available.
+The checks of what the scripts say (the task's trigger, IgnoreNew, no time
+limit, run-hidden, the bracketed probe, the status lines) are the
+`wsl-autostart-facts` rule of tools/repo-lint (ADR-0093). The tests here run
+the payload with pwsh against a stub wsl.exe (`-WslExe` exists so the stub can
+be injected). Valve A, one keepalive per distro, is a concurrency guard, so it
+is held by a run too (ADR-0093 D4): the stub answers the presence probe as
+`pgrep -f` would.
 """
 
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 from pathlib import Path
 
@@ -59,251 +63,10 @@ import pytest
 from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "scripts"
-AUTOSTART = SCRIPTS / "wsl_autostart.ps1"
-INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
-INSTALL = SCRIPTS / "install_runner_gc.sh"
-STATUS = SCRIPTS / "gc_status.sh"
+AUTOSTART = ROOT / "scripts" / "wsl_autostart.ps1"
 PWSH = resolve_pwsh(os.environ)
 
 pwshonly = pytest.mark.skipif(PWSH is None, reason="needs pwsh to run the payload")
-
-
-# --- static: installer wires the task correctly ------------------------------
-
-
-def test_installer_registers_logon_autostart_task() -> None:
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert "dotfiles-wsl-autostart" in text, (
-        "install_runner_gc_win.ps1 must register the WSL autostart task."
-    )
-    assert "-AtLogOn" in text, (
-        "the autostart trigger must be logon: boot triggers need elevation "
-        "and the WSL VM wants a user session."
-    )
-    assert "IgnoreNew" in text, (
-        "overlapping firings must collapse to one (-MultipleInstances "
-        "IgnoreNew) — duplicate-start valve."
-    )
-    assert "wsl_autostart.ps1" in text
-
-
-def test_installer_bakes_distro_into_the_task_command_line() -> None:
-    """A task does not inherit the installer's env, so an env-var default
-    silently starts the wrong distro at logon."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert re.search(r"-Distro \{\d\}'[^\n]*\$Distro\)", text), (
-        "the distro name must be baked into the task's -Argument string, "
-        "not left to a runtime default."
-    )
-
-
-def test_installer_starts_both_tasks_through_run_hidden() -> None:
-    """A console program that Task Scheduler starts in the owner's session
-    opens a console window every run (lived 2026-11-18: the user saw a
-    terminal flash). Both tasks start the copy Install-RunHidden returns,
-    with powershell.exe and its unchanged arguments behind it."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    gc = re.search(
-        r"\$action = New-ScheduledTaskAction `\s+-Execute \$runHidden `\s+"
-        r"-Argument \('\"\{0\}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass "
-        r"-File \"\{1\}\" -Retention \{2\}' -f \$powershell, \$payload, \$Retention\)",
-        text,
-    )
-    assert gc, "the GC task must start powershell.exe through run-hidden"
-    auto = re.search(
-        r"\$autoAction = New-ScheduledTaskAction `\s+-Execute \$runHidden `\s+"
-        r"-Argument \('\"\{0\}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass "
-        r"-File \"\{1\}\" -Distro \{2\}' -f \$powershell, \$autoPayload, \$Distro\)",
-        text,
-    )
-    assert auto, "the autostart task must start powershell.exe through run-hidden"
-    assert "-Execute (Get-Command powershell.exe).Source" not in text, (
-        "no task may start powershell.exe directly any more."
-    )
-
-
-def test_installer_copies_the_launcher_before_it_removes_any_task() -> None:
-    """The GC installer unregisters first; a copy that fails after that would
-    leave the box with no GC task at all."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    copy = text.find("Install-RunHidden")
-    remove = text.find("Unregister-ScheduledTask")
-    assert copy != -1, "the installer must copy run-hidden (Install-RunHidden)"
-    assert copy < remove, (
-        "Install-RunHidden must run before the first Unregister-ScheduledTask."
-    )
-
-
-def test_installers_never_stop_a_running_task() -> None:
-    """Stopping the keepalive and then failing to register would cost the
-    distro its last client. The switch to a new action is the runbook's
-    procedure (a temporary client holds the distro), never the installer's."""
-    for script in (INSTALL_WIN, SCRIPTS / "runner_watchdog_win.ps1"):
-        assert "Stop-ScheduledTask" not in script.read_text(encoding="utf-8"), (
-            f"{script.name} must not stop a running task."
-        )
-
-
-def test_status_warns_about_a_task_that_starts_a_console_program_directly() -> None:
-    """Re-registration needs an elevated terminal, so a box can keep an old
-    task that flashes a window. status names it until it is re-installed."""
-    text = STATUS.read_text(encoding="utf-8")
-    block = re.search(r"foreach \(\\\$n in @\((.*?)\)\)", text)
-    assert block, "status must loop over dotfiles' tasks"
-    names = block.group(1)
-    for name in ("$TASK", "$AUTOTASK", "dotfiles-runner-watchdog"):
-        assert name in names, f"status must check {name}"
-    assert "run-hidden.exe" in text and "WARN|" in text
-
-
-def test_installer_does_not_claim_the_smoke_fire_proves_recovery() -> None:
-    """At install time the distro is already running (the WSL leg installs
-    first), so valve A short-circuits and LastTaskResult=0 proves nothing."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert "after the next reboot" in text, (
-        "the installer must point at `just status` after a reboot as the "
-        "real proof, not the immediate smoke fire."
-    )
-
-
-def test_installer_survives_an_unreplaceable_s4u_task() -> None:
-    """The GC task registers S4U when elevated; a later UNELEVATED re-run
-    cannot unregister it (access denied). The installer claims it needs no
-    Administrator, so it must keep the existing task and continue to the
-    autostart + hook steps instead of dying mid-install."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert "keeping it as-is" in text, (
-        "install_runner_gc_win.ps1 must degrade gracefully when the "
-        "existing S4U task cannot be unregistered unelevated."
-    )
-
-
-def test_bash_dispatcher_passes_the_resolved_distro() -> None:
-    """install_runner_gc.sh resolves RUNNER_GC_WSL_DISTRO; the ps1 must get
-    that same value instead of re-defaulting to 'Ubuntu'."""
-    text = INSTALL.read_text(encoding="utf-8")
-    assert '-Distro "$_distro"' in text, (
-        "install_runner_gc.sh must forward the resolved distro to "
-        "install_runner_gc_win.ps1."
-    )
-
-
-# --- static: payload survives its known failure modes ------------------------
-
-
-def test_payload_is_fail_open_on_wsl_list_errors() -> None:
-    text = AUTOSTART.read_text(encoding="utf-8")
-    assert "$ErrorActionPreference = 'Continue'" in text, (
-        "'Stop' + pwsh 7 turns wsl.exe's non-zero 'nothing running' exit "
-        "into a terminating error; exit codes are data here."
-    )
-    assert "WSL_UTF8" in text, (
-        "wsl.exe emits UTF-16LE by default; WSL_UTF8=1 is the primary fix, "
-        "NUL stripping the fallback."
-    )
-
-
-def test_payload_matches_the_distro_exactly() -> None:
-    text = AUTOSTART.read_text(encoding="utf-8")
-    assert "-contains $Distro" in text, (
-        "the running check must be an exact match — 'Ubuntu' is a substring "
-        "of 'Ubuntu-24.04' and a contains-match silences the autostart."
-    )
-    assert "--quiet" in text, (
-        "--quiet drops the locale-dependent header and ' (Default)' suffix."
-    )
-
-
-def test_payload_ends_as_a_blocking_keepalive_client() -> None:
-    """systemd services do not keep a WSL distro alive — only a connected
-    client does. Boot-and-exit would leave the runner dead ~1 min later."""
-    text = AUTOSTART.read_text(encoding="utf-8")
-    assert "dotfiles-wsl-keepalive" in text, (
-        "the payload must attach a marked, persistent keepalive client."
-    )
-    assert "keepaliv[e]" in text, (
-        "the presence probe must bracket-escape its pattern or it matches "
-        "its own command line and reports 'already attached' forever."
-    )
-
-
-def test_installer_gives_the_keepalive_task_no_time_limit() -> None:
-    """An ExecutionTimeLimit kills the task's process tree when it expires —
-    including the keepalive, resurrecting the 1-minute-runner failure."""
-    text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert "-ExecutionTimeLimit (New-TimeSpan -Seconds 0)" in text, (
-        "the autostart task must run without a time limit; it IS the keepalive."
-    )
-
-
-def test_payload_enforces_the_systemd_contract() -> None:
-    text = AUTOSTART.read_text(encoding="utf-8")
-    assert "is-system-running" in text, (
-        "without systemd the distro starts, nothing comes up, and every "
-        "log line stays green — this must be a hard failure."
-    )
-    assert "list-units" in text, (
-        "`is-active 'actions.runner.*'` exits 0 on zero matches; unit "
-        "presence must be counted."
-    )
-
-
-# --- static: status surfaces the new facts -----------------------------------
-
-
-def test_status_checks_the_autostart_task_by_trigger_shape() -> None:
-    text = STATUS.read_text(encoding="utf-8")
-    assert "MSFT_TaskLogonTrigger" in text, (
-        "a logon task is Interactive by design, and LastTaskResult stays 0 "
-        "when valve A short-circuits — the trigger class is the only "
-        "structural check that means anything."
-    )
-
-
-def test_status_does_not_flag_a_running_keepalive_as_failure() -> None:
-    """A forever-running task reports LastTaskResult 0x41301
-    (SCHED_S_TASK_RUNNING = 267009). Treating non-zero as FAIL turns the
-    healthy keepalive permanently red."""
-    text = STATUS.read_text(encoding="utf-8")
-    assert "267009" in text, (
-        "gc_status.sh must exempt SCHED_S_TASK_RUNNING before judging the "
-        "autostart task's LastTaskResult."
-    )
-
-
-def test_status_does_not_flag_a_running_gc_task_as_failure() -> None:
-    """Same 267009 trap, other task: catch `just status` while the hourly GC
-    task is mid-run and its LastTaskResult reads SCHED_S_TASK_RUNNING — seen
-    live 2026-08-22 as a red `FAIL last run: result 267009` directly under a
-    green `scheduled task: Running`. A red line that means 'healthy' trains
-    the reader to ignore the line."""
-    text = STATUS.read_text(encoding="utf-8")
-    assert "running now (result 267009" in text, (
-        "the GC task's last-run judgment must exempt SCHED_S_TASK_RUNNING "
-        "(267009) and report it as running, exactly like the autostart "
-        "task's judgment already does."
-    )
-
-
-def test_status_captures_distro_running_state_once_up_front() -> None:
-    """The WSL probe itself boots the distro, so a check made after it always
-    reads 'running' (order-dependent silent pass)."""
-    text = STATUS.read_text(encoding="utf-8")
-    capture = text.index("--quiet --running")
-    first_leg = text.index("_windows_status() {")
-    assert capture < first_leg, (
-        "gc_status.sh must capture the running state before either leg "
-        "executes, not inside one of them."
-    )
-
-
-def test_status_counts_runner_listeners_without_killing_set_e() -> None:
-    text = STATUS.read_text(encoding="utf-8")
-    assert "pgrep -cx Runner.Listener || true" in text, (
-        "pgrep exits 1 on zero matches; under `set -e` a bare command "
-        "substitution assignment aborts the whole status script."
-    )
 
 
 # --- behavioral: run the payload against a stub wsl.exe ----------------------
@@ -337,10 +100,14 @@ exit 0
 
 
 def _run_payload(
-    tmp_path: Path, env: dict[str, str]
+    tmp_path: Path,
+    env: dict[str, str],
+    *,
+    stub_text: str = STUB,
+    script: Path = AUTOSTART,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     stub = tmp_path / "wsl_stub.ps1"
-    stub.write_text(STUB, encoding="ascii")
+    stub.write_text(stub_text, encoding="ascii")
     log = tmp_path / "calls.log"
     log.write_text("", encoding="ascii")
     overrides = dict(os.environ)
@@ -353,7 +120,7 @@ def _run_payload(
             str(PWSH),
             "-NoProfile",
             "-File",
-            str(AUTOSTART),
+            str(script),
             "-Distro",
             "Ubuntu",
             "-WslExe",
@@ -440,29 +207,56 @@ def test_duplicate_listeners_warn_but_do_not_fail(tmp_path: Path) -> None:
     assert "WARN" in proc.stdout
 
 
-def test_status_exempts_a_refused_duplicate_start_while_the_keepalive_lives() -> None:
-    """Lived 2026-08-22 and again 2026-09-08: `just status` painted the
-    autostart line FAIL with result 2147946720 (0x800710E0, "the operator or
-    administrator has refused the request") while the task was Running and
-    the keepalive was attached. That code is Task Scheduler refusing a
-    SECOND start under MultipleInstances=IgnoreNew - the defence working,
-    not the task failing. #319 exempted SCHED_S_TASK_RUNNING for the GC task;
-    the autostart line kept flagging the refusal, so the reader learns to
-    ignore a red line - the failure mode this repo's status exists to avoid.
+# --- behavioral: valve A, one keepalive per distro (ADR-0093 D4) -------------
 
-    Rule: 0x800710E0 is OK only while the task State is Running (the
-    instance that matters is alive); a refused start on a task that is NOT
-    running stays FAIL.
-    """
-    text = STATUS.read_text(encoding="utf-8")
-    assert "2147946720" in text or "0x800710E0" in text, (
-        "gc_status.sh must recognise the refused-duplicate-start code on the "
-        "autostart task."
+# The presence probe answered as `pgrep -f` would: the pattern the payload
+# sends, matched case-sensitively against a process table. pgrep skips only
+# itself; the shell that runs it, and the WSL relay around that, keep the
+# probe's text in their command lines. STUB_KEEPALIVE=1 adds a live keepalive.
+# Everything else is answered as STUB does, and the keepalive itself returns.
+PGREP_STUB = r"""
+$line = ($args | ForEach-Object { "$_" }) -join ' '
+Add-Content -LiteralPath $env:STUB_LOG -Value $line
+if ($line -match "pgrep -f '([^']+)'") {
+    $pattern = $Matches[1]
+    $table = @('sh -c ' + $args[-1])
+    if ($env:STUB_KEEPALIVE -eq '1') {
+        $table += "sh -c : dotfiles-wsl-keepalive; while :; do sleep 3600; done"
+    }
+    if (@($table | Where-Object { $_ -cmatch $pattern }).Count -gt 0) { exit 0 }
+    exit 1
+}
+if ($line -like '*--list*--running*') { 'Ubuntu'; exit 0 }
+if ($line -like '*is-system-running*') { 'running'; exit 0 }
+if ($line -like '*list-units*') { 'actions.runner.test.service loaded active running x'; exit 0 }
+if ($line -like '*pgrep -cx*') { '1'; exit 0 }
+exit 0
+"""
+
+
+def check_no_keepalive_attaches_one(tmp_path: Path, script: Path) -> None:
+    proc, calls = _run_payload(tmp_path, {}, stub_text=PGREP_STUB, script=script)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "a keepalive client is already attached" not in proc.stdout, (
+        "the presence probe matched its own command line"
     )
-    seg = text[
-        text.index("autostart last run") - 900 : text.index("autostart last run") + 200
-    ]
-    assert "Running" in seg and ("2147946720" in seg or "800710E0" in seg), (
-        "the exemption must be conditioned on the task State being Running - "
-        "a refused start on a stopped task is a real failure."
+    assert "dotfiles-wsl-keepalive; while" in calls, calls
+
+
+def check_a_live_keepalive_is_not_doubled(tmp_path: Path, script: Path) -> None:
+    proc, calls = _run_payload(
+        tmp_path, {"STUB_KEEPALIVE": "1"}, stub_text=PGREP_STUB, script=script
     )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "a keepalive client is already attached" in proc.stdout, proc.stdout
+    assert "dotfiles-wsl-keepalive; while" not in calls, calls
+
+
+@pwshonly
+def test_the_probe_does_not_find_itself(tmp_path: Path) -> None:
+    check_no_keepalive_attaches_one(tmp_path, AUTOSTART)
+
+
+@pwshonly
+def test_a_live_keepalive_is_not_doubled(tmp_path: Path) -> None:
+    check_a_live_keepalive_is_not_doubled(tmp_path, AUTOSTART)

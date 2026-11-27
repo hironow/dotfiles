@@ -2,7 +2,7 @@
 
 - **id**: ADR-0070
 - **title**: native Windows では pnpm を用意しない
-- **status**: Accepted
+- **status**: Accepted; the `bootstrap.ps1` check of the Enforcement inventory moved from `tests/unit/test_bootstrap_ps1.py` to the repo-lint rule `bootstrap-facts`, per [ADR-0093](0093-tests-check-code-not-file-text.md)
 - **date**: 2026-11-10
 - **decided-date**: 2026-11-10
 - **decision-maker**: Hiroto N.

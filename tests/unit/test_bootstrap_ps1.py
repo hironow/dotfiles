@@ -1,67 +1,41 @@
-"""The Windows bootstrap one-liner must connect a bare machine to the
-existing just chain without tripping the known Windows traps (ADR 0039).
+"""The Windows bootstrap one-liner (ADR 0039): what it must keep, and the
+guards that decide what it deploys and which policy it sets.
 
-Why this exists
----------------
-Every failure mode below is *silent or late* — the script would appear to
-work on an already-provisioned machine and only break on the bare machine
-it exists for:
+The checks of what bootstrap.ps1 says (HTTPS clone, no submodules, a login
+Git Bash, the chain order, scoop out of process, winget's exit codes, ...)
+are the `bootstrap-facts` rule of tools/repo-lint (ADR-0093). Two guards are
+authorization, so they are held here by running the script (ADR-0093 D4):
 
-- **SSH before keys.** ``.gitmodules`` and origin use ``git@github.com:``
-  URLs; a bare machine has no SSH keys, so any submodule step or SSH clone
-  dies on authentication. Bootstrap must clone over HTTPS and leave
-  submodules to the operator.
-- **WSL bash shadowing.** ``C:\\Windows\\System32\\bash.exe`` (WSL) shadows
-  Git Bash for a bare ``bash``; and a non-login Git Bash (``-c`` without
-  ``-l``) lacks ``/usr/bin`` on PATH, so shebang recipes fail with
-  "could not find cygpath". Bootstrap must resolve Git Bash explicitly and
-  invoke it as a login shell (``-lc``).
-- **Stale scoop just.** scoop's ``just`` can lag mise's; just <= 1.45
-  resolves ``bash`` to WSL and older versions reject the repo's justfile
-  attributes. Bootstrap must update and gate on a minimum version.
-- **pwsh-7-only profile.** ``just deploy`` writes
-  ``Documents/PowerShell/Microsoft.PowerShell_profile.ps1`` — the PowerShell
-  7 path. Without ``pwsh`` in the base set the injected profile is dead
-  config on a stock Windows 11 install.
-- **Mojibake via irm|iex.** PowerShell 5.1 reads BOM-less UTF-8 as ANSI, so
-  the script must stay ASCII-only to survive both ``irm | iex`` and
-  ``-File`` execution.
+- an existing ~/dotfiles whose origin is not hironow/dotfiles is never
+  deployed from (the justfile hard-codes ~/dotfiles paths);
+- the execution policy is lowered only for the current user, only to
+  RemoteSigned, and only when it is stricter.
+
+The runs use PowerShell (pwsh, or Windows PowerShell) with global functions
+that shadow every command the script reaches before the Git Bash step, where
+a fake `cmd` stops the run. Nothing is installed, cloned or changed.
 """
 
 from __future__ import annotations
 
-import re
+import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = ROOT / "bootstrap.ps1"
+PWSH = resolve_pwsh(os.environ) or shutil.which("powershell")
+OURS = "https://github.com/hironow/dotfiles.git"
+STRANGER = "https://github.com/someone/dotfiles.git"
 
-CHAIN = [
-    "add-scoop",
-    "deploy",
-    "harden-env",
-    "sync-agents",
-    "restore-skills-lock",
-    "doctor",
-]
-
-
-def _text() -> str:
-    return BOOTSTRAP.read_text(encoding="ascii")
-
-
-def _code() -> str:
-    """The script minus full-line comments — assertions about what bootstrap
-    *executes* must not trip on comments that explain why it doesn't."""
-    lines = _text().splitlines()
-    return "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
-
-
-def test_bootstrap_exists() -> None:
-    assert BOOTSTRAP.is_file(), (
-        "bootstrap.ps1 must exist at the repo root (ADR 0039: the Windows "
-        "one-liner entrypoint)."
-    )
+needs_pwsh = pytest.mark.skipif(
+    PWSH is None, reason="needs PowerShell to run bootstrap.ps1"
+)
 
 
 def test_ascii_only() -> None:
@@ -73,200 +47,8 @@ def test_ascii_only() -> None:
     )
 
 
-def test_runs_full_chain_in_order() -> None:
-    text = _text()
-    positions = []
-    for recipe in CHAIN:
-        match = re.search(rf"Invoke-Just\s+[\"']{re.escape(recipe)}\b", text)
-        assert match, (
-            f"bootstrap.ps1 must run 'just {recipe}' via Invoke-Just (the "
-            "wrapper that enforces the login-shell Git Bash invocation)."
-        )
-        positions.append(match.start())
-    assert positions == sorted(positions), (
-        "bootstrap.ps1 must run the chain in dependency order: " + " -> ".join(CHAIN)
-    )
-
-
-def test_clones_over_https_never_ssh() -> None:
-    text = _text()
-    assert "https://github.com/hironow/dotfiles" in text, (
-        "bootstrap.ps1 must clone over HTTPS — a bare machine has no SSH "
-        "keys, and origin/.gitmodules default to git@github.com URLs."
-    )
-    assert "git@github.com" not in _code(), (
-        "bootstrap.ps1 must not use SSH URLs in executable code; switching "
-        "the remote to SSH is a documented operator step, not a bootstrap "
-        "step."
-    )
-
-
-def test_no_submodule_update() -> None:
-    assert "submodule" not in _code().lower(), (
-        "bootstrap.ps1 must not touch submodules: all but one use SSH URLs "
-        "(auth-fails on a bare machine) and none of the chained recipes "
-        "need them."
-    )
-
-
-def test_invokes_git_bash_as_login_shell() -> None:
-    text = _text()
-    assert re.search(r"bash\.exe", text), (
-        "bootstrap.ps1 must resolve an explicit ...\\bin\\bash.exe — a bare "
-        "'bash' resolves to System32's WSL bash ahead of Git Bash."
-    )
-    assert "-lc" in text, (
-        "bootstrap.ps1 must invoke Git Bash as a login shell (-lc): "
-        "non-login shells lack /usr/bin (cygpath) on PATH and every shebang "
-        "recipe (deploy, add-scoop) fails."
-    )
-
-
-def test_resolves_git_bash_via_scoop_prefix() -> None:
-    assert "scoop prefix git" in _text(), (
-        "bootstrap.ps1 must resolve Git Bash via 'scoop prefix git' — the "
-        "scoop shim's parent directory has no bin\\bash.exe, so deriving "
-        "from Get-Command git yields a nonexistent path."
-    )
-
-
-def test_gates_on_minimum_just_version() -> None:
-    text = _text()
-    assert "scoop update just" in text, (
-        "bootstrap.ps1 must 'scoop update just': a stale scoop just "
-        "resolves bash to WSL (<=1.45) and rejects the justfile's "
-        "attributes."
-    )
-    assert re.search(r"1\.51", text), (
-        "bootstrap.ps1 must gate on just >= 1.51 before running the chain."
-    )
-
-
-def test_base_tool_set_membership() -> None:
-    code = _code()
-    match = re.search(r"\$baseTools\s*=\s*@\(([^)]*)\)", code)
-    assert match, "bootstrap.ps1 must declare its base tool set as $baseTools."
-    tools = set(re.findall(r"'([^']+)'", match.group(1)))
-    assert {"git", "just", "jq", "mise", "pwsh"} <= tools, (
-        "base set must cover git/just/jq (chain floor), mise (deploy's "
-        "toolset + every UV_RUN recipe), and pwsh (deploy writes the "
-        "PowerShell 7 profile path — dead config without it). "
-        f"Found: {sorted(tools)}"
-    )
-    assert "scoop install" in code, (
-        "bootstrap.ps1 must install missing base tools via scoop."
-    )
-
-
-def test_installs_only_missing_tools() -> None:
-    assert re.search(r"Get-Command\s+\$_", _code()), (
-        "bootstrap.ps1 must filter the base set to tools missing from PATH: "
-        "an unconditional scoop install adds a second copy next to an "
-        "existing Program Files git/pwsh and lets scoop shims shadow it."
-    )
-
-
-def test_handles_execution_policy() -> None:
-    assert "ExecutionPolicy" in _text(), (
-        "bootstrap.ps1 must check/set the CurrentUser execution policy: "
-        "scoop's installer aborts under the default Restricted policy."
-    )
-
-
-def test_refreshes_path_after_scoop() -> None:
-    text = _text()
-    assert re.search(r"GetEnvironmentVariable\(\s*['\"]Path['\"]", text), (
-        "bootstrap.ps1 must re-read Machine+User PATH after scoop installs: "
-        "the current process PATH does not pick up new shims on its own."
-    )
-    assert re.search(r'\$env:Path\s*=\s*"\$env:Path;', text), (
-        "the registry PATH must be APPENDED to the process PATH, not "
-        "replace it: the inherited PATH can hold entries the registry "
-        "lacks (seen live: git resolved only via the parent shell)."
-    )
-    assert "ExpandEnvironmentVariables" in text, (
-        "the rebuilt PATH must be expanded: Machine PATH is REG_EXPAND_SZ "
-        "and GetEnvironmentVariable returns %SystemRoot% entries unexpanded, "
-        "silently dropping System32 (powershell.exe) — doctor's win-cygpath "
-        "check then dies with 'command not found'."
-    )
-
-
-def test_scoop_mutations_run_out_of_process() -> None:
-    code = _code()
-    for cmd in ("scoop install", "scoop update"):
-        for line in code.splitlines():
-            if cmd in line:
-                assert "cmd /c" in line, (
-                    f"'{cmd}' must run via cmd /c: a bare scoop runs "
-                    "shims\\scoop.ps1 in-process, and a crash inside "
-                    "scoop's own scripts (seen live mid-update) terminates "
-                    "bootstrap under ErrorActionPreference=Stop, leaving "
-                    "the app shim-less."
-                )
-
-
-def test_scoop_prefix_trusts_exit_code() -> None:
-    assert re.search(r"scoop prefix git[\s\S]{0,200}LASTEXITCODE", _code()), (
-        "bootstrap.ps1 must gate 'scoop prefix git' on $LASTEXITCODE: scoop "
-        "prints its 'Could not find app path' error to stdout, so the "
-        "captured string would otherwise be fed to Join-Path as a prefix."
-    )
-
-
-def test_guards_existing_clone_identity() -> None:
-    text = _text()
-    assert re.search(r"remote\s+get-url\s+origin", text), (
-        "bootstrap.ps1 must verify an existing ~/dotfiles points at "
-        "hironow/dotfiles before deploying from it — the justfile "
-        "hardcodes ~/dotfiles paths."
-    )
-
-
-def test_reads_dotfiles_host_env() -> None:
-    assert "DOTFILES_HOST" in _text(), (
-        "bootstrap.ps1 must honor DOTFILES_HOST (dump_host.sh's primary "
-        "interface): irm|iex cannot bind parameters, so the env var is the "
-        "one-liner's only way to pick a scoop manifest host."
-    )
-
-
-def test_winget_exit_codes_are_answers_not_errors() -> None:
-    # irm|iex runs in the caller's pwsh, which may set
-    # $PSNativeCommandUseErrorActionPreference; then winget's "not installed"
-    # (0x8A150014) would throw before the script reads $LASTEXITCODE. The test
-    # fakes are functions, so only this text check covers it.
-    body = re.search(
-        r"^function Invoke-Winget\b.*?^\}", _text(), re.MULTILINE | re.DOTALL
-    )
-    assert body, "bootstrap.ps1 runs winget through Invoke-Winget"
-    assert "$PSNativeCommandUseErrorActionPreference = $false" in body.group(0)
-    assert "| Out-Host" in body.group(0)
-    calls = re.findall(r"^\s*winget\b", _text(), re.MULTILINE)
-    assert len(calls) == 1, "every winget call goes through Invoke-Winget"
-
-
-def test_never_invokes_forbidden_package_managers() -> None:
-    text = _text()
-    for tool in ("npm", "yarn", "pnpm", "corepack"):
-        assert not re.search(rf"\b{tool}\b", text), (
-            f"bootstrap.ps1 must not invoke {tool}: Node is bun-only, global "
-            "CLIs come from mise, and native Windows uses no pnpm "
-            "(ADR 0027/0036/0070)."
-        )
-
-
 def test_parses_as_valid_powershell() -> None:
-    import os
-    import shutil
-    import subprocess
-
-    from _pwsh import resolve_pwsh
-
-    pwsh = resolve_pwsh(os.environ) or shutil.which("powershell")
-    if pwsh is None:
-        import pytest
-
+    if PWSH is None:
         pytest.skip("no PowerShell available to parse-check bootstrap.ps1")
     check = (
         "$t=$null;$e=$null;"
@@ -275,7 +57,7 @@ def test_parses_as_valid_powershell() -> None:
         "if($e.Count -gt 0){$e|ForEach-Object{$_.ToString()};exit 1}"
     )
     proc = subprocess.run(
-        [pwsh, "-NoProfile", "-Command", check],
+        [PWSH, "-NoProfile", "-Command", check],
         capture_output=True,
         text=True,
         check=False,
@@ -285,3 +67,177 @@ def test_parses_as_valid_powershell() -> None:
     assert proc.returncode == 0, (
         "bootstrap.ps1 has PowerShell syntax errors:\n" + proc.stdout
     )
+
+
+# Shadows for every command bootstrap.ps1 reaches before the Git Bash step.
+# Functions win over cmdlets and programs; none of these names is a module
+# function, so no auto-import can replace them. `cmd /c 'scoop prefix git'`
+# is the boundary: the run stops there, before Git Bash and the just chain.
+WRAPPER = r"""
+$ErrorActionPreference = 'Stop'
+$global:S = Get-Content -Raw -LiteralPath '__SETTINGS__' | ConvertFrom-Json
+$global:Calls = [System.Collections.Generic.List[string]]::new()
+function global:Record([string]$What) { $global:Calls.Add($What) }
+$present = @('podman', 'scoop', 'git', 'just', 'jq', 'mise', 'pwsh')
+function global:Get-Command {
+    [CmdletBinding()]
+    param([Parameter(Position = 0)][string]$Name)
+    if ($Name -in @('podman', 'scoop', 'git', 'just', 'jq', 'mise', 'pwsh')) {
+        return [pscustomobject]@{ Name = $Name; Source = "fake\$Name.exe" }
+    }
+    throw "UNEXPECTED Get-Command $Name"
+}
+function global:podman {
+    $global:LASTEXITCODE = 0
+    if (($args -join ' ') -ne '--version') { throw 'UNEXPECTED podman' }
+    'podman version 5.8.0'
+}
+function global:Get-ExecutionPolicy {
+    param([string]$Scope)
+    Record "Get-ExecutionPolicy -Scope $Scope"
+    $global:S.policy
+}
+function global:Set-ExecutionPolicy {
+    param([Parameter(Position = 0)][string]$ExecutionPolicy, [string]$Scope, [switch]$Force)
+    Record "Set-ExecutionPolicy -Scope $Scope $ExecutionPolicy"
+}
+function global:cmd {
+    $line = $args -join ' '
+    Record "cmd $line"
+    if ($line -eq '/c scoop prefix just') { $global:LASTEXITCODE = 1; return }
+    if ($line -eq '/c scoop prefix git') { throw 'EXPECTED the Git Bash step' }
+    throw "UNEXPECTED cmd $line"
+}
+function global:just {
+    if (($args -join ' ') -ne '--version') { throw 'UNEXPECTED just' }
+    $global:LASTEXITCODE = 0
+    'just 1.59.0'
+}
+function global:Test-Path {
+    param([Parameter(Position = 0)][string]$Path)
+    if ($Path -notlike '*dotfiles?.git') { throw "UNEXPECTED Test-Path $Path" }
+    Record 'Test-Path the clone'
+    [bool]$global:S.cloned
+}
+function global:git {
+    $line = $args -join ' '
+    Record "git $line"
+    $global:LASTEXITCODE = 0
+    if ($line -like '-C * remote get-url origin') { return $global:S.origin }
+    if ($line -like 'clone *') { return }
+    throw "UNEXPECTED git $line"
+}
+foreach ($n in @('Invoke-RestMethod', 'Invoke-Expression', 'Invoke-WebRequest', 'winget', 'Start-Process')) {
+    Set-Item -Path "function:global:$n" -Value ([scriptblock]::Create("throw 'UNEXPECTED $n'"))
+}
+foreach ($n in @('Get-Command', 'podman', 'Get-ExecutionPolicy', 'Set-ExecutionPolicy', 'cmd', 'just', 'Test-Path', 'git', 'Invoke-RestMethod', 'Invoke-Expression', 'winget', 'Start-Process')) {
+    $c = Microsoft.PowerShell.Core\Get-Command -Name $n -CommandType Function -ErrorAction SilentlyContinue
+    if (-not $c -or $c.Module) { throw "SHADOW FAILED $n" }
+}
+try {
+    & '__SCRIPT__'
+    Record 'finished'
+} catch {
+    if ($_.Exception.Message -like 'EXPECTED*') { Record 'stopped at the Git Bash step' }
+    else { Record ('error: ' + $_.Exception.Message) }
+}
+'RECEIPT=' + (ConvertTo-Json -InputObject @($global:Calls) -Compress)
+"""
+
+
+def run_bootstrap(
+    tmp_path: Path,
+    script: Path,
+    *,
+    origin: str,
+    cloned: bool = True,
+    policy: str = "RemoteSigned",
+) -> list[str]:
+    """Run `script` (bootstrap.ps1 or a copy) and return the calls it made."""
+    assert PWSH is not None
+    settings = tmp_path / "settings.json"
+    settings.write_text(
+        json.dumps({"origin": origin, "cloned": cloned, "policy": policy}),
+        encoding="utf-8",
+    )
+    wrapper = tmp_path / "wrapper.ps1"
+    wrapper.write_text(
+        WRAPPER.replace("__SETTINGS__", str(settings)).replace(
+            "__SCRIPT__", str(script)
+        ),
+        encoding="utf-8",
+    )
+    done = subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=120,
+        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_HOST": "windows"},
+    )
+    receipt = [line for line in done.stdout.splitlines() if line.startswith("RECEIPT=")]
+    assert done.returncode == 0 and receipt, done.stdout + done.stderr
+    return json.loads(receipt[-1].removeprefix("RECEIPT="))
+
+
+def check_stranger_clone_is_refused(tmp_path: Path, script: Path) -> None:
+    calls = run_bootstrap(tmp_path, script, origin=STRANGER)
+    errors = [c for c in calls if c.startswith("error: ")]
+    assert len(errors) == 1 and "refusing to deploy" in errors[0], calls
+    assert "cmd /c scoop prefix git" not in calls, (
+        "the run went on past the origin check"
+    )
+    assert not any(c.startswith("git clone") for c in calls), calls
+
+
+def check_own_clone_goes_on(tmp_path: Path, script: Path) -> None:
+    calls = run_bootstrap(tmp_path, script, origin=OURS)
+    assert calls[-1] == "stopped at the Git Bash step", calls
+    assert any(c.endswith(" remote get-url origin") for c in calls), calls
+
+
+def check_strict_policy_is_lowered_for_the_user_only(
+    tmp_path: Path, script: Path
+) -> None:
+    calls = run_bootstrap(tmp_path, script, origin=OURS, policy="Restricted")
+    sets = [c for c in calls if c.startswith("Set-ExecutionPolicy")]
+    assert sets == ["Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"], calls
+    assert calls[-1] == "stopped at the Git Bash step", calls
+
+
+def check_open_policy_is_left_alone(tmp_path: Path, script: Path) -> None:
+    calls = run_bootstrap(tmp_path, script, origin=OURS, policy="RemoteSigned")
+    assert "Get-ExecutionPolicy -Scope CurrentUser" in calls, calls
+    assert not [c for c in calls if c.startswith("Set-ExecutionPolicy")], calls
+
+
+@needs_pwsh
+def test_a_stranger_clone_is_never_deployed(tmp_path: Path) -> None:
+    check_stranger_clone_is_refused(tmp_path, BOOTSTRAP)
+
+
+@needs_pwsh
+def test_a_clone_of_dotfiles_goes_on_to_git_bash(tmp_path: Path) -> None:
+    check_own_clone_goes_on(tmp_path, BOOTSTRAP)
+
+
+@needs_pwsh
+def test_a_strict_policy_is_lowered_to_remotesigned_for_the_user(
+    tmp_path: Path,
+) -> None:
+    check_strict_policy_is_lowered_for_the_user_only(tmp_path, BOOTSTRAP)
+
+
+@needs_pwsh
+def test_an_open_policy_is_left_alone(tmp_path: Path) -> None:
+    check_open_policy_is_left_alone(tmp_path, BOOTSTRAP)
