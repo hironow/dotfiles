@@ -305,9 +305,25 @@ def check_windows_harden_writes_the_user_scope_only(
     ], calls
 
 
+def _bash_major() -> int:
+    done = subprocess.run(
+        [BASH, "-c", 'echo "${BASH_VERSINFO[0]}"'],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    return int(done.stdout.strip() or 0)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="the fakes must win over the real powershell.exe; there a miss would write the real registry",
+)
+@pytest.mark.skipif(
+    _bash_major() < 4,
+    reason="the Windows branch needs bash 4 (${var,,}), as Git Bash has; macOS's /bin/bash is 3.2",
 )
 def test_windows_harden_writes_the_user_scope_only(tmp_path: Path) -> None:
     check_windows_harden_writes_the_user_scope_only(tmp_path, HARDEN)
