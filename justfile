@@ -1654,6 +1654,11 @@ test-iac:
       )
     done
 
+[doc('Run the tailnet state guard scenarios with the installed OpenTofu')]
+[group('test')]
+test-tailnet-scenarios:
+    DOTFILES_REQUIRE_TAILNET_SCENARIOS=1 {{ UV_RUN }} --group dev pytest -q -ra -p no:cacheprovider tests/iac/test_tailnet.py
+
 # ------------------------------
 # Add sets
 # ------------------------------
