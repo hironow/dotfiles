@@ -6,8 +6,7 @@ non-writing `--check` mode) and ruff in check mode on the staged Python files.
 prek stashes unstaged changes while hooks run, so they see what will be
 committed. `just check` (the whole gate, which never writes) runs in CI.
 
-The repo-lint rule template-prek-check-only holds the hook config. The static
-tests read files only and run everywhere. The runtime tests run prek
+The repo-lint rule template-prek-check-only holds the hook config. These tests run prek
 itself in a temp git repo: where prek is absent they skip, except under
 DOTFILES_REQUIRE_PREK=1 (the Linux unit-test job), where they fail; a prek older
 than 0.5.4 (the first with `--check`) always fails them. They use POSIX shell
@@ -49,14 +48,6 @@ def _config() -> str:
     return CONFIG.read_text(encoding="utf-8")
 
 
-# --- static -----------------------------------------------------------------
-
-
-def test_dotfiles_own_prek_does_not_run_the_template_config() -> None:
-    lines = PREKIGNORE.read_text(encoding="utf-8").splitlines()
-    assert "templates/agent-baseline/" in lines
-
-
 # --- runtime ----------------------------------------------------------------
 
 
@@ -75,6 +66,7 @@ def _prek() -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         check=True,
     ).stdout
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
@@ -91,6 +83,7 @@ def _git(repo: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         check=True,
     ).stdout
 
@@ -308,6 +301,7 @@ def _hooks_path(repo: Path) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         check=False,
     ).stdout.strip()
 

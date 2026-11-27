@@ -128,6 +128,7 @@ func All() []Rule {
 		cursorFacts(),
 		hardenEnvFacts(),
 		pagesSiteFacts(),
+		gitmodulesSkipAll(),
 		deployWiringFacts(),
 		effectiveSettingsStdlib(),
 		installerAcceptanceFacts(),

@@ -211,18 +211,6 @@ def _dependabot_clone(
     return _git(*DEPENDABOT_CLONE, super_url, dest), dest
 
 
-def test_every_submodule_is_skipped_by_default() -> None:
-    sections = _gitmodules_sections()
-    assert sections, ".gitmodules lists no submodule"
-    missing = [
-        name for name, body in sections.items() if _setting(body, "update") != "none"
-    ]
-    assert not missing, (
-        "Dependabot clones every submodule it is not told to skip, and any "
-        f"submodule error stops it; add `update = none` to {missing} in .gitmodules"
-    )
-
-
 def test_fixture_reproduces_the_private_submodule_failure(tmp_path: Path) -> None:
     """Without settings, the unreachable private repo fails the clone, dirty."""
     result, dest = _dependabot_clone(tmp_path, _superproject(tmp_path, {}))
