@@ -5,15 +5,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
-// installSh is the Unix installer; macBrewfile is the Mac's package manifest.
-const (
-	installSh   = "install.sh"
-	macBrewfile = "dump/macbook/Brewfile"
-)
+// macBrewfile is the Mac's package manifest.
+const macBrewfile = "dump/macbook/Brewfile"
 
 // doctorFacts: doctor keeps the checks the tests that read scripts/doctor.sh
 // held: the Windows branch, the WinGet shadow, the rogue npm globals, the
@@ -25,19 +20,6 @@ func doctorFacts() Rule {
 		"doctor checks what breaks a host silently and names the fix, and only reads: the Windows branch, shadowed CLIs, the profile blocks, zsh, Podman",
 		[]string{doctorScript},
 		doctorFactList,
-	)
-}
-
-// installFacts: install.sh keeps the steps the tests that read it held.
-func installFacts() Rule {
-	return factRule(
-		"install-facts",
-		"install.sh runs every step its tests name",
-		[]string{installSh},
-		[]scriptFact{
-			// tests/unit/test_install_zsh_steps.py
-			fact("test_install_sh_runs_the_zsh_step", matches(installSh, `(?m)^step_zsh$`)),
-		},
 	)
 }
 
@@ -106,45 +88,6 @@ func onWindowsBranch(checks ...factCheck) factCheck {
 		}
 		return out
 	}
-}
-
-// pySliceFrom is the test's text[i+offset:], where i is the character index
-// of the byte offset at (Python's find, -1 when missing): Python counts
-// characters, and reads a negative start from the end.
-func pySliceFrom(text string, at, offset int) string {
-	runes := []rune(text)
-	i := -1
-	if at >= 0 {
-		i = utf8.RuneCountInString(text[:at])
-	}
-	start := i + offset
-	if start < 0 {
-		start = max(len(runes)+start, 0)
-	}
-	return string(runes[min(start, len(runes)):])
-}
-
-// pyHasWord is re.search(rf"\b{word}\b", text) with Python's Unicode word
-// characters (Go's \b knows only ASCII ones).
-func pyHasWord(text, word string) bool {
-	for from := 0; ; {
-		i := strings.Index(text[from:], word)
-		if i < 0 {
-			return false
-		}
-		start, end := from+i, from+i+len(word)
-		before, _ := utf8.DecodeLastRuneInString(text[:start])
-		after, _ := utf8.DecodeRuneInString(text[end:])
-		if (start == 0 || !pyWordRune(before)) && (end == len(text) || !pyWordRune(after)) {
-			return true
-		}
-		from = start + 1
-	}
-}
-
-// pyWordRune is a character of Python's \w for str patterns.
-func pyWordRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
 }
 
 // wingetSectionNamesEveryCli: from the first "WinGet" on (the test's

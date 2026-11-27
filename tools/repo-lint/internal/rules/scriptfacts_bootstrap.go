@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 // bootstrapPs1 is the Windows one-liner that connects a bare machine to the
@@ -67,48 +65,6 @@ func onBootstrapCode(checks ...factCheck) factCheck {
 		}
 		return out
 	}
-}
-
-// pyCodeLines is the lines of Python's str.splitlines() that do not start
-// with "#" after str.lstrip().
-func pyCodeLines(text string) []string {
-	var out []string
-	for _, line := range pySplitlines(text) {
-		if !strings.HasPrefix(strings.TrimLeftFunc(line, pyIsSpace), "#") {
-			out = append(out, line)
-		}
-	}
-	return out
-}
-
-// pySplitlines is str.splitlines(): it breaks at \n, \r, \r\n, \v, \f,
-// \x1c-\x1e, \x85, U+2028 and U+2029, and keeps no empty last line.
-func pySplitlines(text string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(text); {
-		r, size := utf8.DecodeRuneInString(text[i:])
-		switch r {
-		case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
-			lines = append(lines, text[start:i])
-			i += size
-			if r == '\r' && i < len(text) && text[i] == '\n' {
-				i++
-			}
-			start = i
-		default:
-			i += size
-		}
-	}
-	if start < len(text) {
-		lines = append(lines, text[start:])
-	}
-	return lines
-}
-
-// pyIsSpace is str.isspace() for one character.
-func pyIsSpace(r rune) bool {
-	return unicode.IsSpace(r) || r >= 0x1c && r <= 0x1f
 }
 
 // chainInOrder: each recipe runs through Invoke-Just, in dependency order.

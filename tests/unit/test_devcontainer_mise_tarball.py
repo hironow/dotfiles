@@ -15,6 +15,7 @@ import hashlib
 import os
 import re
 import shutil
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -33,41 +34,6 @@ SHA256SUM = shutil.which("sha256sum")
 
 def _feature() -> str:
     return INSTALL.read_text(encoding="utf-8")
-
-
-def test_the_feature_installs_mise_without_its_apt_repository():
-    text = _feature()
-    assert "mise.jdx.dev/deb" not in text
-    assert "mise-archive-keyring" not in text
-    assert not re.search(r"apt-get install[^\n]*\bmise\b", text)
-
-
-def test_the_feature_verifies_the_tarball_with_the_pinned_key():
-    text = _feature()
-    base = "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}"
-    assert f'MISE_BASE="{base}"' in text
-    assert '"${MISE_BASE}/SHASUMS256.asc"' in text
-    assert (
-        f"{FUNCTION} https://mise.jdx.dev/gpg-key.pub \\\n  {MISE_FINGERPRINT} \\\n"
-        in text
-    )
-    assert 'install -m 0755 "${MISE_TMP}/mise/bin/mise" /usr/local/bin/mise' in text
-
-
-def test_each_download_has_a_second_host():
-    # github.com's /releases/download/ failed for 1.5 h on 2026-11-09 (#580).
-    # Either host may serve the bytes; the pinned signature decides.
-    text = _feature()
-    assert 'MISE_HOST="https://mise.jdx.dev/v${MISE_VERSION}"' in text
-    assert (
-        'fetch_first "${MISE_TMP}/${MISE_FILE}" '
-        '"${MISE_HOST}/${MISE_FILE}" "${MISE_BASE}/${MISE_FILE}"\n' in text
-    )
-    # checksums from GitHub first, as mise's docs ask
-    assert (
-        'fetch_first "${MISE_TMP}/SHASUMS256.asc" '
-        '"${MISE_BASE}/SHASUMS256.asc" "${MISE_HOST}/SHASUMS256.asc"\n' in text
-    )
 
 
 def _fetch_first() -> str:
@@ -334,8 +300,82 @@ def test_a_signature_by_a_revoked_or_expired_key_stops_the_build(tmp_path, case)
     assert NO_GOOD_SIGNATURE in result.stderr, (case, result.stderr)
 
 
-def test_the_check_needs_no_more_than_the_tools_the_image_has():
-    # gpg, sha256sum, awk, grep and mktemp are in the image before mise.
-    body = _function()
-    for tool in ("gpg ", "sha256sum", "mktemp", "awk", "grep"):
-        assert tool in body, tool
+# ADR-0093 D4: the image runs the mise it downloads, so the feature must call
+# the pinned-key check before it installs. The check itself runs above with
+# real gpg; this runs the feature's own mise block (cut out of install.sh,
+# after its set line and its ARCH line) with recording shell functions in
+# place of the fetches, the check, tar and install.
+FEATURE_FAKES = """record() { printf '%s\\n' "$*" >> "$FIXTURE_LOG"; }
+uname() { echo x86_64; }
+fetch_first() { record "fetch $1 $2 $3"; : > "$1"; }
+verify_artifact_with_signed_checksums() { record "verify $*"; return "$FIXTURE_VERIFY_RC"; }
+tar() { record "tar $*"; mkdir -p "$MISE_TMP/mise/bin"; : > "$MISE_TMP/mise/bin/mise"; }
+install() { record "install $*"; }
+"""
+
+
+def run_feature_mise_block(
+    tmp_path: Path, install: Path, *, verify_rc: int
+) -> tuple[int, list[str]]:
+    text = install.read_text(encoding="utf-8")
+    set_line = re.search(r"(?m)^set -euo pipefail$", text)
+    arch_line = re.search(r"(?m)^ARCH=\$\(uname -m\)$", text)
+    block = re.search(r'(?ms)^MISE_VERSION=.*?^rm -rf "\$\{MISE_TMP\}"$', text)
+    assert set_line and arch_line and block, "the feature's mise block moved"
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    log = tmp_path / "calls"
+    log.touch()
+    script = "\n".join((set_line[0], FEATURE_FAKES, arch_line[0], block[0], ""))
+    path = tmp_path / "block.sh"
+    path.write_text(script, encoding="utf-8", newline="\n")
+    bash_dir = Path(resolve_bash()).parent
+    done = run_bash(
+        path,
+        cwd=tmp_path,
+        env={
+            "PATH": ":".join([bash_path(bash_dir), "/usr/bin", "/bin"]),
+            "TMPDIR": bash_path(temp),
+            "FIXTURE_LOG": bash_path(log),
+            "FIXTURE_VERIFY_RC": str(verify_rc),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    return done.returncode, log.read_text(encoding="utf-8").splitlines()
+
+
+def check_a_failed_key_check_installs_nothing(tmp_path: Path, install: Path) -> None:
+    rc, calls = run_feature_mise_block(tmp_path, install, verify_rc=1)
+    assert rc != 0
+    assert any(c.startswith("verify ") for c in calls), calls
+    assert not [c for c in calls if c.startswith(("tar ", "install "))], calls
+
+
+def check_mise_is_installed_after_the_pinned_key_check(
+    tmp_path: Path, install: Path
+) -> None:
+    rc, calls = run_feature_mise_block(tmp_path, install, verify_rc=0)
+    assert rc == 0, calls
+    kinds = [c.split(" ", 1)[0] for c in calls]
+    assert kinds == ["fetch", "fetch", "verify", "tar", "install"], calls
+    verify = calls[2].split()
+    assert verify[1:3] == ["https://mise.jdx.dev/gpg-key.pub", MISE_FINGERPRINT], verify
+    assert verify[3].endswith("/SHASUMS256.asc") and verify[4].endswith(".tar.gz"), (
+        verify
+    )
+    assert calls[0].split()[1] == verify[4] and calls[1].split()[1] == verify[3], calls
+    assert calls[4].endswith("/mise/bin/mise /usr/local/bin/mise"), calls
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the feature runs in a Linux image")
+def test_a_failed_key_check_installs_nothing(tmp_path: Path) -> None:
+    check_a_failed_key_check_installs_nothing(tmp_path, INSTALL)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the feature runs in a Linux image")
+def test_mise_is_installed_after_the_pinned_key_check(tmp_path: Path) -> None:
+    check_mise_is_installed_after_the_pinned_key_check(tmp_path, INSTALL)

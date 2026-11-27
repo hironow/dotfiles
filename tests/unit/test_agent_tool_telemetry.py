@@ -22,7 +22,6 @@ headroom itself whether its beacon is on.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -40,14 +39,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import ai_tools_check
 import jev_headroom as hr
-
-
-def test_harden_env_persists_the_telemetry_off_for_windows() -> None:
-    text = (ROOT / "scripts/harden_env.sh").read_text(encoding="utf-8")
-    for name, value in TELEMETRY_OFF.items():
-        assert re.search(
-            rf"SetEnvironmentVariable\('{name}', '{value}', 'User'\)", text
-        ), f"harden-env does not persist {name}={value} for the Windows user"
 
 
 def test_the_proxy_process_carries_them_whatever_it_inherited() -> None:

@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -34,38 +33,6 @@ def test_ci_bootstrap_refuses_operator_hosts_before_installation(tmp_path):
     )
     assert result.returncode == 1
     assert "ephemeral non-root GitHub Actions Linux runner" in result.stderr
-
-
-def test_bootstrap_is_ci_only_and_uses_canonical_pins_and_order():
-    body = (ROOT / ".devcontainer/ci-bootstrap.sh").read_text(encoding="utf-8")
-    assert '"${GITHUB_ACTIONS:-}" != true' in body
-    assert '"${RUNNER_ENVIRONMENT:-}" != github-hosted' in body
-    assert 'bash "$repo/install.sh" --podman-only' in body
-    assert "source['bootstrap']['mise']" in body
-    assert "generated mise tools missing" in body
-    assert "MISE_GLOBAL_CONFIG_FILE" in body
-    # bun, node and uv come first: the npm and pypi backends need them.
-    assert body.index("mise install bun uv node just") < body.index(
-        'mise install "${second_tools[@]}"'
-    )
-    assert "second_tools=(npm:@devcontainers/cli pypi:podman-compose)" in body
-    assert "systemctl --user start podman.socket" in body
-    assert '"host"]["remoteSocket"]["path"]' in body
-    assert "PODMAN_COMPOSE_PROVIDER=podman-compose" in body
-    assert "sudo podman" not in body
-    assert "Docker remains on PATH" in body
-    assert not re.search(r"podman-compose[=@][0-9]|devcontainers/cli[=@][0-9]", body)
-
-
-def test_tools_only_mode_installs_the_check_tools_and_never_touches_podman():
-    body = (ROOT / ".devcontainer/ci-bootstrap.sh").read_text(encoding="utf-8")
-    assert "--tools-only) mode=tools-only" in body
-    assert "go vp markdownlint-cli2 aqua:golangci/golangci-lint" in body
-    # Every Podman action is indented inside the podman-mode branch.
-    for action in ('install.sh" --podman-only', "apt-get install", "systemctl --user"):
-        line = next(line for line in body.splitlines() if action in line)
-        assert line.startswith("  "), action
-    assert 'if [[ "$mode" == podman ]]; then' in body
 
 
 @pytest.mark.parametrize(
@@ -129,7 +96,13 @@ TOOL_LAYOUT = (
 
 
 def _bootstrap_checksum_attempt(
-    tmp_path, names, *, corrupt=False, engine=None, extra_env=None
+    tmp_path,
+    names,
+    *,
+    corrupt=False,
+    engine=None,
+    extra_env=None,
+    commands_override=None,
 ):
     """Run the public bootstrap with real checks and owned external boundaries.
 
@@ -148,7 +121,8 @@ def _bootstrap_checksum_attempt(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, target)
     (repo / "install.sh").write_text(
-        '#!/bin/sh\n[ "$#" = 1 ] && [ "$1" = --podman-only ]\n',
+        '#!/bin/sh\nprintf \'install.sh %s\\n\' "$*" >> "${FIXTURE_INSTALL_LOG:-/dev/null}"\n'
+        '[ "$#" = 1 ] && [ "$1" = --podman-only ]\n',
         encoding="utf-8",
     )
     # The real guard has its own tests (test_allow_podman_stop_pasta.py);
@@ -417,6 +391,7 @@ shift 2
 """
             + f'exec {real_utility("mv")} "$@"',
         )
+    commands.update(commands_override or {})
     for name, body in commands.items():
         executable = bin_dir / name
         executable.write_text("#!/bin/sh\nset -eu\n" + body + "\n", encoding="utf-8")
@@ -809,3 +784,43 @@ def test_bootstrap_reroutes_only_uv_downloads(tmp_path):
     }
     environment = (tmp_path / "github-env").read_text(encoding="utf-8")
     assert "MISE_URL_REPLACEMENTS" not in environment
+
+
+# ADR-0093 D4: the bootstrap installs packages with sudo and starts a socket,
+# so it refuses any host but an ephemeral non-root hosted Linux runner. The
+# run uses the harness above; test_ci_bootstrap_accepts_native_and_remote_...
+# shows the same harness goes on where the runner is right.
+@pytest.mark.parametrize(
+    ("env", "commands"),
+    [
+        pytest.param({"GITHUB_ACTIONS": ""}, {}, id="outside-actions"),
+        pytest.param({"RUNNER_ENVIRONMENT": "self-hosted"}, {}, id="self-hosted"),
+        pytest.param({}, {"id": '[ "$1" = -u ] || exit 97; echo 0'}, id="root"),
+        pytest.param(
+            {},
+            {
+                "uname": 'case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; *) exit 97 ;; esac'
+            },
+            id="not-linux",
+        ),
+    ],
+)
+def test_ci_bootstrap_runs_only_on_an_ephemeral_non_root_hosted_linux_runner(
+    tmp_path, env, commands
+):
+    sudo_log = tmp_path / "sudo-log"
+    install_log = tmp_path / "install-log"
+    env = {"FIXTURE_INSTALL_LOG": bash_path(install_log), **env}
+    recorded = {
+        "sudo": f'printf "%s\\n" "$*" >> {shlex.quote(bash_path(sudo_log))}; exit 97',
+        **commands,
+    }
+    result = _bootstrap_checksum_attempt(
+        tmp_path, ["./{artifact}"], extra_env=env, commands_override=recorded
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not sudo_log.exists(), sudo_log.read_text(encoding="utf-8")
+    assert not install_log.exists(), install_log.read_text(encoding="utf-8")
+    assert "ephemeral non-root GitHub Actions Linux runner" in result.stderr
+    assert not (tmp_path / "curl-log").exists(), "it downloaded before refusing"
+    assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr

@@ -123,6 +123,10 @@ func All() []Rule {
 		doctorFacts(),
 		installFacts(),
 		brewfileDockerFree(),
+		devcontainerFeatureFacts(),
+		ciBootstrapFacts(),
+		cursorFacts(),
+		hardenEnvFacts(),
 	}
 }
 

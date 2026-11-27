@@ -4,38 +4,15 @@ import importlib.util
 import os
 import shlex
 import shutil
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 from _bash_hook import bash_path, run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def test_feature_installs_native_podman_without_changing_generated_versions():
-    body = (ROOT / ".devcontainer/features/dotfiles-tools/install.sh").read_text(
-        encoding="utf-8"
-    )
-    assert "podman uidmap" in body
-    assert "podman --version" in body
-    assert "Podman >=5" in body
-
-
-def test_cursor_never_sets_up_docker_or_world_writable_sockets():
-    install = (ROOT / ".cursor/install.sh").read_text(encoding="utf-8")
-    start = (ROOT / ".cursor/start.sh").read_text(encoding="utf-8")
-    for forbidden in (
-        "docker.io",
-        "dockerd",
-        "daemon.json",
-        "chmod 666",
-        "usermod -aG docker",
-    ):
-        assert forbidden not in install + start
-    assert "--podman-only" in install
-    assert "fuse-overlayfs" in install
-    assert "podman.socket" in start
-    assert "sudo podman" not in start
 
 
 def test_missing_engine_is_required_failure_not_skip(monkeypatch):
@@ -168,3 +145,219 @@ def test_initialize_requires_raw_selected_engine_socket_without_probing_host(
     assert (result.returncode == 0) is valid
     if not valid:
         assert "DOTFILES_PODMAN_ENGINE_SOCKET" in result.stderr
+
+
+# ADR-0093 D4: the Cursor environment must stay rootless: a user socket, a
+# pinned mise key, no docker group, no socket open to everyone. Held by runs
+# of the real scripts with recording fakes.
+CURSOR = ROOT / ".cursor"
+PINNED_FPR = "24853EC9F655CE80B48E6C3A8B81C9D17413A06D"
+
+
+def _fakes(directory: Path, bodies: dict[str, str]) -> None:
+    directory.mkdir(exist_ok=True)
+    for name, body in bodies.items():
+        (directory / name).write_text(
+            "#!/bin/sh\n" + body + "\n", encoding="utf-8", newline="\n"
+        )
+        (directory / name).chmod(0o755)
+
+
+def run_cursor_start(
+    tmp_path: Path,
+    script: Path,
+    *,
+    uid: str = "1000",
+    socket: str | None = None,
+    systemctl_rc: int = 0,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    run = tmp_path / "run"
+    run.mkdir()
+    log = tmp_path / "calls"
+    log.touch()
+    fake = tmp_path / "fake-bin"
+    _fakes(
+        fake,
+        {
+            "id": f'[ "$1" = -u ] && echo {uid}',
+            "podman": 'printf "podman %s umask=%s\\n" "$*" "$(umask)" >> "$FIXTURE_LOG"\n'
+            'case "$1" in info) echo "unix://$FIXTURE_SOCKET" ;; version) echo "5.4.0 5.4.0" ;; esac',
+            "systemctl": 'printf "systemctl %s\\n" "$*" >> "$FIXTURE_LOG"\nexit "$FIXTURE_SYSTEMCTL_RC"',
+            "sudo": 'printf "sudo %s\\n" "$*" >> "$FIXTURE_LOG"\nexit 97',
+            "chmod": 'printf "chmod %s\\n" "$*" >> "$FIXTURE_LOG"',
+        },
+    )
+    done = subprocess.run(
+        [_bash(), str(script)],
+        env={
+            "PATH": f"{fake}:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "XDG_RUNTIME_DIR": str(run),
+            "FIXTURE_LOG": str(log),
+            "FIXTURE_SOCKET": socket or f"{run}/podman/podman.sock",
+            "FIXTURE_SYSTEMCTL_RC": str(systemctl_rc),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdin=subprocess.DEVNULL,
+        check=False,
+        timeout=60,
+    )
+    # The fallback service starts in the background; wait for its line.
+    for _ in range(50):
+        if systemctl_rc == 0 or "system service" in log.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.1)
+    return done, log.read_text(encoding="utf-8")
+
+
+def _bash() -> str:
+    bash = shutil.which("bash")
+    if bash is None or sys.platform == "win32":
+        pytest.skip("runs the Linux scripts with POSIX fakes")
+    return bash
+
+
+def check_start_refuses_root(tmp_path: Path, script: Path) -> None:
+    done, calls = run_cursor_start(tmp_path, script, uid="0")
+    assert done.returncode == 1 and "non-root" in done.stderr, done.stderr
+    assert "systemctl" not in calls and "system service" not in calls, calls
+
+
+def check_start_refuses_an_unexpected_socket(tmp_path: Path, script: Path) -> None:
+    done, calls = run_cursor_start(
+        tmp_path, script, socket=str(tmp_path / "elsewhere.sock")
+    )
+    assert done.returncode == 1 and "refusing unexpected user socket" in done.stderr, (
+        done.stderr
+    )
+    assert "systemctl" not in calls, calls
+
+
+def check_start_uses_the_user_socket(tmp_path: Path, script: Path) -> None:
+    done, calls = run_cursor_start(tmp_path, script)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "systemctl --user start podman.socket\n" in calls, calls
+    assert "sudo " not in calls and "chmod " not in calls, calls
+
+
+def check_the_fallback_service_is_private(tmp_path: Path, script: Path) -> None:
+    done, calls = run_cursor_start(tmp_path, script, systemctl_rc=1)
+    assert done.returncode == 0, done.stdout + done.stderr
+    socket = tmp_path / "run" / "podman" / "podman.sock"
+    assert f"podman system service --time=0 unix://{socket} umask=0077" in calls, calls
+    assert "sudo " not in calls and "chmod " not in calls, calls
+
+
+def test_cursor_start_refuses_root(tmp_path: Path) -> None:
+    check_start_refuses_root(tmp_path, CURSOR / "start.sh")
+
+
+def test_cursor_start_refuses_an_unexpected_socket(tmp_path: Path) -> None:
+    check_start_refuses_an_unexpected_socket(tmp_path, CURSOR / "start.sh")
+
+
+def test_cursor_start_uses_the_user_socket(tmp_path: Path) -> None:
+    check_start_uses_the_user_socket(tmp_path, CURSOR / "start.sh")
+
+
+def test_cursor_start_fallback_keeps_the_socket_private(tmp_path: Path) -> None:
+    check_the_fallback_service_is_private(tmp_path, CURSOR / "start.sh")
+
+
+def run_cursor_install(
+    tmp_path: Path, script: Path, *, fingerprint: str
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    """Run a copy of .cursor/install.sh in a temp repo: a stub install.sh,
+    the real mise config and skills_lock.py, and fakes for every command
+    that reaches past the temp folder."""
+    bash = _bash()
+    if not Path("/dev/fuse").is_char_device():
+        pytest.skip("the script requires /dev/fuse, which this host lacks")
+    if any(Path(d, "mise").exists() for d in ("/usr/bin", "/bin")):
+        pytest.skip("a mise in /usr/bin or /bin would skip the fingerprint check")
+    repo = tmp_path / "repo"
+    (repo / ".cursor").mkdir(parents=True)
+    shutil.copy(script, repo / ".cursor" / "install.sh")
+    for rel in ("config/mise/config.toml", "scripts/skills_lock.py"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / rel, repo / rel)
+    (repo / "emulator").mkdir()
+    log = tmp_path / "calls"
+    log.touch()
+    (repo / "install.sh").write_text(
+        f'printf "install.sh %s\\n" "$*" >> "{log}"\n', encoding="utf-8"
+    )
+    fake = tmp_path / "fake-bin"
+    mise = 'printf "mise %s\\n" "$*" >> "$FIXTURE_LOG"\ncase "$*" in "--version") echo 2026.10.17 ;; "-C / where "*) echo "$FIXTURE_TOOLS/$4" ;; esac'
+    _fakes(
+        fake,
+        {
+            "sudo": 'printf "sudo %s\\n" "$*" >> "$FIXTURE_LOG"\ncat > /dev/null\n'
+            'case "$*" in *"apt-get install"*" mise") '
+            f"printf '#!/bin/sh\\n%s\\n' '{mise}' > \"$FIXTURE_BIN/mise\"; /bin/chmod 755 \"$FIXTURE_BIN/mise\" ;; esac",
+            "curl": 'printf "curl %s\\n" "$*" >> "$FIXTURE_LOG"\n'
+            'while [ "$#" -gt 0 ]; do [ "$1" = -o ] && echo KEY > "$2"; shift; done',
+            "gpg": 'case "$*" in *--list-keys*) echo "fpr:::::::::$FIXTURE_FPR:" ;; esac',
+            "chmod": 'printf "chmod %s\\n" "$*" >> "$FIXTURE_LOG"',
+            "usermod": 'printf "usermod %s\\n" "$*" >> "$FIXTURE_LOG"',
+        },
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    done = subprocess.run(
+        [bash, str(repo / ".cursor" / "install.sh")],
+        env={
+            "PATH": f"{fake}:/usr/bin:/bin",
+            "HOME": str(home),
+            "TMPDIR": str(temp),
+            "FIXTURE_LOG": str(log),
+            "FIXTURE_BIN": str(fake),
+            "FIXTURE_FPR": fingerprint,
+            "FIXTURE_TOOLS": str(tmp_path / "tools"),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdin=subprocess.DEVNULL,
+        check=False,
+        timeout=120,
+    )
+    return done, log.read_text(encoding="utf-8")
+
+
+def check_install_stops_on_a_foreign_key(tmp_path: Path, script: Path) -> None:
+    done, calls = run_cursor_install(tmp_path, script, fingerprint="0" * 40)
+    assert done.returncode == 1 and "fingerprint mismatch" in done.stderr, done.stderr
+    assert (
+        "sources.list.d/mise.list" not in calls
+        and "--no-install-recommends mise" not in calls
+    ), calls
+
+
+def check_install_trusts_the_pinned_key_and_stays_rootless(
+    tmp_path: Path, script: Path
+) -> None:
+    done, calls = run_cursor_install(tmp_path, script, fingerprint=PINNED_FPR)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "sudo tee /etc/apt/sources.list.d/mise.list" in calls, calls
+    assert "sudo apt-get install -y --no-install-recommends mise" in calls, calls
+    for forbidden in ("usermod", "docker", "chmod 666", "daemon.json", "sudo podman"):
+        assert forbidden not in calls, (forbidden, calls)
+
+
+def test_cursor_install_stops_on_a_foreign_mise_key(tmp_path: Path) -> None:
+    check_install_stops_on_a_foreign_key(tmp_path, CURSOR / "install.sh")
+
+
+def test_cursor_install_trusts_the_pinned_key_and_stays_rootless(
+    tmp_path: Path,
+) -> None:
+    check_install_trusts_the_pinned_key_and_stays_rootless(
+        tmp_path, CURSOR / "install.sh"
+    )
