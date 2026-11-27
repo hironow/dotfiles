@@ -118,6 +118,8 @@ func All() []Rule {
 		justfileRecipeFacts(),
 		runnerGcFacts(),
 		windowsHostFacts(),
+		wslAutostartFacts(),
+		bootstrapFacts(),
 	}
 }
 
