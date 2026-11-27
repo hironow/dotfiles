@@ -2832,3 +2832,126 @@ if __name__ == "__main__":
         raise SystemExit("usage: test_just_sandbox.py --cleanup-manifest PATH")
     os.environ["DOTFILES_DEVCONTAINER_MANIFEST"] = sys.argv[2]
     cleanup_devcontainer_manifest(Path(sys.argv[2]))
+
+
+@pytest.mark.parametrize(
+    "scenario,filename,before,after,markers",
+    [
+        pytest.param(
+            "private",
+            "main.tf",
+            'key_provider "pbkdf2" "default" {\n      passphrase = "OVERRIDDEN_BY_TF_ENCRYPTION_ENV"\n    }',
+            'key_provider "gcp_kms" "default" {\n      kms_encryption_key = "projects/fixture/locations/global/keyRings/fixture/cryptoKeys/fixture"\n      key_length = 32\n    }',
+            ("gcp_kms", "could not find default credentials"),
+            id="kms-provider",
+        ),
+        pytest.param(
+            "private",
+            "main.tf",
+            'prefix = "tailnet"',
+            'prefix = "tailnet"\n    kms_encryption_key = "projects/fixture/locations/global/keyRings/fixture/cryptoKeys/fixture"',
+            ("tailnet guard:backend-kms",),
+            id="backend-kms",
+        ),
+        pytest.param(
+            "backend",
+            "main.tf",
+            'bucket = "gen-ai-hironow-tofu-state"',
+            'bucket = "wrong-fixture-bucket"',
+            ("tailnet guard:state-location",),
+            id="bucket",
+        ),
+        pytest.param(
+            "backend",
+            "main.tf",
+            'prefix = "tailnet"',
+            'prefix = "wrong-fixture-prefix"',
+            ("tailnet guard:state-location",),
+            id="prefix",
+        ),
+        pytest.param(
+            "encryption",
+            "main.tf",
+            "state {\n      method   = method.aes_gcm.default\n      enforced = true",
+            "state {\n      method   = method.aes_gcm.default\n      enforced = false",
+            ("tailnet guard:state-enforcement",),
+            id="state-enforcement",
+        ),
+        pytest.param(
+            "encryption",
+            "main.tf",
+            "plan {\n      method   = method.aes_gcm.default\n      enforced = true",
+            "plan {\n      method   = method.aes_gcm.default\n      enforced = false",
+            ("tailnet guard:plan-enforcement",),
+            id="plan-enforcement",
+        ),
+        pytest.param(
+            "import",
+            "acl.tf",
+            'import {\n  for_each = var.adopt_live_acl ? toset(["acl"]) : toset([])\n  to       = tailscale_acl.this\n  id       = each.value\n}\n',
+            "",
+            ("tailnet guard:live-import",),
+            id="import-removed",
+        ),
+        pytest.param(
+            "import",
+            "acl.tf",
+            "to       = tailscale_acl.this",
+            "to       = tailscale_acl.missing",
+            ("Configuration for import target does not exist", "tailscale_acl.missing"),
+            id="import-destination",
+        ),
+        pytest.param(
+            "import",
+            "variables.tf",
+            "default     = true",
+            "default     = false",
+            ("tailnet guard:live-import",),
+            id="adoption-disabled",
+        ),
+        pytest.param(
+            "destroy",
+            "acl.tf",
+            "prevent_destroy = true",
+            "prevent_destroy = false",
+            ("tailnet guard:prevent-destroy",),
+            id="prevent-destroy",
+        ),
+        pytest.param(
+            "destroy",
+            "acl.tf",
+            'file("${path.module}/acl.hujson")',
+            'file("${path.module}/alternate.hujson")',
+            ("tailnet guard:planned-acl",),
+            id="different-valid-acl",
+        ),
+    ],
+)
+def test_tailnet_runtime_mutations(
+    tailnet_image, scenario, filename, before, after, markers
+):
+    inputs = _tailnet_inputs()
+    original = inputs[filename]
+    inputs[filename] = original.replace(before, after, 1)
+    assert inputs[filename] != original, "mutation did not change its input"
+    if "gcp_kms" in after:
+        original = inputs[filename]
+        inputs[filename] = original.replace(
+            "keys = key_provider.pbkdf2.default",
+            "keys = key_provider.gcp_kms.default",
+            1,
+        )
+        assert inputs[filename] != original, (
+            "KMS method mutation did not change its input"
+        )
+    if "alternate.hujson" in after:
+        inputs["alternate.hujson"] = '{"acls": [], "ssh": []}\n'
+    program = f"INPUTS = {inputs!r}\nSCENARIO = {scenario!r}\n" + _TAILNET_RUNTIME
+    result = run_saved_image(
+        tailnet_image, "python3 -c " + shlex.quote(program), offline=True
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    for marker in markers:
+        assert marker in output, "wrong failure; missing " + marker + "\n" + output
+    assert f"tailnet scenario passed: {scenario}" not in result.stdout
