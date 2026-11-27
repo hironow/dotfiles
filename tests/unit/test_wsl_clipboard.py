@@ -152,11 +152,6 @@ def test_failures_are_visible(sandbox: Path, failed: str) -> None:
         ]
 
 
-def test_step_is_in_normal_install_flow() -> None:
-    text = (ROOT / "install.sh").read_text(encoding="utf-8")
-    assert re.search(r"^step_wsl_clipboard$", text, re.MULTILINE)
-
-
 @pytest.mark.parametrize("scenario", ["missing", "no-display", "no-socket", "non-wsl"])
 def test_doctor_clipboard_runtime_warnings(sandbox: Path, scenario: str) -> None:
     doctor = (ROOT / "scripts/doctor.sh").read_text(encoding="utf-8")

@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 from _bash_hook import resolve_bash
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -182,62 +184,6 @@ def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:
     ), "%APPDATA%/uv/uv.toml must be an exact mirror of ~/.config/uv/uv.toml"
 
 
-def _script_text() -> str:
-    return HARDEN.read_text(encoding="utf-8")
-
-
-def test_appends_missing_git_dirs_to_windows_user_path() -> None:
-    # Fresh PowerShell sessions see only the persisted (registry) PATH. A
-    # stock setup can leave BOTH Git dirs off it: usr\bin (cygpath — every
-    # just shebang recipe dies) and cmd (git.exe itself — fresh sessions
-    # have no git at all; seen live). harden-env must append whichever is
-    # missing to the persisted User PATH (end position — shadows nothing),
-    # idempotently, so the bootstrap chain self-heals new machines.
-    text = _script_text()
-    assert re.search(r"for \_unix_dir in /usr/bin /cmd", text), (
-        "must cover BOTH Git dirs (/usr/bin and /cmd), each derived via "
-        "cygpath (install-location independent), not hardcode Program Files"
-    )
-    assert 'cygpath -w "$_unix_dir"' in text, (
-        "must derive the Windows path via cygpath, not hardcode it"
-    )
-    assert "GetEnvironmentVariable" in text, (
-        "must read the persisted User+Machine PATH from the registry — the "
-        "in-process PATH always has both dirs under Git Bash, so it is "
-        "useless as a signal"
-    )
-    assert re.search(r"SetEnvironmentVariable[^\n]*'User'", text), (
-        "must persist the append via SetEnvironmentVariable on the User "
-        "scope (no admin needed)"
-    )
-    assert "'Machine')\"" not in text.replace(
-        "GetEnvironmentVariable('Path','Machine')", ""
-    ), (
-        "must NEVER write the Machine scope — that needs elevation and "
-        "human review; doctor only detects and advises there"
-    )
-    assert "HARDEN_ENV_SKIP_WIN_PATH" in text, (
-        "tests exercise the uv mirror with a fake APPDATA; without the "
-        "skip flag they would write the real registry"
-    )
-    assert re.search(r"APPDATA", text), (
-        "the PATH section must be gated to native Windows (APPDATA "
-        "presence, like the uv mirror section) so Linux/macOS/WSL skip it"
-    )
-
-
-def test_powershell_fallback_when_system32_off_path() -> None:
-    # The section repairs broken persisted PATHs — the very situation where
-    # the current session may lack System32 (seen live: EMPTY Machine PATH),
-    # so a bare `powershell.exe` invocation would die with command-not-found
-    # exactly when the repair is needed most.
-    text = _script_text()
-    assert "WindowsPowerShell/v1.0/powershell.exe" in text, (
-        "must fall back to powershell.exe by absolute path (via SYSTEMROOT) "
-        "when it is not on PATH"
-    )
-
-
 def test_removes_only_the_flatt_npm_registry(tmp_path: Path) -> None:
     """Machines set `registry=https://npm.flatt.tech/` by hand; the script
     retires exactly that line and keeps every other registry and auth line."""
@@ -273,3 +219,91 @@ def test_keeps_a_non_flatt_npm_registry(tmp_path: Path) -> None:
         "registry=https://registry.npmjs.org/",
         "min-release-age=7",
     ]
+
+
+# ADR-0093 D4: on native Windows harden-env writes the user's persisted
+# environment. Its guards (the User scope only, never the Machine scope,
+# which needs elevation; the agent tools' telemetry off) are held by a run
+# with a fake cygpath and a fake powershell.exe that records each command.
+TELEMETRY_OFF = {
+    "RTK_TELEMETRY_DISABLED": "1",
+    "HEADROOM_BEACON": "off",
+    "DO_NOT_TRACK": "1",
+}
+FAKE_POWERSHELL = """#!/bin/sh
+for a in "$@"; do last="$a"; done
+printf 'CMD %s\\n' "$last" >> "$FIXTURE_PS_LOG"
+[ -z "${HARDEN_ENV_DIR:-}" ] || printf 'DIR %s\\n' "$HARDEN_ENV_DIR" >> "$FIXTURE_PS_LOG"
+case "$last" in
+  *"GetEnvironmentVariable('Path','User') + "*) printf '%s\\r\\n' 'C:\\Windows;C:\\Program Files\\Git\\usr\\bin' ;;
+esac
+"""
+FAKE_CYGPATH = """#!/bin/sh
+case "$1 $2" in
+  "-w /usr/bin") printf '%s\\n' 'C:\\Program Files\\Git\\usr\\bin' ;;
+  "-w /cmd") printf '%s\\n' 'C:\\Program Files\\Git\\cmd' ;;
+  *) printf '%s\\n' "$2" ;;
+esac
+"""
+
+
+def run_windows_harden(tmp_path: Path, script: Path) -> list[str]:
+    """Run harden_env.sh as on native Windows; return what reached
+    powershell.exe (CMD lines) and the directories passed to it (DIR)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    appdata = tmp_path / "appdata"
+    appdata.mkdir()
+    fake = tmp_path / "fake-bin"
+    fake.mkdir()
+    for name, body in {
+        "powershell.exe": FAKE_POWERSHELL,
+        "cygpath": FAKE_CYGPATH,
+        "uv": "#!/bin/sh\nexit 1\n",
+    }.items():
+        (fake / name).write_text(body, encoding="utf-8", newline="\n")
+        (fake / name).chmod(0o755)
+    log = tmp_path / "powershell.log"
+    log.touch()
+    env = _env(home, APPDATA=str(appdata), FIXTURE_PS_LOG=str(log))
+    env["PATH"] = f"{fake}:{env['PATH']}"
+    done = subprocess.run(
+        [BASH, str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    return log.read_text(encoding="utf-8").splitlines()
+
+
+def check_windows_harden_writes_the_user_scope_only(
+    tmp_path: Path, script: Path
+) -> None:
+    calls = run_windows_harden(tmp_path, script)
+    commands = [c.removeprefix("CMD ") for c in calls if c.startswith("CMD ")]
+    assert commands, "harden-env reached no powershell.exe"
+    for command in commands:
+        # Reading the Machine PATH is fine; any other mention is a write.
+        writes = re.sub(r"GetEnvironmentVariable\([^()]*\)", "", command)
+        assert "'Machine'" not in writes, command
+    for name, value in TELEMETRY_OFF.items():
+        wanted = f"SetEnvironmentVariable('{name}', '{value}', 'User')"
+        assert any(wanted in c for c in commands), (
+            f"{name}={value} is not persisted: {commands}"
+        )
+    # Git's usr\bin is on the persisted PATH already; only cmd is appended.
+    assert [c for c in calls if c.startswith("DIR ")] == [
+        "DIR C:\\Program Files\\Git\\cmd"
+    ], calls
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fakes must win over the real powershell.exe; there a miss would write the real registry",
+)
+def test_windows_harden_writes_the_user_scope_only(tmp_path: Path) -> None:
+    check_windows_harden_writes_the_user_scope_only(tmp_path, HARDEN)
