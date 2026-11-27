@@ -165,7 +165,9 @@ def run_bootstrap(
         WRAPPER.replace("__SETTINGS__", str(settings)).replace(
             "__SCRIPT__", str(script)
         ),
-        encoding="utf-8",
+        # A BOM: Windows PowerShell 5.1 reads a BOM-less file as ANSI, and
+        # the wrapper holds paths, which may not be ASCII.
+        encoding="utf-8-sig",
     )
     done = subprocess.run(
         [
