@@ -1,0 +1,9 @@
+rules:
+  - id: shell-no-get-acl
+    message: 'test_no_get_acl_in_shell_scripts: use the .NET ACL reader; Get-Acl can fail to autoload.'
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ["/scripts/*.sh"]
+    # Python splitlines separators and lstrip whitespace, including U+001F.
+    pattern-regex: '(?m)(?:\A|(?<=[\n\r\v\f\x1c-\x1e\x{85}\x{2028}\x{2029}]))[\t \x1f\x{a0}\x{1680}\x{2000}-\x{200a}\x{202f}\x{205f}\x{3000}]*(?![#\t \x1f\x{a0}\x{1680}\x{2000}-\x{200a}\x{202f}\x{205f}\x{3000}])[^\n\r\v\f\x1c-\x1e\x{85}\x{2028}\x{2029}]*Get-Acl[^\n\r\v\f\x1c-\x1e\x{85}\x{2028}\x{2029}]*'

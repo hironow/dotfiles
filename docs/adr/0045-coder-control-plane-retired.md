@@ -4,7 +4,9 @@
 **Status:** Accepted (operator directive; destroyed 2026-10-01 with the
 operator's explicit GO); the workflow check of `tests/unit/test_no_exe_residue.py`
 moved to the Semgrep rule `workflow-no-retired-coder-stack` (#690), per
-[ADR-0093](0093-tests-check-code-not-file-text.md).
+[ADR-0093](0093-tests-check-code-not-file-text.md); its operational-file check
+`test_the_named_operational_files_no_longer_mention_it` moved to the repo-lint
+rule `retired-stack-operational-facts`.
 
 ## Context
 

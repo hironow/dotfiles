@@ -52,6 +52,20 @@ func TestFilesReadsTextAndJSON(t *testing.T) {
 	}
 }
 
+func TestFilesOptionalTextSkipsMissingAndNonFiles(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "regular", "# retired\n")
+	for _, name := range []string{"missing", ".", "regular", "regular/child"} {
+		got, err := (Files{Root: root}).Load(rules.Input{Path: name, Format: rules.Text, Optional: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "regular" && got != "# retired\n" || name != "regular" && got != nil {
+			t.Fatalf("%s: %#v", name, got)
+		}
+	}
+}
+
 func TestFilesReadsJSONWithComments(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, ".devcontainer/devcontainer.json", "// the spec\n{\n  \"image\": \"x\", // inline\n}\n")

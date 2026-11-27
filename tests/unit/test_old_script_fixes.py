@@ -52,13 +52,18 @@ def variant(tmp_path: Path, names: set[str]) -> Path:
     return directory
 
 
-def test_every_fix_names_a_script_and_applies_exactly_once():
+def test_every_fix_names_a_script_and_applies_exactly_once(tmp_path: Path):
+    generated = fixes.write_scripts(tmp_path / "fixed", frozenset(fixes.FIXES))
+    original = fixes.write_scripts(tmp_path / "original", frozenset())
     for name, fix in fixes.FIXES.items():
-        text = (ROOT / fix.script).read_text(encoding="utf-8")
+        assert (generated / fix.script).is_file(), name
         assert fix.edits, name
         for old, new in fix.edits:
-            assert text.count(old) == 1, (name, old)
             assert old != new, name
+            fixes.apply_fixes(
+                (original / fix.script).read_text(encoding="utf-8"),
+                [fixes.Fix(script=fix.script, edits=((old, new),), bug=fix.bug)],
+            )
 
 
 def test_a_fix_whose_text_moved_fails_loudly(tmp_path: Path):

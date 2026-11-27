@@ -1,65 +1,48 @@
-"""WSL's mise must not read the Windows home's mise config under /mnt/c.
+"""Startup ignores only Windows home configs before activating mise."""
 
-A WSL shell started from Windows begins under `/mnt/c/Users/<user>/...`.
-mise walks every ancestor directory for configs, including
-`<dir>/.config/mise/config.toml`, so it finds the Windows-global config that
-`just deploy` writes there and treats it as a directory-local one: it warns
-that the global-only `github.credential_command` "is ignored for security
-reasons", and resolves the WSL toolchain from the Windows copy.
-
-`.zshrc` sets MISE_IGNORED_CONFIG_PATHS to the Windows homes' mise configs
-before `mise activate`. Measured on mise 2026.11.4 (2026-11-10):
-
-- The variable matches by path prefix; a glob in it does not work, and
-  several paths are joined with ":". So the shell's glob lists the homes.
-- Only the Windows homes are ignored, not all of /mnt/c: a project under
-  /mnt/c keeps its own mise.toml in WSL.
-- `[settings] ignored_config_paths` in config/mise/config.toml has no effect:
-  the config is found before file settings load. If a later mise honors it
-  during discovery, move the entry there; it would then cover bash and
-  non-interactive shells too, which this .zshrc line does not.
-"""
-
-from __future__ import annotations
-
-import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-ZSHRC = ROOT / ".zshrc"
+from _zsh_startup import run_zsh
 
-GLOB = re.compile(
-    r"^\s*_win_mise=\(/mnt/c/Users/\*/\.config/mise\(N/\)\)\s*$", re.MULTILINE
-)
-EXPORT = re.compile(
-    r"^\s*\(\( \$\{#_win_mise\} \)\) && "
-    r'export MISE_IGNORED_CONFIG_PATHS="\$\{\(j\.:\.\)_win_mise\}"\s*$',
-    re.MULTILINE,
-)
-ACTIVATE = re.compile(r'^\s*eval "\$\(mise activate zsh\)"\s*$', re.MULTILINE)
-
-
-def test_zshrc_ignores_the_windows_homes_mise_config_before_activate():
-    text = ZSHRC.read_text(encoding="utf-8")
-    glob, export, activate = (
-        GLOB.search(text),
-        EXPORT.search(text),
-        ACTIVATE.search(text),
-    )
-    assert glob and export, (
-        ".zshrc must collect /mnt/c/Users/*/.config/mise and export them as "
-        "MISE_IGNORED_CONFIG_PATHS"
-    )
-    assert activate, ".zshrc no longer activates mise? Update this test."
-    assert glob.start() < export.start() < activate.start()
+ACTIVATE_STARTUP = r"""
+export _WIN_HOME_ROOT="${HOME:h}/mount/Users"
+export MISE_IGNORED_CONFIG_PATHS=/mnt/c
+mise() {
+    [[ "$#" == 2 && "$1" == activate && "$2" == zsh ]] || exit 94
+    /bin/sh -c 'printf "%s\n" "$MISE_IGNORED_CONFIG_PATHS"' >> "${HOME:h}/activate.log"
+}
+source "$1"
+"""
 
 
-def test_zshrc_overwrites_the_value_and_keeps_projects_under_mnt_c():
-    text = ZSHRC.read_text(encoding="utf-8")
-    exports = re.findall(r"export MISE_IGNORED_CONFIG_PATHS=.*", text)
-    # overwrite, so a nested shell or `relogin` does not grow it, and an old
-    # value cannot keep ignoring all of /mnt/c
-    assert len(exports) == 1 and "$MISE_IGNORED_CONFIG_PATHS" not in exports[0]
-    assert not re.search(
-        r'MISE_IGNORED_CONFIG_PATHS="?/mnt/c"?\s*$', text, re.MULTILINE
-    )
+def _homes(tmp_path: Path) -> list[str]:
+    root = tmp_path / "mount/Users"
+    homes = [root / name / ".config/mise" for name in ("Alice", "Bob Smith")]
+    for home in homes:
+        home.mkdir(parents=True)
+    (root / "other/.config").mkdir(parents=True)
+    (root / "file/.config").mkdir(parents=True)
+    (root / "file/.config/mise").write_text("not a directory", encoding="utf-8")
+    (tmp_path / "mount/project").mkdir()
+    return [str(home) for home in homes]
+
+
+def test_zshrc_ignores_the_windows_homes_mise_config_before_activate(
+    tmp_path: Path,
+) -> None:
+    homes = _homes(tmp_path)
+    run_zsh(tmp_path, ACTIVATE_STARTUP)
+    assert (tmp_path / "activate.log").read_text(encoding="utf-8").splitlines() == [
+        ":".join(homes)
+    ]
+
+
+def test_zshrc_overwrites_the_value_and_keeps_projects_under_mnt_c(
+    tmp_path: Path,
+) -> None:
+    homes = _homes(tmp_path)
+    run_zsh(tmp_path, ACTIVATE_STARTUP + '\nsource "$1"')
+    assert (tmp_path / "activate.log").read_text(encoding="utf-8").splitlines() == [
+        ":".join(homes),
+        ":".join(homes),
+    ]

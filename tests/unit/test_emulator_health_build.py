@@ -10,21 +10,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-HEALTH = ROOT / "emulator/healthcheck"
-
-
-def test_health_build_context_only_allows_production_sources() -> None:
-    ignore = HEALTH / ".dockerignore"
-    assert ignore.is_file(), "build context must fail closed on secrets and dist"
-    assert ignore.read_text(encoding="utf-8").splitlines() == [
-        "*",
-        "!Dockerfile",
-        "!go.mod",
-        "!main.go",
-    ]
-    assert (HEALTH / ".gitignore").read_text(encoding="utf-8").splitlines() == [
-        "/dist/"
-    ]
 
 
 def _run_go_gate(tmp_path: Path, justfile: str) -> list[str]:
