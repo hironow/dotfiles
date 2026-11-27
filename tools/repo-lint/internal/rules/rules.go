@@ -130,6 +130,10 @@ func All() []Rule {
 		pagesSiteFacts(),
 		deployWiringFacts(),
 		effectiveSettingsStdlib(),
+		installerAcceptanceFacts(),
+		psProfileFacts(),
+		zshStartupFacts(),
+		tmuxKeyFacts(),
 	}
 }
 

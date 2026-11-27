@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from _zsh_startup import run_zsh
 
 ROOT = Path(__file__).resolve().parents[2]
 NPM_CLIS = {
@@ -40,49 +41,19 @@ def test_permanent_npm_cli_dependencies_have_scoped_zero_age(
     assert "npm_args" not in spec
 
 
-def test_installer_image_provisions_native_podman_before_nonroot_setup() -> None:
-    dockerfile = (ROOT / "tests/docker/InstallTest.Dockerfile").read_text(
-        encoding="utf-8"
+@pytest.mark.parametrize("docker_host", [None, "unix:///operator-selected.sock"])
+def test_shell_provider_preserves_engine_selection(
+    tmp_path: Path, docker_host: str | None
+) -> None:
+    output = run_zsh(
+        tmp_path,
+        r"""
+source "$1"
+print -r -- "$PODMAN_COMPOSE_PROVIDER|${DOCKER_HOST-unset}"
+""",
+        docker_host=docker_host,
     )
-    root_stage = dockerfile.split("USER testuser", 1)[0]
-    for package in ("podman", "netavark", "aardvark-dns", "uidmap", "fuse-overlayfs"):
-        assert package in root_stage
-    assert "NOPASSWD" not in dockerfile
-    assert dockerfile.count("bash /tmp/dotfiles-repo/install.sh") == 2
-    assert "podman-provisioning-calls" in dockerfile
-    assert 'exec /usr/bin/podman "$@"' in dockerfile
-
-
-def test_installer_image_busts_only_setup_cache_and_emits_run_bound_evidence() -> None:
-    dockerfile = (ROOT / "tests/docker/InstallTest.Dockerfile").read_text(
-        encoding="utf-8"
-    )
-    nonce = "DOTFILES_INSTALL_ACCEPTANCE_RUN"
-    assert f"ARG {nonce}" in dockerfile, "each run must invalidate setup layers"
-    first = dockerfile.index("bash /tmp/dotfiles-repo/install.sh")
-    second = dockerfile.index("bash /tmp/dotfiles-repo/install.sh", first + 1)
-    assert dockerfile.index("USER testuser") < dockerfile.index(f"ARG {nonce}") < first
-    assert f'test -n "${nonce}"' in dockerfile[:first]
-    pass1 = dockerfile.index("DOTFILES_INSTALL_PASS1:%s")
-    pass2 = dockerfile.index("DOTFILES_INSTALL_PASS2:%s")
-    final = dockerfile.index("DOTFILES_INSTALL_TRIPWIRE:%s")
-    assert first < pass1 < second < pass2 < final
-    assert dockerfile.index('test "$(wc -l') < final
-    assert dockerfile.index('test "$(sort -u') < final
-    for marker in ("PASS1", "PASS2", "TRIPWIRE"):
-        assert f"printf 'DOTFILES_INSTALL_{marker}:%s\\n' \"${nonce}\"" in dockerfile
-
-
-def test_shell_selects_the_provider_without_probing_or_redirecting_engines() -> None:
-    shell = (ROOT / ".zshrc").read_text(encoding="utf-8")
-    code = "\n".join(
-        line for line in shell.splitlines() if not line.lstrip().startswith("#")
-    )
-    assert "PODMAN_COMPOSE_PROVIDER=podman-compose" in code
-    assert "podman machine inspect" not in code
-    assert "DOCKER_HOST=" not in code
-    assert ".orbstack" not in code
-    assert ".docker/completions" not in code
+    assert output.strip() == f"podman-compose|{docker_host or 'unset'}"
 
 
 def test_podman_compose_has_a_dedicated_zero_age_cli_environment() -> None:

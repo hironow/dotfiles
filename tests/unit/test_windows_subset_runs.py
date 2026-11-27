@@ -105,9 +105,10 @@ class Host:
         for rel in (*SUBSET.values(), "config/git/aliases.gitconfig"):
             (dotfiles / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / rel, dotfiles / rel)
-        self.profile = (
+        self.legacy_profile = (
             self.home / "Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
         )
+        self.profile = self.home / "OneDrive/ドキュメント/PowerShell/profile.ps1"
         self.gitconfig = self.home / ".gitconfig"
         self.bin = _fake_bin(tmp_path, uname, self.log)
         # The profile library's mktemp writes here, not to the system /tmp.
@@ -370,10 +371,17 @@ def test_windows_clean_undoes_deploy_and_nothing_else(windows: Host) -> None:
         )
     }
     _ok(windows.run("deploy.sh"))
+    windows.legacy_profile.parent.mkdir(parents=True, exist_ok=True)
+    legacy_line = "Set-Alias legacy Get-Location"
+    windows.legacy_profile.write_bytes(
+        (legacy_line + "\n").encode("utf-8") + windows.profile.read_bytes()
+    )
     _ok(windows.run("clean.sh"))
-    profile = windows.profile.read_text(encoding="utf-8")
-    assert "dotfiles managed block" not in profile
-    assert OPERATOR_LINE in profile
+    for path in (windows.profile, windows.legacy_profile):
+        profile = path.read_text(encoding="utf-8")
+        assert "dotfiles managed block" not in profile
+        assert OPERATOR_LINE in profile
+        assert (legacy_line in profile) is (path == windows.legacy_profile)
     gitconfig = windows.gitconfig.read_text(encoding="utf-8")
     assert "dotfiles managed block" not in gitconfig
     assert gitconfig.startswith(GIT_OVERRIDE)

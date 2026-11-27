@@ -1,7 +1,6 @@
 """Shared CLI tool pins and checkout-scoped installer contracts."""
 
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -100,9 +99,3 @@ def test_actual_installer_dispatch_and_failure_propagation(
     ] == (expected[:fail_at] if fail_at else expected)
     if not include_mq and not fail_at:
         assert "mq unavailable" in result.stdout
-
-
-def test_mac_homebrew_restore_does_not_reinstall_mise_jq() -> None:
-    manifest = (REPO / "dump/macbook/Brewfile").read_text(encoding="utf-8")
-    formula = re.compile(r"""^\s*brew\s*(?:\(\s*)?["']jq["']""", re.MULTILINE)
-    assert not formula.search(manifest)
