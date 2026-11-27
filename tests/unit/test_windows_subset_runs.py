@@ -110,10 +110,14 @@ class Host:
         )
         self.gitconfig = self.home / ".gitconfig"
         self.bin = _fake_bin(tmp_path, uname, self.log)
+        # The profile library's mktemp writes here, not to the system /tmp.
+        tmp = tmp_path / "tmp"
+        tmp.mkdir()
         self.env = {
             "PATH": f"{self.bin}:/usr/bin:/bin",
             "HOME": str(self.home),
             "DOTFILES_PS_PROFILE": str(self.profile),
+            "TMPDIR": str(tmp),
         }
 
     def run(self, script: str, **env: str) -> subprocess.CompletedProcess[str]:
@@ -245,6 +249,65 @@ def test_the_corepack_block_reaches_a_profile_with_the_older_blocks(
     for begin in BEGIN.values():
         assert text.count(begin) == 1, begin
     assert '$env:MISE_NODE_COREPACK = "0"' in _block(text, BEGIN["corepack"])
+
+
+STARSHIP_BLOCK = (
+    f"{BEGIN['starship']}\n"
+    "if (Get-Command starship -ErrorAction SilentlyContinue) {\n"
+    "    Invoke-Expression (&starship init powershell)\n"
+    f"}}\n{END}\n"
+)
+OLD_MISE_BLOCK = (
+    f"{BEGIN['mise']}\n"
+    "# Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.\n"
+    "if (Get-Command mise -ErrorAction SilentlyContinue) {\n"
+    "    Invoke-Expression (&mise activate pwsh | Out-String)\n"
+    f"}}\n{END}\n"
+)
+
+
+# ADR-0093 D4: deploy migrates the user's $PROFILE in place, so its guards
+# are held by runs.
+
+
+def test_a_starship_block_before_mise_is_moved_after_it(mingw: Host) -> None:
+    # Profiles deployed with the old order carry starship first, where it
+    # skips: starship is mise-managed.
+    mingw.seed(
+        str(mingw.profile.relative_to(mingw.home)),
+        OPERATOR_LINE + "\n\n" + STARSHIP_BLOCK + "\n" + _mise_block(),
+    )
+    _ok(mingw.run("deploy.sh"))
+    text = mingw.profile.read_text(encoding="utf-8")
+    assert text.count(OPERATOR_LINE) == 1
+    for begin in BEGIN.values():
+        assert text.count(begin) == 1, begin
+    assert text.index(BEGIN["mise"]) < text.index(BEGIN["starship"])
+
+
+def test_an_unclosed_mise_block_is_left_as_it_is(mingw: Host) -> None:
+    # Rewriting a block with no end marker could take the user's lines with it.
+    seeded = OPERATOR_LINE + "\n\n" + BEGIN["mise"] + "\nmy own line\nanother line\n"
+    mingw.seed(str(mingw.profile.relative_to(mingw.home)), seeded)
+    done = mingw.run("deploy.sh")
+    _ok(done)
+    text = mingw.profile.read_text(encoding="utf-8")
+    assert text.startswith(seeded), text
+    assert text.count(BEGIN["mise"]) == 1
+    assert "no end marker" in done.stdout
+
+
+def test_a_stale_mise_block_is_rewritten_in_place(mingw: Host) -> None:
+    after = "Set-Alias gs git-status"
+    mingw.seed(
+        str(mingw.profile.relative_to(mingw.home)),
+        OPERATOR_LINE + "\n\n" + OLD_MISE_BLOCK + after + "\n",
+    )
+    _ok(mingw.run("deploy.sh"))
+    text = mingw.profile.read_text(encoding="utf-8")
+    assert _block(text, BEGIN["mise"]) == _mise_block().strip()
+    assert text.index(OPERATOR_LINE) < text.index(BEGIN["mise"]) < text.index(after)
+    assert text.count(after) == 1 and text.count(BEGIN["mise"]) == 1
 
 
 def test_windows_deploy_installs_the_global_mise_tools(mingw: Host) -> None:

@@ -18,10 +18,6 @@ from pathlib import Path
 import pytest
 from _ps_profile import BASH, needs_bash, run_lib, write_profile
 
-ROOT = Path(__file__).resolve().parents[2]
-DEPLOY = ROOT / "scripts" / "deploy.sh"
-DOCTOR = ROOT / "scripts" / "doctor.sh"
-
 STARSHIP = (
     "# >>> dotfiles managed block: starship init >>>\n"
     "if (Get-Command starship -ErrorAction SilentlyContinue) {\n"
@@ -117,23 +113,3 @@ def test_drop_block_does_not_depend_on_gnu_sed_in_place(tmp_path: Path) -> None:
     # then it still works
     assert result.returncode == 0, result.stderr
     assert profile.read_text(encoding="utf-8") == USER_LINE + MISE
-
-
-def _marker_pos(text: str, name: str) -> int:
-    return text.index(f'"# >>> dotfiles managed block: {name} >>>"')
-
-
-def test_deploy_writes_mise_activate_before_starship() -> None:
-    text = DEPLOY.read_text(encoding="utf-8")
-    assert _marker_pos(text, "mise activate") < _marker_pos(text, "starship init")
-
-
-def test_deploy_moves_a_misordered_starship_block() -> None:
-    text = DEPLOY.read_text(encoding="utf-8")
-    move = text.index("ps_profile_starship_before_mise")
-    assert move < _marker_pos(text, "starship init")
-    assert "ps_profile_drop_block" in text[move : _marker_pos(text, "starship init")]
-
-
-def test_doctor_reports_a_misordered_profile() -> None:
-    assert "ps_profile_starship_before_mise" in DOCTOR.read_text(encoding="utf-8")

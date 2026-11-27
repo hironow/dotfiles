@@ -366,8 +366,8 @@ EOF_MP
     #     effect); `wsl -l` output is UTF-16LE, hence the NUL strip.
     if command -v wsl.exe >/dev/null 2>&1; then
       # NOTE: no `case` (nor a double-semicolon in any form) inside this uname
-      # branch — tests/unit/test_doctor_windows.py slices the branch up to the
-      # first case terminator, so one here truncates what those tests see.
+      # branch — the repo-lint rule doctor-facts slices the branch up to the
+      # first case terminator, so one here truncates what its checks see.
       while IFS= read -r _wd; do
         [ -n "$_wd" ] || continue
         [[ "$_wd" == docker-desktop* ]] && continue

@@ -105,17 +105,3 @@ def test_zsh_as_the_login_shell_is_quiet(tmp_path: Path, bin_dir: Path) -> None:
     result = _run(tmp_path, "step_zsh", shell="/usr/bin/zsh")
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
-
-
-def test_install_sh_runs_the_zsh_step() -> None:
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    assert re.search(r"^step_zsh$", text, re.MULTILINE)
-
-
-def test_doctor_reports_zsh_on_linux() -> None:
-    # the doctor is where a box that skipped install.sh's hint finds out
-    doctor = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
-    block = doctor[doctor.index("# zsh is the supported interactive shell") :]
-    assert "log_warn 'zsh'" in block
-    assert "sudo apt-get install -y zsh" in block
-    assert "chsh -s" in block

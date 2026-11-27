@@ -115,29 +115,6 @@ def test_prune_removes_rogue_both_layouts_keeps_unmanaged(installs: Path) -> Non
     assert r2.returncode == 0 and "pruned: 0" in r2.stdout, r2.stdout
 
 
-def test_prune_reports_undeletable_copies_in_the_script() -> None:
-    """A failed `rm -rf` must not abort the sweep.
-
-    The script runs under `set -euo pipefail`, so an unguarded `rm -rf` that
-    fails kills it mid-loop: the remaining rogues are left in place, `mise
-    reshim` never runs, and the summary line is never printed. On Windows this
-    is the normal case, not an edge one — a running `claude.exe` cannot be
-    deleted, and `claude` is precisely the binary you are most likely to be
-    running when you decide to clean up after it.
-    """
-    text = SCRIPT.read_text(encoding="utf-8")
-    bad = [
-        (n, line.strip())
-        for n, line in enumerate(text.splitlines(), 1)
-        if line.strip().startswith("rm -rf ")
-        and "||" not in line
-        and "2>/dev/null" not in line
-    ]
-    assert not bad, (
-        f"these `rm -rf` calls abort the whole prune when the target is locked: {bad}"
-    )
-
-
 @pytest.mark.skipif(
     sys.platform == "win32" or _IS_ROOT,
     reason="needs POSIX permissions to make a delete fail",

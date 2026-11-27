@@ -250,18 +250,3 @@ def test_unknown_mode_is_a_usage_error() -> None:
         check=False,
     )
     assert r.returncode == 2 and "usage" in r.stderr
-
-
-# --- wiring guards (static parse, like test_doctor_npm_rogue.py) ---------------
-
-
-def test_doctor_runs_the_detector_cross_platform() -> None:
-    doctor = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
-    assert "retired_python_tools.sh detect" in doctor
-    assert "python-retired" in doctor, "doctor must label the check 'python-retired'"
-    assert "just prune-retired-python-tools" in doctor, (
-        "doctor must hint the fix recipe"
-    )
-    assert doctor.index("retired_python_tools.sh detect") < doctor.index(
-        'case "$(uname -s)" in'
-    )

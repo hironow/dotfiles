@@ -20,10 +20,6 @@ import pytest
 from _ps_profile import needs_bash, run_lib, write_profile
 from _pwsh import resolve_pwsh
 
-ROOT = Path(__file__).resolve().parents[2]
-DEPLOY = ROOT / "scripts" / "deploy.sh"
-DOCTOR = ROOT / "scripts" / "doctor.sh"
-
 BEGIN = "# >>> dotfiles managed block: mise activate >>>\n"
 END = "# <<< end dotfiles managed block <<<\n"
 OLD = (
@@ -158,24 +154,6 @@ def test_a_second_upgrade_changes_nothing(tmp_path: Path) -> None:
     first = profile.read_bytes()
     assert run_lib(f'ps_profile_mise_upgrade "{profile.as_posix()}"').returncode == 0
     assert profile.read_bytes() == first
-
-
-def test_deploy_checks_for_an_unclosed_block_before_writing() -> None:
-    text = DEPLOY.read_text(encoding="utf-8")
-    unclosed = text.index('ps_profile_mise_unclosed "')
-    starship = text.index("ps_profile_starship_before_mise")
-    append = text.index("ps_profile_mise_block; }")
-    upgrade = text.index('ps_profile_mise_upgrade "')
-    assert unclosed < append < starship
-    assert unclosed < upgrade < starship
-    assert "ps_profile_mise_stale" in text[unclosed:starship]
-
-
-def test_doctor_reports_both_states_and_writes_nothing() -> None:
-    text = DOCTOR.read_text(encoding="utf-8")
-    assert "ps_profile_mise_stale" in text
-    assert "ps_profile_mise_unclosed" in text
-    assert "ps_profile_mise_upgrade" not in text
 
 
 PWSH = resolve_pwsh(os.environ)
