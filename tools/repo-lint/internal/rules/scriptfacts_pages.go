@@ -3,6 +3,7 @@ package rules
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // The Pages site: the page, its script, and the two installers it tells
@@ -140,8 +141,10 @@ func (r *pageReader) textEnd(i int) int {
 	if j := strings.IndexByte(src[i:], '<'); j >= 0 {
 		return i + j
 	}
-	// Text that may end in a character reference cut in half waits.
-	if amp := strings.LastIndexByte(src[max(i, n-34):], '&'); amp >= 0 && !pageAmpPending.MatchString(src[max(i, n-34)+amp:]) {
+	// Text that may end in a character reference cut in half waits. The
+	// window is the last 34 characters, as Python counts them.
+	from := max(i, pageLastChars(src, 34))
+	if amp := strings.LastIndexByte(src[from:], '&'); amp >= 0 && !pageAmpPending.MatchString(src[from+amp:]) {
 		return -1
 	}
 	return n
@@ -485,4 +488,17 @@ func asciiEqualFold(a, b string) bool {
 		}
 	}
 	return true
+}
+
+// pageLastChars is the byte offset where the last n characters of s start.
+func pageLastChars(s string, n int) int {
+	end := len(s)
+	for range n {
+		if end == 0 {
+			break
+		}
+		_, size := utf8.DecodeLastRuneInString(s[:end])
+		end -= size
+	}
+	return end
 }

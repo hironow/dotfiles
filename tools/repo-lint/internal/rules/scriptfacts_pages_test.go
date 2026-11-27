@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const pageFixture = `<!doctype html>
 <html lang="en">
@@ -90,6 +93,12 @@ func TestReadPageFollowsPython314(t *testing.T) {
 	p = readPage("<p id=r>ba&#11;sh &#x80; &#55296; &#0;</p>")
 	if p.text["r"] != "bash € \uFFFD \uFFFD" {
 		t.Errorf(`text["r"] = %q`, p.text["r"])
+	}
+	// The pending-reference window is the last 34 characters, not bytes: a
+	// '&' 23 characters (41 bytes) from the end still makes the text wait.
+	p = readPage("<p id=w>x &quot" + strings.Repeat("\u00a0", 18))
+	if p.text["w"] != "" {
+		t.Errorf(`text["w"] = %q, want the text left waiting`, p.text["w"])
 	}
 	// Python lowercases the dotted capital I to i + U+0307.
 	p = readPage("<p İD=x id=y>z</p>")
