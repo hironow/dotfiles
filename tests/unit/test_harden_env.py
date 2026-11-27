@@ -295,6 +295,10 @@ def check_windows_harden_writes_the_user_scope_only(
         assert any(wanted in c for c in commands), (
             f"{name}={value} is not persisted: {commands}"
         )
+    path_writes = [c for c in commands if "SetEnvironmentVariable('Path'" in c]
+    assert path_writes and all(c.endswith(", 'User')") for c in path_writes), (
+        path_writes
+    )
     # Git's usr\bin is on the persisted PATH already; only cmd is appended.
     assert [c for c in calls if c.startswith("DIR ")] == [
         "DIR C:\\Program Files\\Git\\cmd"

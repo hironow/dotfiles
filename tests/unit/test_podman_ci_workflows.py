@@ -807,10 +807,16 @@ def test_bootstrap_reroutes_only_uv_downloads(tmp_path):
 def test_ci_bootstrap_runs_only_on_an_ephemeral_non_root_hosted_linux_runner(
     tmp_path, env, commands
 ):
+    sudo_log = tmp_path / "sudo-log"
+    recorded = {
+        "sudo": f'printf "%s\\n" "$*" >> {shlex.quote(bash_path(sudo_log))}; exit 97',
+        **commands,
+    }
     result = _bootstrap_checksum_attempt(
-        tmp_path, ["./{artifact}"], extra_env=env, commands_override=commands
+        tmp_path, ["./{artifact}"], extra_env=env, commands_override=recorded
     )
     assert result.returncode == 1, result.stdout + result.stderr
+    assert not sudo_log.exists(), sudo_log.read_text(encoding="utf-8")
     assert "ephemeral non-root GitHub Actions Linux runner" in result.stderr
     assert not (tmp_path / "curl-log").exists(), "it downloaded before refusing"
     assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr

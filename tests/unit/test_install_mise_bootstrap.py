@@ -106,8 +106,13 @@ def run_mise_bootstrap(
     home.mkdir()
     temp = tmp_path / "tmp"
     temp.mkdir()
+    # install.sh's own set line: the step relies on it to stop at a
+    # failed check.
+    set_line = re.search(r"(?m)^set -[a-z]+(?: -o [a-z]+)*$", text)
+    assert set_line, "install.sh lost its set line"
     script = (
-        "set -eu\n_skip_windows() { :; }\n"
+        set_line[0]
+        + "\n_skip_windows() { :; }\n"
         + step.group(0)
         + "DOTFILES_OS=linux\nstep_mise_bootstrap\n"
     )
