@@ -631,3 +631,65 @@ def test_image_mise_data_dir_is_opt_mise(saved_image: str) -> None:
         "saved image. Build-time `mise install` did not write to the "
         "expected data dir."
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "old", "new", "marker"),
+    [
+        (".dockerignore", "*\n", "", "health-private-inputs"),
+        (".dockerignore", "!main.go\n", "!main.go\n!.env\n", "health-private-inputs"),
+        (
+            ".dockerignore",
+            "*\n!Dockerfile\n!go.mod\n!main.go\n",
+            ".env\nnested/private.key\ndist/\n",
+            "health-private-inputs",
+        ),
+        (
+            ".dockerignore",
+            "!main.go\n",
+            "!main.go\n!credentials.json\n",
+            "health-private-inputs",
+        ),
+        (".dockerignore", "!main.go\n", "!*.go\n", "health-private-inputs"),
+        (".dockerignore", "!main.go\n", "", "health-production-sources"),
+        (".dockerignore", "!go.mod\n", "", "health-production-sources"),
+        (".gitignore", "/dist/\n", "", "health-git-dist"),
+        (
+            ".containerignore",
+            None,
+            "*\n!Dockerfile\n!go.mod\n!*.go\n",
+            "health-private-inputs",
+        ),
+        (".containerignore", None, "", "health-private-inputs"),
+        (
+            ".containerignore",
+            None,
+            "*\n!go.mod\n!main.go\n!.env\n",
+            "health-private-inputs",
+        ),
+    ],
+)
+def test_health_context_mutations(
+    tmp_path: Path,
+    health_context_probe: Callable[[Path], set[str]],
+    name: str,
+    old: str | None,
+    new: str,
+    marker: str,
+) -> None:
+    context = _health_context(tmp_path)
+    assert (context / "main_test.go").is_file()
+    path = context / name
+    if old is None:
+        assert not path.exists()
+        changed = new
+    else:
+        before = path.read_text(encoding="utf-8")
+        assert before.count(old) == 1
+        changed = before.replace(old, new)
+        assert changed != before
+    path.write_text(changed, encoding="utf-8")
+    assert path.is_file()
+    assert path.read_text(encoding="utf-8") == changed
+    with pytest.raises(AssertionError, match=marker):
+        _assert_health_context(context, health_context_probe)
