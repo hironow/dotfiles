@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // bootstrapFixture keeps git@github.com and "submodule" in a comment: those
 // tests read only the code.
@@ -44,6 +47,7 @@ func TestBootstrapFacts(t *testing.T) {
 		{"doctor is skipped", edit(b, "$doctorOk = Invoke-Just 'doctor' -WarnOnly\n", ""), "test_runs_full_chain_in_order"},
 		{"the clone uses SSH", edit(b, "$RepoUrl = 'https://github.com/hironow/dotfiles.git'", "$RepoUrl = 'git@github.com:hironow/dotfiles.git'"), "test_clones_over_https_never_ssh"},
 		{"submodules are updated", edit(b, "$origin = git", "git -C $RepoDir Submodule update --init\n$origin = git"), "test_no_submodule_update"},
+		{"a lone CR ends a comment", edit(b, "$origin = git", "# explanation\rgit submodule update --init\n$origin = git"), "test_no_submodule_update"},
 		{"Git Bash runs as a non-login shell", edit(b, "-lc", "-c"), "test_invokes_git_bash_as_login_shell"},
 		{"Git Bash is found from the shim", edit(b, "cmd /c 'scoop prefix git'", "Split-Path (Get-Command git).Source"), "test_resolves_git_bash_via_scoop_prefix"},
 		{"an old just passes", edit(b, "'1.51'", "'1.40'"), "test_gates_on_minimum_just_version"},
@@ -59,4 +63,23 @@ func TestBootstrapFacts(t *testing.T) {
 		{"winget errors throw", edit(b, "    $PSNativeCommandUseErrorActionPreference = $false\n", ""), "test_winget_exit_codes_are_answers_not_errors"},
 		{"npm installs a CLI", edit(b, "$doctorOk = ", "npm install -g x\n$doctorOk = "), "test_never_invokes_forbidden_package_managers"},
 	})
+}
+
+func TestPySplitlines(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"a\n", []string{"a"}},
+		{"a\n\nb", []string{"a", "", "b"}},
+		{"a\r\nb\rc\vd\fe\x1cf\u2028g", []string{"a", "b", "c", "d", "e", "f", "g"}},
+	} {
+		if got := pySplitlines(c.in); !slices.Equal(got, c.want) {
+			t.Errorf("pySplitlines(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	if got := pyCodeLines(" \x1f# comment\ncode"); !slices.Equal(got, []string{"code"}) {
+		t.Errorf("lstrip must drop \\x1f before a comment: %q", got)
+	}
 }

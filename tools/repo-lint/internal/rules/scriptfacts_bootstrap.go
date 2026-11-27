@@ -2,9 +2,12 @@ package rules
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // bootstrapPs1 is the Windows one-liner that connects a bare machine to the
@@ -30,19 +33,19 @@ var bootstrapFactList = []scriptFact{
 	fact("test_runs_full_chain_in_order", chainInOrder),
 	fact("test_clones_over_https_never_ssh",
 		has(bootstrapPs1, "https://github.com/hironow/dotfiles"),
-		codeLacks(bootstrapPs1, "git@github.com")),
-	fact("test_no_submodule_update", codeLacksFold(bootstrapPs1, "submodule")),
+		onBootstrapCode(lacks(bootstrapPs1, "git@github.com"))),
+	fact("test_no_submodule_update", onBootstrapCode(lacksFold(bootstrapPs1, "submodule"))),
 	fact("test_invokes_git_bash_as_login_shell", matches(bootstrapPs1, `bash\.exe`), has(bootstrapPs1, "-lc")),
 	fact("test_resolves_git_bash_via_scoop_prefix", has(bootstrapPs1, "scoop prefix git")),
 	fact("test_gates_on_minimum_just_version", has(bootstrapPs1, "scoop update just"), matches(bootstrapPs1, `1\.51`)),
-	fact("test_base_tool_set_membership", baseToolSet, codeHas(bootstrapPs1, "scoop install")),
-	fact("test_installs_only_missing_tools", codeMatches(bootstrapPs1, `Get-Command\s+\$_`)),
+	fact("test_base_tool_set_membership", baseToolSet, onBootstrapCode(has(bootstrapPs1, "scoop install"))),
+	fact("test_installs_only_missing_tools", onBootstrapCode(matches(bootstrapPs1, `Get-Command\s+\$_`))),
 	fact("test_handles_execution_policy", has(bootstrapPs1, "ExecutionPolicy")),
 	fact("test_refreshes_path_after_scoop",
 		matches(bootstrapPs1, `GetEnvironmentVariable\(\s*['"]Path['"]`, `\$env:Path\s*=\s*"\$env:Path;`),
 		has(bootstrapPs1, "ExpandEnvironmentVariables")),
 	fact("test_scoop_mutations_run_out_of_process", scoopMutationsOutOfProcess),
-	fact("test_scoop_prefix_trusts_exit_code", codeMatches(bootstrapPs1, `scoop prefix git[\s\S]{0,200}LASTEXITCODE`)),
+	fact("test_scoop_prefix_trusts_exit_code", onBootstrapCode(matches(bootstrapPs1, `scoop prefix git[\s\S]{0,200}LASTEXITCODE`))),
 	fact("test_guards_existing_clone_identity", matches(bootstrapPs1, `remote\s+get-url\s+origin`)),
 	fact("test_reads_dotfiles_host_env", has(bootstrapPs1, "DOTFILES_HOST")),
 	fact("test_winget_exit_codes_are_answers_not_errors", wingetThroughInvokeWinget),
@@ -50,29 +53,62 @@ var bootstrapFactList = []scriptFact{
 		noMatch(bootstrapPs1, `\bnpm\b`, `\byarn\b`, `\bpnpm\b`, `\bcorepack\b`)),
 }
 
-// codeLacksFold: `s not in code.lower()`.
-func codeLacksFold(path, s string) factCheck {
+// onBootstrapCode runs checks over the test's _code(): the lines of
+// text.splitlines() that do not start with "#" after lstrip(), joined by "\n".
+func onBootstrapCode(checks ...factCheck) factCheck {
 	return func(files map[string]string) []string {
-		if strings.Contains(strings.ToLower(strings.Join(codeLinesOf(files[path]), "\n")), s) {
-			return []string{fmt.Sprintf("%s must not hold %q in any case outside a comment", path, s)}
-		}
-		return nil
-	}
-}
-
-// codeMatches: re.search of each pattern over the code finds a match.
-func codeMatches(path string, patterns ...string) factCheck {
-	res := compileAll(patterns)
-	return func(files map[string]string) []string {
-		code := strings.Join(codeLinesOf(files[path]), "\n")
+		code := maps.Clone(files)
+		code[bootstrapPs1] = strings.Join(pyCodeLines(files[bootstrapPs1]), "\n")
 		var out []string
-		for _, re := range res {
-			if !re.MatchString(code) {
-				out = append(out, fmt.Sprintf("%s must match %s outside a comment", path, re))
+		for _, c := range checks {
+			for _, problem := range c(code) {
+				out = append(out, problem+" (outside a comment)")
 			}
 		}
 		return out
 	}
+}
+
+// pyCodeLines is the lines of Python's str.splitlines() that do not start
+// with "#" after str.lstrip().
+func pyCodeLines(text string) []string {
+	var out []string
+	for _, line := range pySplitlines(text) {
+		if !strings.HasPrefix(strings.TrimLeftFunc(line, pyIsSpace), "#") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// pySplitlines is str.splitlines(): it breaks at \n, \r, \r\n, \v, \f,
+// \x1c-\x1e, \x85, U+2028 and U+2029, and keeps no empty last line.
+func pySplitlines(text string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(text); {
+		r, size := utf8.DecodeRuneInString(text[i:])
+		switch r {
+		case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
+			lines = append(lines, text[start:i])
+			i += size
+			if r == '\r' && i < len(text) && text[i] == '\n' {
+				i++
+			}
+			start = i
+		default:
+			i += size
+		}
+	}
+	if start < len(text) {
+		lines = append(lines, text[start:])
+	}
+	return lines
+}
+
+// pyIsSpace is str.isspace() for one character.
+func pyIsSpace(r rune) bool {
+	return unicode.IsSpace(r) || r >= 0x1c && r <= 0x1f
 }
 
 // chainInOrder: each recipe runs through Invoke-Just, in dependency order.
@@ -101,7 +137,7 @@ var (
 
 // baseToolSet: the base set covers the chain floor, mise and pwsh.
 func baseToolSet(files map[string]string) []string {
-	m := baseToolsDecl.FindStringSubmatch(strings.Join(codeLinesOf(files[bootstrapPs1]), "\n"))
+	m := baseToolsDecl.FindStringSubmatch(strings.Join(pyCodeLines(files[bootstrapPs1]), "\n"))
 	if m == nil {
 		return []string{bootstrapPs1 + " must declare its base tool set as $baseTools = @(...)"}
 	}
@@ -122,7 +158,7 @@ func baseToolSet(files map[string]string) []string {
 // scoop runs it through cmd /c.
 func scoopMutationsOutOfProcess(files map[string]string) []string {
 	var out []string
-	for _, line := range codeLinesOf(files[bootstrapPs1]) {
+	for _, line := range pyCodeLines(files[bootstrapPs1]) {
 		for _, cmd := range []string{"scoop install", "scoop update"} {
 			if strings.Contains(line, cmd) && !strings.Contains(line, "cmd /c") {
 				out = append(out, fmt.Sprintf("'%s' must run via cmd /c: %s", cmd, strings.TrimSpace(line)))
