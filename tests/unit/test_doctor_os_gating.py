@@ -54,7 +54,13 @@ def _harness(
         newline="\n",
     )
     result = run_bash(
-        harness, cwd=tmp_path, capture_output=True, text=True, check=False
+        harness,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -378,7 +384,15 @@ def _current_mise_block(tmp_path: Path) -> str:
         encoding="utf-8",
         newline="\n",
     )
-    done = run_bash(script, cwd=tmp_path, capture_output=True, text=True, check=True)
+    done = run_bash(
+        script,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
     return done.stdout
 
 
