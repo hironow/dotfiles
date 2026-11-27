@@ -4,12 +4,14 @@ package load
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/goccy/go-json"
 	"github.com/hironow/dotfiles/tools/repo-lint/internal/jsonc"
@@ -122,6 +124,15 @@ func (f Files) one(in rules.Input) (any, error) {
 	path := filepath.Join(f.Root, filepath.FromSlash(in.Path))
 	switch in.Format {
 	case rules.Text:
+		if in.Optional {
+			info, err := os.Stat(path)
+			if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || err == nil && !info.Mode().IsRegular() {
+				return nil, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("stat %s: %w", in.Path, err)
+			}
+		}
 		data, err := os.ReadFile(path) //nolint:gosec // G304: a fixed input path of a rule, under the repository root.
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", in.Path, err)

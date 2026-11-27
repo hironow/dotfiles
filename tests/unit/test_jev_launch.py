@@ -536,14 +536,68 @@ def test_utf8_stdio_overrides_a_non_utf8_locale() -> None:
 
 
 @pytest.mark.parametrize("name", ["jev_claude_hook.py", "jev_codex_exec.py"])
-def test_stdio_scripts_switch_to_utf8_before_reading(name: str) -> None:
-    # Claude Code and Pi talk UTF-8 over these pipes; the locale may not.
-    main_block = (
-        (SCRIPTS / name)
-        .read_text(encoding="utf-8")
-        .split('if __name__ == "__main__":', 1)[1]
+@pytest.mark.parametrize("output_newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_stdio_scripts_switch_to_utf8_before_reading(
+    name: str, output_newline: str
+) -> None:
+    probe = r"""
+import os, runpy, subprocess, sys
+from pathlib import Path
+sys.stdout.reconfigure(newline=os.environ["PROBE_NEWLINE"])
+sys.path.insert(0, sys.argv[1])
+import jev_launch, jev_headroom
+text = os.environ["PROBE_TEXT"]
+def choose(prompt, *_):
+    assert prompt == text, repr(prompt)
+    sys.stdout.write(prompt + "\n")
+    return ("gpt-6.1-sol", "high")
+def run(command, **kwargs):
+    assert kwargs["input"] == text
+    final = command[command.index("--output-last-message") + 1]
+    Path(final).write_text(text, encoding="utf-8")
+    return subprocess.CompletedProcess(command, 0)
+jev_launch.jev_key = lambda: "fake-key"
+jev_launch.choose_effort = lambda prompt, *_: choose(prompt)[1]
+jev_launch.choose_codex = choose
+jev_headroom.proxy_port = lambda *_args, **_kwargs: None
+subprocess.run = run
+script = Path(sys.argv[1]) / sys.argv[2]
+sys.argv = [str(script)]
+runpy.run_path(str(script), run_name="__main__")
+"""
+    text = "日本語のプロンプト ✅"
+    payload = (
+        json.dumps(
+            {"tool_name": "Agent", "tool_input": {"prompt": text}},
+            ensure_ascii=False,
+        )
+        if name == "jev_claude_hook.py"
+        else text
     )
-    assert "use_utf8_stdio()" in main_block
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", probe, str(SCRIPTS), name],
+        input=payload.encode("utf-8"),
+        capture_output=True,
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": "cp932",
+            "PROBE_TEXT": text,
+            "PROBE_NEWLINE": output_newline,
+            "JEV_HOOK_LOG": "",
+        },
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    echoed, output = result.stdout.decode("utf-8").split("\n", 1)
+    assert echoed.removesuffix("\r") == text
+    if name == "jev_claude_hook.py":
+        assert (
+            json.loads(output)["hookSpecificOutput"]["updatedInput"]["subagent_type"]
+            == "worker-high"
+        )
+    else:
+        assert output == text
 
 
 def _key_files(

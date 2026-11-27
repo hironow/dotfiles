@@ -1,40 +1,4 @@
-"""Neither the old Coder stack nor the new exe stack is left in dotfiles.
-
-The end state this pins: dotfiles keeps the generic agent base environment and
-`tofu/tailnet`, and the exe mechanism lives elsewhere. Both retirements have
-happened, so there is one set of paths and it is asserted -- no "not yet"
-half, which is what let four files slip through the first time (see below).
-
-Three checks, and the shape of each is deliberate (the mover's plan, §F-5):
-
-1. **Paths, not strings.** `git ls-files` must not list the retired stacks'
-   files. Looking at paths rather than grepping for "coder" means a sentence in
-   a document that mentions the stack does not fail the gate, and means this
-   test does not match itself.
-2. **Recipe and workflow names.** A deleted directory with a `just` recipe still
-   pointing at it is a worse state than either, because the failure surfaces to
-   whoever runs the recipe rather than to CI.
-3. **Operational files, explicitly listed.** Scanning everything would hit the
-   fixtures and the generic spokes; the list says exactly which files are read
-   and why, so the test cannot grow a grudge against a document.
-
-What deliberately SURVIVES, because the obvious "scrub every mention" instinct
-would delete it:
-
-- `docs/adr/` -- 0011, 0012 and 0034 are accepted and therefore immutable. The
-  history of a decision outlives the thing it decided.
-- `tofu/tailnet/` -- created by this very retirement, and the ACL outlives both
-  stacks.
-- the generic spokes (formal methods, cost guardrails) and the test fixtures
-  that carry synthetic paths as STRINGS.
-
-`docs/plan/` is in NEITHER list. The migration plan moved with the stack it
-planned, so `docs/plan/exe-google-ax.md` is named as retired -- but the
-directory itself is not, because #439 put an unrelated live plan in it. Listing
-the directory would make this test delete-by-assertion for a document that has
-nothing to do with either stack; listing it as a survivor would assert something
-this retirement does not require.
-"""
+"""Retired stack paths stay absent; the shared environment stays present."""
 
 from __future__ import annotations
 
@@ -103,37 +67,6 @@ NEW_EXE_PATHS = (
 
 RETIRED_PATHS = OLD_CODER_PATHS + NEW_EXE_PATHS
 
-# --- check 2: recipe and workflow names --------------------------------
-
-# Recipes the old Coder stack owned. `tofu/tailnet`'s recipes are NOT here: that
-# stack stays, and banning `tailnet-*` would ban the thing this retirement built.
-
-
-# --- check 3: operational files, named one by one ----------------------
-
-RETIRED_IN_FILES = {
-    ".pre-commit-config.yaml": ("coder", "tofu/exe"),
-    "pyproject.toml": ('"exe:',),
-    ".github/workflows/iac-test.yaml": (
-        "Coder template",
-        "tofu/exe/",
-        "exe-platform",
-        "exe-cluster",
-    ),
-    # The two tool pins that existed only for the exe stack. quint and java are
-    # NOT listed: they remain base tooling for the formal-methods policy,
-    # including dotfiles' current runner-GC model.
-    "config/mise/config.toml": ("google/ax", "ko-build/ko"),
-    ".github/dependabot.yaml": ("exe-reaper",),
-    ".gitignore": ("exe-reaper",),
-    # The guard had a rule for the retired CLI's `workspaces update/edit`,
-    # which blocked an agent from even editing the documents that cite it.
-    # The justfile's `prune-retired-cdr-symlinks` is NOT covered: that recipe
-    # exists BECAUSE the command is gone (ADR 0045), so a repo-wide ban on the
-    # name would delete the cleanup along with the thing it cleans up.
-    "ROOT_AGENTS_hooks_block-prohibited-commands.py": ("cdr",),
-}
-
 
 def _tracked() -> list[str]:
     out = subprocess.run(
@@ -169,19 +102,6 @@ def test_the_retired_path_list_is_well_formed() -> None:
         assert not path.startswith("/"), f"{path!r} is absolute, not a repo path"
         assert path.strip() == path, f"{path!r} has stray whitespace"
     assert len(set(RETIRED_PATHS)) == len(RETIRED_PATHS), "duplicate retired path"
-
-
-def test_the_named_operational_files_no_longer_mention_it() -> None:
-    """One file at a time, with the needle spelled out, so this check can never
-    grow into a repo-wide grep that hits a fixture or a spoke."""
-    offenders = []
-    for name, needles in RETIRED_IN_FILES.items():
-        path = ROOT / name
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8")
-        offenders += [f"{name}: {needle}" for needle in needles if needle in text]
-    assert offenders == [], f"operational files still name the old stack: {offenders}"
 
 
 def test_what_survives_is_still_here() -> None:

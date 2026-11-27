@@ -8,10 +8,16 @@ baked tools/trust/offline state; they do not claim lifecycle coverage.
 
 from __future__ import annotations
 
+import io
 import json
+import os
 import re
+import shutil
 import subprocess
+import tarfile
 import tomllib
+import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -21,6 +27,170 @@ from test_just_sandbox import run_saved_image
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 docker_image = sandbox_image_fixture
+
+
+@pytest.fixture(scope="module")
+def health_context_probe() -> Callable[[Path], set[str]]:
+    """Build only a scratch COPY image; no second devcontainer build."""
+
+    def probe(context: Path) -> set[str]:
+        tag = f"localhost/health-context-{uuid.uuid4().hex}"
+        container = f"health-context-{uuid.uuid4().hex}"
+
+        def run(*args: str) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.run(
+                ["podman", *args], capture_output=True, check=True, timeout=60
+            )
+
+        built = created = False
+        try:
+            run(
+                "build",
+                "--network=none",
+                "--pull=never",
+                "--no-cache",
+                "-t",
+                tag,
+                str(context),
+            )
+            built = True
+            run("create", "--name", container, tag, "/unused")
+            created = True
+            archive = run("export", container).stdout
+            with tarfile.open(
+                fileobj=io.BytesIO(archive), encoding="utf-8"
+            ) as exported:
+                files = {
+                    item.name.removeprefix("./") for item in exported if item.isfile()
+                }
+            return {
+                name.removeprefix("context/")
+                for name in files
+                if name.startswith("context/")
+            }
+        finally:
+            if created:
+                run("rm", container)
+            if built:
+                run("untag", tag)
+
+    return probe
+
+
+def _health_context(tmp_path: Path) -> Path:
+    context = tmp_path / "context"
+    context.mkdir()
+    source = ROOT / "emulator/healthcheck"
+    # Preserve every real filename without reading private input contents.
+    for path in source.rglob("*"):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        relative = path.relative_to(source)
+        copied = context / relative
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        if relative.as_posix() in (".dockerignore", ".containerignore", ".gitignore"):
+            shutil.copyfile(path, copied)
+        else:
+            copied.write_text("synthetic context input", encoding="utf-8")
+    (context / "Dockerfile").write_text(
+        "FROM scratch\nCOPY . /context/\n", encoding="utf-8"
+    )
+    for name in (".env", "credentials.json", "nested/private.key", "dist/binary"):
+        path = context / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("synthetic private input", encoding="utf-8")
+    return context
+
+
+def _assert_health_context(context: Path, probe: Callable[[Path], set[str]]) -> None:
+    files = probe(context)
+    assert {"go.mod", "main.go"} <= files, "health-production-sources"
+    assert files <= {"Dockerfile", "go.mod", "main.go"}, "health-private-inputs"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    subprocess.run(
+        ["git", "init", "--template=", "-q", str(context)],
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    ignored = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(context),
+            "-c",
+            f"core.excludesFile={os.devnull}",
+            "check-ignore",
+            "--no-index",
+            "dist/binary",
+        ],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert ignored.returncode == 0 and ignored.stdout.strip() == b"dist/binary", (
+        "health-git-dist"
+    )
+
+
+def test_health_build_context_excludes_private_inputs(
+    tmp_path: Path, health_context_probe: Callable[[Path], set[str]]
+) -> None:
+    _assert_health_context(_health_context(tmp_path), health_context_probe)
+
+
+@pytest.mark.parametrize("private_path", ["credentials.json", "nested/unlisted.key"])
+def test_health_context_rejects_unlisted_files(
+    tmp_path: Path, private_path: str
+) -> None:
+    with pytest.raises(AssertionError, match="health-private-inputs"):
+        _assert_health_context(
+            _health_context(tmp_path), lambda _: {"go.mod", "main.go", private_path}
+        )
+
+
+@pytest.mark.parametrize("override", [None, "", "*\n!go.mod\n!main.go\n"])
+def test_health_context_copies_podman_ignore_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str | None
+) -> None:
+    source = tmp_path / "source" / "emulator" / "healthcheck"
+    source.mkdir(parents=True)
+    for name in (".dockerignore", ".gitignore", "go.mod", "main.go"):
+        (source / name).write_text("fixture\n", encoding="utf-8")
+    if override is not None:
+        (source / ".containerignore").write_text(override, encoding="utf-8")
+    monkeypatch.setattr("test_devcontainer.ROOT", tmp_path / "source")
+
+    context = _health_context(tmp_path)
+
+    copied = context / ".containerignore"
+    if override is None:
+        assert not copied.exists()
+    else:
+        assert copied.is_file()
+        assert copied.read_text(encoding="utf-8") == override
+
+
+def test_health_context_preserves_source_filenames_with_inert_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source/emulator/healthcheck"
+    source.mkdir(parents=True)
+    for name in (".dockerignore", ".gitignore", "go.mod", "main.go"):
+        (source / name).write_text("fixture\n", encoding="utf-8")
+    private_names = ("main_test.go", "nested/private file.key")
+    for name in private_names:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("private contents must stay on the host", encoding="utf-8")
+    monkeypatch.setattr("test_devcontainer.ROOT", tmp_path / "source")
+
+    context = _health_context(tmp_path)
+
+    for name in private_names:
+        assert (context / name).is_file(), name
+        assert (context / name).read_text(encoding="utf-8") == "synthetic context input"
 
 
 def _load_devcontainer() -> dict:
