@@ -120,6 +120,9 @@ func All() []Rule {
 		windowsHostFacts(),
 		wslAutostartFacts(),
 		bootstrapFacts(),
+		doctorFacts(),
+		installFacts(),
+		brewfileDockerFree(),
 	}
 }
 
