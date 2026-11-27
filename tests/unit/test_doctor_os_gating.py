@@ -430,6 +430,26 @@ def test_doctor_reports_the_profile_state_and_writes_nothing(
     assert named in out, out
 
 
+def test_doctor_warns_on_legacy_profile_and_preserves_both(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    profile = home / "OneDrive/ドキュメント/PowerShell/profile.ps1"
+    legacy = home / "Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    for path, text in ((profile, "Set-Alias ll Get-ChildItem\n"), (legacy, OLD_MISE)):
+        path.parent.mkdir(parents=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+    before = {path: path.read_bytes() for path in (profile, legacy)}
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    fakes = (
+        f'. "{bash_path(ROOT / "scripts/ps_profile_lib.sh")}"\n'
+        f'export HOME="{bash_path(home)}" TMPDIR="{bash_path(temp)}"'
+        f' DOTFILES_PS_PROFILE="{bash_path(profile)}"\n'
+    )
+    out = _harness(tmp_path, PROFILE_STATE, fakes)
+    assert "WARN win-profile-legacy" in out, out
+    assert {path: path.read_bytes() for path in before} == before
+
+
 # gcloud lives on Windows when the host is WSL (owner, 2026-11-13): WSL shows
 # the Windows copy as a fact (INFO), and every other host still WARNs when
 # gcloud is missing. The Windows drives are mounted under /mnt; the test

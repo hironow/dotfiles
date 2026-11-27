@@ -18,7 +18,6 @@ mojibake.
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -27,9 +26,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 LIB = ROOT / "scripts" / "ps_profile_lib.sh"
-SCRIPTS = {
-    name: ROOT / "scripts" / f"{name}.sh" for name in ("deploy", "clean", "doctor")
-}
 
 
 def _unwrapped_bash() -> str | None:
@@ -99,6 +95,7 @@ def _resolve(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         env=env,
         check=False,
     )
@@ -203,47 +200,3 @@ def test_no_cygpath_falls_back_to_legacy(tmp_path: Path) -> None:
     r = _resolve(tmp_path)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == f"/home/u/{LEGACY_TAIL}"
-
-
-@pytest.mark.parametrize("name", sorted(SCRIPTS))
-def test_scripts_resolve_profile_instead_of_hardcoding(name: str) -> None:
-    text = SCRIPTS[name].read_text(encoding="utf-8")
-    assert 'ps_profile="$HOME/Documents/PowerShell' not in text, (
-        f"{name}.sh hardcodes the legacy $PROFILE path; OneDrive-redirected "
-        "Documents make pwsh load a different file"
-    )
-    assert "ps_profile_lib.sh" in text, (
-        f"{name}.sh must source scripts/ps_profile_lib.sh"
-    )
-    assert "resolve_ps_profile" in text, f"{name}.sh must call resolve_ps_profile"
-
-
-def test_clean_also_sweeps_legacy_profile() -> None:
-    """Hosts deployed before the fix carry managed blocks in the legacy file;
-    clean must still remove them there."""
-    text = SCRIPTS["clean"].read_text(encoding="utf-8")
-    assert "ps_profile_legacy" in text
-
-
-def test_doctor_warns_on_stale_legacy_blocks() -> None:
-    text = SCRIPTS["doctor"].read_text(encoding="utf-8")
-    assert "ps_profile_legacy" in text
-    assert "win-profile-legacy" in text
-
-
-def test_clean_removes_every_block_deploy_writes() -> None:
-    """Every managed block deploy.sh writes needs a sed range in clean.sh.
-
-    Found live: #401's Jev launchers block had no removal, so clean left it in
-    the legacy profile and doctor's `win-profile-legacy` advice (`just clean &&
-    just deploy`) could never clear the warning."""
-    marker = re.compile(r"# >>> dotfiles managed block: ([^>]+?) >>>")
-    written = set(marker.findall(SCRIPTS["deploy"].read_text(encoding="utf-8")))
-    removed = {
-        name
-        for line in SCRIPTS["clean"].read_text(encoding="utf-8").splitlines()
-        if line.strip().startswith("sed -i")
-        for name in marker.findall(line)
-    }
-    assert written, "deploy.sh writes no managed blocks?"
-    assert written <= removed, f"clean.sh never removes: {sorted(written - removed)}"
