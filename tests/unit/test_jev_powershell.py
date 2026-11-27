@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from _pwsh import resolve_pwsh
-from _zsh_startup import run_startup
+from _zsh_startup import run_zsh
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
@@ -95,18 +95,19 @@ def test_powershell_forwards_the_resume_flags(call: str, forwarded: list[str]) -
 
 
 def test_the_zsh_launchers_are_short_names(tmp_path: Path) -> None:
-    result = run_startup(
+    output = run_zsh(
         tmp_path,
-        """
+        r"""
+python3() { printf '%s\0' "$@"; }
+source "$1"
 (( $+functions[j-cc] && $+functions[j-pi] )) || exit 41
 (( ! $+functions[jev-claude] && ! $+functions[jev-pi] )) || exit 42
 j-cc 'two words' '' '日本語 ✅'
 j-pi 'two words' '' '日本語 ✅'
 """,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
     launcher = str(tmp_path / "home/dotfiles/scripts/jev_launch.py")
-    assert (tmp_path / "launch.log").read_bytes().decode("utf-8").split("\0") == [
+    assert output.split("\0") == [
         launcher,
         "claude",
         "two words",

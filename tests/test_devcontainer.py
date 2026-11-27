@@ -78,11 +78,18 @@ def health_context_probe() -> Callable[[Path], set[str]]:
 def _health_context(tmp_path: Path) -> Path:
     context = tmp_path / "context"
     context.mkdir()
-    for name in (".dockerignore", ".gitignore", "go.mod", "main.go"):
-        shutil.copyfile(ROOT / "emulator/healthcheck" / name, context / name)
-    override = ROOT / "emulator/healthcheck/.containerignore"
-    if override.is_file():
-        shutil.copyfile(override, context / override.name)
+    source = ROOT / "emulator/healthcheck"
+    # Preserve every real filename without reading private input contents.
+    for path in source.rglob("*"):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        relative = path.relative_to(source)
+        copied = context / relative
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        if relative.as_posix() in (".dockerignore", ".containerignore", ".gitignore"):
+            shutil.copyfile(path, copied)
+        else:
+            copied.write_text("synthetic context input", encoding="utf-8")
     (context / "Dockerfile").write_text(
         "FROM scratch\nCOPY . /context/\n", encoding="utf-8"
     )
@@ -161,6 +168,27 @@ def test_health_context_copies_podman_ignore_override(
     else:
         assert copied.is_file()
         assert copied.read_text(encoding="utf-8") == override
+
+
+def test_health_context_preserves_source_filenames_with_inert_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source/emulator/healthcheck"
+    source.mkdir(parents=True)
+    for name in (".dockerignore", ".gitignore", "go.mod", "main.go"):
+        (source / name).write_text("fixture\n", encoding="utf-8")
+    private_names = ("main_test.go", "nested/private file.key")
+    for name in private_names:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("private contents must stay on the host", encoding="utf-8")
+    monkeypatch.setattr("test_devcontainer.ROOT", tmp_path / "source")
+
+    context = _health_context(tmp_path)
+
+    for name in private_names:
+        assert (context / name).is_file(), name
+        assert (context / name).read_text(encoding="utf-8") == "synthetic context input"
 
 
 def _load_devcontainer() -> dict:
