@@ -121,6 +121,11 @@ try {
 """
 
 
+def _ps_literal(text: object) -> str:
+    """Text for inside a PowerShell single-quoted string."""
+    return str(text).replace("'", "''")
+
+
 def run_script(
     tmp_path: Path,
     scripts: Path,
@@ -164,11 +169,11 @@ def run_script(
         encoding="utf-8",
     )
     if name == "runner_watchdog_win.ps1":
-        args = f"{args} -RunnerRoot '{runner}'"
+        args = f"{args} -RunnerRoot '{_ps_literal(runner)}'"
     wrapper = tmp_path / "wrapper.ps1"
     wrapper.write_text(
-        WRAPPER.replace("__SETTINGS__", str(settings))
-        .replace("__SCRIPT__", str(copy / name))
+        WRAPPER.replace("__SETTINGS__", _ps_literal(settings))
+        .replace("__SCRIPT__", _ps_literal(copy / name))
         .replace("__ARGS__", args),
         # A BOM: Windows PowerShell 5.1 reads a BOM-less file as ANSI, and
         # the wrapper holds paths, which may not be ASCII.

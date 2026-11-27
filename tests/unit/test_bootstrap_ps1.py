@@ -145,6 +145,11 @@ try {
 """
 
 
+def _ps_literal(text: object) -> str:
+    """Text for inside a PowerShell single-quoted string."""
+    return str(text).replace("'", "''")
+
+
 def run_bootstrap(
     tmp_path: Path,
     script: Path,
@@ -162,8 +167,8 @@ def run_bootstrap(
     )
     wrapper = tmp_path / "wrapper.ps1"
     wrapper.write_text(
-        WRAPPER.replace("__SETTINGS__", str(settings)).replace(
-            "__SCRIPT__", str(script)
+        WRAPPER.replace("__SETTINGS__", _ps_literal(settings)).replace(
+            "__SCRIPT__", _ps_literal(script)
         ),
         # A BOM: Windows PowerShell 5.1 reads a BOM-less file as ANSI, and
         # the wrapper holds paths, which may not be ASCII.
