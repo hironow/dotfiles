@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -88,4 +89,55 @@ func pyHasWord(text, word string) bool {
 // pyWordRune is a character of Python's \w for str patterns.
 func pyWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
+}
+
+// pyBoundaryAt is Python's \b at byte offset p of text: a word character on
+// exactly one side.
+func pyBoundaryAt(text string, p int) bool {
+	before, after := false, false
+	if p > 0 {
+		r, _ := utf8.DecodeLastRuneInString(text[:p])
+		before = pyWordRune(r)
+	}
+	if p < len(text) {
+		r, _ := utf8.DecodeRuneInString(text[p:])
+		after = pyWordRune(r)
+	}
+	return before != after
+}
+
+// pyLeadingBoundary is re.search(r"\b" + pattern, text): a match of re (the
+// pattern without its leading \b) that starts at a Python word boundary.
+func pyLeadingBoundary(re *regexp.Regexp, text string) bool {
+	for from := 0; from <= len(text); {
+		loc := re.FindStringIndex(text[from:])
+		if loc == nil {
+			return false
+		}
+		if pyBoundaryAt(text, from+loc[0]) {
+			return true
+		}
+		_, size := utf8.DecodeRuneInString(text[from+loc[0]:])
+		from += loc[0] + max(size, 1)
+	}
+	return false
+}
+
+// pyStrip is str.strip().
+func pyStrip(s string) string {
+	return strings.TrimFunc(s, pyIsSpace)
+}
+
+// pyDigitsThenBoundary: the text at i starts with Python \d+ followed by a
+// word boundary (re's r"\d+\b" there).
+func pyDigitsThenBoundary(text string, i int) bool {
+	j := i
+	for j < len(text) {
+		r, size := utf8.DecodeRuneInString(text[j:])
+		if !unicode.IsDigit(r) {
+			break
+		}
+		j += size
+	}
+	return j > i && pyBoundaryAt(text, j)
 }

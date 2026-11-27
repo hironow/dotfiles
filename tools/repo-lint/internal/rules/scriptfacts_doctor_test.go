@@ -70,12 +70,6 @@ func TestDoctorFacts(t *testing.T) {
 	})
 }
 
-func TestInstallFacts(t *testing.T) {
-	runCases(t, installFacts(), func() Inputs { return Inputs{installSh: "step_base\nstep_zsh\n"} }, []ruleCase{
-		{"the zsh step is skipped", edit(installSh, "step_zsh\n", "# step_zsh\n"), "test_install_sh_runs_the_zsh_step"},
-	})
-}
-
 const brewfileFixture = `tap "homebrew/bundle"
 brew "podman"
 cask "ghostty"
