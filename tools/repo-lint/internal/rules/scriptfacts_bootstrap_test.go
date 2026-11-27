@@ -60,6 +60,7 @@ func TestBootstrapFacts(t *testing.T) {
 		{"a stranger's clone is deployed", edit(b, "$origin = git -C $RepoDir remote get-url origin\n", ""), "test_guards_existing_clone_identity"},
 		{"DOTFILES_HOST is ignored", edit(b, "$(if ($env:DOTFILES_HOST) { $env:DOTFILES_HOST } else { 'windows' })", "'windows'"), "test_reads_dotfiles_host_env"},
 		{"winget runs outside Invoke-Winget", edit(b, "$doctorOk = ", "winget upgrade --all\n$doctorOk = "), "test_winget_exit_codes_are_answers_not_errors"},
+		{"a lone CR hides a winget line", edit(b, "$doctorOk = ", "Write-Host 'x'\rwinget upgrade --all\r$doctorOk = "), "test_winget_exit_codes_are_answers_not_errors"},
 		{"winget errors throw", edit(b, "    $PSNativeCommandUseErrorActionPreference = $false\n", ""), "test_winget_exit_codes_are_answers_not_errors"},
 		{"npm installs a CLI", edit(b, "$doctorOk = ", "npm install -g x\n$doctorOk = "), "test_never_invokes_forbidden_package_managers"},
 	})

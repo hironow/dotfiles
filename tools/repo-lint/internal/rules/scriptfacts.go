@@ -42,7 +42,8 @@ func factRule(id, why string, paths []string, facts []scriptFact) Rule {
 		Check: func(in Inputs) []Finding {
 			files := map[string]string{}
 			for _, p := range paths {
-				files[p], _ = in[p].(string)
+				text, _ := in[p].(string)
+				files[p] = universalNewlines.Replace(text)
 			}
 			r := &report{rule: id, path: paths[0]}
 			for _, f := range facts {
@@ -54,6 +55,10 @@ func factRule(id, why string, paths []string, facts []scriptFact) Rule {
 		},
 	}
 }
+
+// universalNewlines reads a file as Python's read_text() did for the
+// removed tests: "\r\n" and a lone "\r" both become "\n".
+var universalNewlines = strings.NewReplacer("\r\n", "\n", "\r", "\n")
 
 // has: the file holds each string (`s in text`).
 func has(path string, subs ...string) factCheck {
