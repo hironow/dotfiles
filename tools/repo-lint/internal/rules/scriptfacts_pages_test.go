@@ -80,6 +80,17 @@ func TestReadPageFollowsPython314(t *testing.T) {
 	if p.text["s"] != "t" {
 		t.Errorf(`text["s"] = %q`, p.text["s"])
 	}
+	// Nothing ends plaintext: the rest of the page is text.
+	p = readPage(`<p id=k><plaintext></plaintext><script>alert(1)</script>`)
+	if len(p.scripts) != 0 || p.text["k"] != "</plaintext><script>alert(1)</script>" {
+		t.Errorf("after plaintext: %+v %q", p.scripts, p.text)
+	}
+	// Numeric references to invalid code points unescape to nothing; the
+	// C1 range maps to Windows-1252.
+	p = readPage("<p id=r>ba&#11;sh &#x80; &#55296; &#0;</p>")
+	if p.text["r"] != "bash € \uFFFD \uFFFD" {
+		t.Errorf(`text["r"] = %q`, p.text["r"])
+	}
 	// Python lowercases the dotted capital I to i + U+0307.
 	p = readPage("<p İD=x id=y>z</p>")
 	if p.text["y"] != "z" {

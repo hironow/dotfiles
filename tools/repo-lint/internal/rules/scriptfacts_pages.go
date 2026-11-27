@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"html"
 	"regexp"
 	"strings"
 )
@@ -111,7 +110,7 @@ func readPage(src string) page {
 		}
 		if i < j {
 			if r.escapable {
-				r.data(html.UnescapeString(src[i:j]))
+				r.data(pyUnescape(src[i:j]))
 			} else {
 				r.data(src[i:j])
 			}
@@ -132,6 +131,9 @@ func readPage(src string) page {
 // end tag), the end of the input, or -1 when the parser waits for more.
 func (r *pageReader) textEnd(i int) int {
 	src, n := r.src, len(r.src)
+	if r.cdata == "plaintext" {
+		return n // nothing ends plaintext
+	}
 	if r.cdata != "" {
 		return pageCDataEnd(src, i, r.cdata)
 	}
@@ -375,12 +377,12 @@ func pageSkipSpaceAndSlash(src string, k int) int {
 func pageUnescapeAttr(v string) string {
 	return pageAttrRef.ReplaceAllStringFunc(v, func(ref string) string {
 		if strings.HasPrefix(ref, "&#") {
-			return html.UnescapeString(ref)
+			return pyUnescape(ref)
 		}
 		if strings.HasSuffix(ref, "=") {
 			return ref
 		}
-		u := html.UnescapeString(ref)
+		u := pyUnescape(ref)
 		if u == ref || strings.IndexFunc(u, func(r rune) bool {
 			return 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9'
 		}) >= 0 {
