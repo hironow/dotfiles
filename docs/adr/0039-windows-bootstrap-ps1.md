@@ -1,7 +1,7 @@
 # 0039. Windows native bootstrap via `bootstrap.ps1` one-liner
 
 **Date:** 2026-08-15
-**Status:** Accepted
+**Status:** Accepted; the static checks of `tests/unit/test_bootstrap_ps1.py` moved to the repo-lint rule `bootstrap-facts`, and the clone-identity guard and the execution policy are held by runs of bootstrap.ps1 in the same test file, per [ADR-0093](0093-tests-check-code-not-file-text.md)
 
 ## Context
 
