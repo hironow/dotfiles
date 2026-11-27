@@ -56,6 +56,8 @@ jobs:
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.13.9
+          # Scenarios call this binary with a minimal environment.
+          tofu_wrapper: false
 
       # The tailscale provider is published only as a github.com release
       # asset, and that front door has returned 504s for hours. A provider
