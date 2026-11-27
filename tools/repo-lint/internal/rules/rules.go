@@ -127,6 +127,9 @@ func All() []Rule {
 		ciBootstrapFacts(),
 		cursorFacts(),
 		hardenEnvFacts(),
+		pagesSiteFacts(),
+		deployWiringFacts(),
+		effectiveSettingsStdlib(),
 	}
 }
 

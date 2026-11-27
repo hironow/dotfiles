@@ -33,6 +33,10 @@ verify_artifact_with_signed_checksums https://mise.jdx.dev/gpg-key.pub \
   24853EC9F655CE80B48E6C3A8B81C9D17413A06D \
   "${MISE_TMP}/SHASUMS256.asc" "${MISE_TMP}/${MISE_FILE}"
 install -m 0755 "${MISE_TMP}/mise/bin/mise" /usr/local/bin/mise
+QUINT_EVALUATOR_REV="0123456789abcdef0123456789abcdef01234567"
+QUINT_EVALUATOR_VERSION="v0.5.0"
+cargo build --release --locked
+cp target/release/quint_evaluator "${QUINT_HOME}/rust-evaluator-${QUINT_EVALUATOR_VERSION}/quint_evaluator"
 `
 
 func TestDevcontainerFeatureFacts(t *testing.T) {
@@ -52,6 +56,7 @@ func TestDevcontainerFeatureFacts(t *testing.T) {
 		{"profile.d sets no data dir", edit(f, "export MISE_DATA_DIR=/opt/mise\n", ""), "test_feature_install_writes_profile_d_with_data_dir"},
 		{"post-create forces online", edit(postCreate, "mise install\n", "MISE_OFFLINE=0 mise install\n"), "test_post_create_does_not_force_mise_offline_zero"},
 		{"no uidmap", edit(f, "podman uidmap", "podman"), "test_feature_installs_native_podman_without_changing_generated_versions"},
+		{"quint's evaluator from a branch", edit(f, `QUINT_EVALUATOR_REV="0123456789abcdef0123456789abcdef01234567"`, `QUINT_EVALUATOR_REV="main"`), "test_quints_evaluator_is_built_from_a_pinned_commit"},
 	})
 }
 
