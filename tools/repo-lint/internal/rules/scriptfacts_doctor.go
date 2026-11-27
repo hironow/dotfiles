@@ -155,6 +155,8 @@ func brewfileDockerFree() Rule {
 			fact("test_doctor_and_the_brewfile_test_forbid_the_same_packages", doctorNamesTheDockerProviders),
 			// tests/unit/test_cli_release_age_policy.py
 			fact("test_mac_package_manifest_provisions_podman_without_docker_providers", brewfileHasNoDockerProvider),
+			// tests/unit/test_cli_tools_install.py
+			fact("test_mac_homebrew_restore_does_not_reinstall_mise_jq", pyNoMatch(macBrewfile, `(?m)^\s*brew\s*(?:\(\s*)?["']jq["']`)),
 		},
 	)
 }
