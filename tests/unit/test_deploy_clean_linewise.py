@@ -17,7 +17,7 @@ msys sh preserves the caller's PATH order and would otherwise let System32's
 WSL bash win from a fresh persisted PATH — see
 test_windows_shell_usr_bin_path.py). This is the #231 precedent
 (doctor/harden-env -> `bash scripts/*.sh`), also guarded for
-prune-rogue-npm-globals in test_doctor_npm_rogue.py.
+prune-rogue-npm-globals.
 
 deploy/clean are the ADR 0018 Windows-native entry points (bootstrap.ps1
 chains `just deploy` from PowerShell), so they must stay linewise wrappers

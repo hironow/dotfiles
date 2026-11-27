@@ -1390,31 +1390,31 @@ def test_guard_detection_tolerates_a_null_args_member_in_old_script_hooks(
 # ---- Guards against drift between doctor and what it reads ----
 
 
-def test_the_log_codes_doctor_accepts_are_the_binarys() -> None:
+# The summary of every code the binary knows, kept equal to the binary's sets
+# by a Go test in tools/agent-hooks/internal/logline.
+EVERY_CODE_SUMMARY = (
+    ROOT / "tools/agent-hooks/internal/logline/testdata/every-code-summary.json"
+)
+
+
+def test_the_log_codes_doctor_accepts_are_the_binarys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The summary names only the binary's fixed codes (and "other"): a code
-    added in Go without this side would read as "output does not parse"."""
-    logline = ROOT / "tools/agent-hooks/internal/logline/line.go"
-    outcome = ROOT / "tools/agent-hooks/internal/ir/outcome.go"
-    line_go = logline.read_text(encoding="utf-8")
-    # Some codes are the ir package's rule names, given by reference.
-    rules = dict(
-        re.findall(
-            r'\b(Rule[A-Za-z]+)\s*=\s*"([^"]+)"', outcome.read_text(encoding="utf-8")
-        )
+    added in Go without this side would read as "output does not parse", and
+    one added here alone would never be counted."""
+    text = EVERY_CODE_SUMMARY.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        check,
+        "run",
+        lambda *_args, **_kwargs: check.Outcome(
+            stdout=text, stdout_bytes=len(text.encode("utf-8"))
+        ),
     )
-
-    def values(prefix: str) -> set[str]:
-        found = re.findall(
-            rf'\b{prefix}[A-Za-z]+\s*=\s*(?:"([^"]+)"|ir\.(Rule[A-Za-z]+))', line_go
-        )
-        return {literal or rules[name] for literal, name in found}
-
-    errors = values("Err")
-    mismatches = values("Mismatch")
-    assert errors, "no error code found in line.go"
-    assert mismatches, "no mismatch found in line.go"
-    assert check.ERROR_CODES == errors | {"other"}
-    assert check.MISMATCHES == mismatches | {"other"}
+    log = check._log(PROGRAM)
+    assert log.summary is not None, log.outcome.reason
+    assert set(log.summary.errors) == check.ERROR_CODES
+    assert set(log.summary.mismatches) == check.MISMATCHES
 
 
 def test_every_claude_home_doctor_reads_is_one_sync_knows() -> None:

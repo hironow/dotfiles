@@ -1,0 +1,23 @@
+{
+  "days": 1,
+  "lines": 14,
+  "unreadable": 0,
+  "errors": {
+    "answer.failed": 1,
+    "hook.failed": 1,
+    "hook.timeout": 1,
+    "input.unreadable": 1,
+    "other": 1,
+    "rewrite.dropped": 1,
+    "shim.broken": 1,
+    "tool.failed": 1,
+    "usage": 1
+  },
+  "mismatches": {
+    "envelope": 1,
+    "input": 1,
+    "mapping": 1,
+    "other": 1,
+    "unchecked": 1
+  }
+}

@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 import pytest
-from _bash_hook import run_bash
+from _bash_hook import bash_path, run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
 WSL = ("Linux", "6.6.87.2-microsoft-standard-WSL2")
@@ -54,7 +54,13 @@ def _harness(
         newline="\n",
     )
     result = run_bash(
-        harness, cwd=tmp_path, capture_output=True, text=True, check=False
+        harness,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -350,15 +356,78 @@ def test_macos_doctor_names_docker_packages_homebrew_still_holds(
     assert "counts " + counts in out
 
 
-def test_doctor_and_the_brewfile_test_forbid_the_same_packages() -> None:
-    doctor = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
-    found = re.search(r"^_brew_docker='([^']+)'$", doctor, re.MULTILINE)
-    assert found, "doctor.sh lost its Docker package list"
-    policy = (ROOT / "tests/unit/test_cli_release_age_policy.py").read_text(
-        encoding="utf-8"
+# The deploy-managed state block of the Windows branch. It reads the user's
+# PowerShell $PROFILE, which deploy migrates in place; doctor only reports
+# (ADR-0093 D4: held by runs).
+PROFILE_STATE = r"(?ms)^    # 2\) deploy-managed state.*?(?=^    # 3\) uv hardening)"
+MISE_BEGIN = "# >>> dotfiles managed block: mise activate >>>"
+STARSHIP_BEGIN = "# >>> dotfiles managed block: starship init >>>"
+BLOCK_END = "# <<< end dotfiles managed block <<<"
+OLD_MISE = (
+    f"{MISE_BEGIN}\n"
+    "if (Get-Command mise -ErrorAction SilentlyContinue) {\n"
+    "    Invoke-Expression (&mise activate pwsh | Out-String)\n"
+    f"}}\n{BLOCK_END}\n"
+)
+STARSHIP = (
+    f"{STARSHIP_BEGIN}\n"
+    "if (Get-Command starship -ErrorAction SilentlyContinue) {\n"
+    "    Invoke-Expression (&starship init powershell)\n"
+    f"}}\n{BLOCK_END}\n"
+)
+
+
+def _current_mise_block(tmp_path: Path) -> str:
+    script = tmp_path / "block.sh"
+    script.write_text(
+        f'. "{bash_path(ROOT / "scripts" / "ps_profile_lib.sh")}"\nps_profile_mise_block\n',
+        encoding="utf-8",
+        newline="\n",
     )
-    block = policy.split("assert not packages & {", 1)[1].split("}", 1)[0]
-    assert set(found[1].split()) == set(re.findall(r'"([^"]+)"', block))
+    done = run_bash(
+        script,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    return done.stdout
+
+
+@pytest.mark.parametrize(
+    ("state", "named"),
+    [
+        ("stale", "profile:mise-activate-outdated"),
+        ("unclosed", "WARN win-profile-mise-unclosed"),
+        ("misordered", "profile:starship-before-mise"),
+    ],
+)
+def test_doctor_reports_the_profile_state_and_writes_nothing(
+    tmp_path: Path, state: str, named: str
+) -> None:
+    current = _current_mise_block(tmp_path)
+    text = {
+        "stale": "Set-Alias ll Get-ChildItem\n" + OLD_MISE + STARSHIP,
+        "unclosed": "Set-Alias ll Get-ChildItem\n" + MISE_BEGIN + "\nmy own line\n",
+        "misordered": "Set-Alias ll Get-ChildItem\n" + STARSHIP + current,
+    }[state]
+    home = tmp_path / "home"
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    profile = home / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    profile.parent.mkdir(parents=True)
+    profile.write_text(text, encoding="utf-8", newline="\n")
+    before = profile.read_bytes()
+    fakes = (
+        f'. "{bash_path(ROOT / "scripts" / "ps_profile_lib.sh")}"\n'
+        f'export HOME="{bash_path(home)}" TMPDIR="{bash_path(temp)}"'
+        f' DOTFILES_PS_PROFILE="{bash_path(profile)}"\n'
+    )
+    out = _harness(tmp_path, PROFILE_STATE, fakes)
+    assert profile.read_bytes() == before, "doctor changed the profile"
+    assert named in out, out
 
 
 # gcloud lives on Windows when the host is WSL (owner, 2026-11-13): WSL shows

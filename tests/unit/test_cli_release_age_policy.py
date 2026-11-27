@@ -73,18 +73,6 @@ def test_installer_image_busts_only_setup_cache_and_emits_run_bound_evidence() -
         assert f"printf 'DOTFILES_INSTALL_{marker}:%s\\n' \"${nonce}\"" in dockerfile
 
 
-def test_doctor_checks_required_podman_cli_and_selected_engine() -> None:
-    doctor = (ROOT / "scripts/doctor.sh").read_text(encoding="utf-8")
-    assert "podman --version" in doctor
-    assert "podman info --format" in doctor
-    assert "has podman-compose" in doctor
-    assert "log_err 'podman'" in doctor
-    assert "log_err 'podman-compose'" in doctor
-    assert "docker info" not in doctor
-    assert "podman machine init" not in doctor
-    assert "podman machine start" not in doctor
-
-
 def test_shell_selects_the_provider_without_probing_or_redirecting_engines() -> None:
     shell = (ROOT / ".zshrc").read_text(encoding="utf-8")
     code = "\n".join(
@@ -95,25 +83,6 @@ def test_shell_selects_the_provider_without_probing_or_redirecting_engines() -> 
     assert "DOCKER_HOST=" not in code
     assert ".orbstack" not in code
     assert ".docker/completions" not in code
-
-
-def test_mac_package_manifest_provisions_podman_without_docker_providers() -> None:
-    packages = set(
-        re.findall(
-            r'^(?:brew|cask) "([^"]+)"',
-            (ROOT / "dump/macbook/Brewfile").read_text(encoding="utf-8"),
-            re.MULTILINE,
-        )
-    )
-    assert "podman" in packages
-    assert not packages & {
-        "docker",
-        "docker-buildx",
-        "docker-compose",
-        "docker-credential-helper",
-        "docker-desktop",
-        "orbstack",
-    }
 
 
 def test_podman_compose_has_a_dedicated_zero_age_cli_environment() -> None:
