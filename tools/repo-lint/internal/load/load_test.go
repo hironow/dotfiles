@@ -148,3 +148,35 @@ func TestFilesReadsEveryTrackedFileAGlobMatches(t *testing.T) {
 		t.Fatalf("glob = %#v, %v; want %#v (tracked files only)", got, err, want)
 	}
 }
+
+func TestFilesReadsUntrackedTopLevelGlob(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "tofu/tailnet/main.tf", "terraform {}\n")
+	write(t, root, "tofu/tailnet/untracked.tf", "extra\r\n")
+	write(t, root, "tofu/tailnet/.hidden.tf", "hidden\n")
+	write(t, root, "tofu/tailnet/nested/no.tf", "nested\n")
+	write(t, root, "tofu/tailnet/no.tfvars", "vars\n")
+	got, err := (Files{Root: root}).Load(rules.Input{Path: "tofu/tailnet/*.tf", Format: rules.Text, FilesystemGlob: true})
+	want := map[string]any{"tofu/tailnet/main.tf": "terraform {}\n", "tofu/tailnet/untracked.tf": "extra\n", "tofu/tailnet/.hidden.tf": "hidden\n"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("glob = %#v, %v; want %#v", got, err, want)
+	}
+}
+
+func TestFilesystemGlobUsesPlatformCase(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "tofu/tailnet/main.tf", "terraform {}\n")
+	write(t, root, "tofu/tailnet/extra.TF", "gcp_kms\n")
+	for _, caseSensitive := range []bool{true, false} {
+		t.Run(fmt.Sprintf("caseSensitive=%t", caseSensitive), func(t *testing.T) {
+			got, err := (Files{Root: root}).filesystemGlobCase(rules.Input{Path: "tofu/tailnet/*.tf", Format: rules.Text}, caseSensitive)
+			want := map[string]any{"tofu/tailnet/main.tf": "terraform {}\n"}
+			if !caseSensitive {
+				want["tofu/tailnet/extra.TF"] = "gcp_kms\n"
+			}
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("glob = %#v, %v; want %#v", got, err, want)
+			}
+		})
+	}
+}

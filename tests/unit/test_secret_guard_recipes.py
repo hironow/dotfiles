@@ -233,6 +233,14 @@ def test_tailnet_state_is_encrypted_with_the_passphrase(tmp_path: Path) -> None:
         )
 
 
+def test_tailnet_missing_passphrase_stops_before_opentofu(tmp_path: Path) -> None:
+    fakes = Fakes(tmp_path, "mise")
+    done = fakes.just("tailnet-init")
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "tailnet.passphrase" in done.stderr
+    assert fakes.calls() == [], "OpenTofu must not run without the passphrase file"
+
+
 def _available(fakes: Fakes, recipe: str) -> bool:
     return fakes.just("--show", recipe).returncode == 0
 

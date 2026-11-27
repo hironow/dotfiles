@@ -1,7 +1,7 @@
 name: IaC Tests (OpenTofu)
 
-# One IaC gate on every push and PR: `tofu test` for tofu/tailnet — an offline
-# suite on mock providers, with no backend, no tfvars and no credentials.
+# One IaC gate on every push and ready PR: mock-provider tests and real
+# tailnet plans against loopback services with synthetic credentials.
 #
 # The retired Coder stack's two gates (a `tofu test` for its workspace template
 # and a `tofu validate` for tofu/exe) went with the stack itself, and the exe
@@ -56,6 +56,8 @@ jobs:
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.13.9
+          # Scenarios call this binary with a minimal environment.
+          tofu_wrapper: false
 
       # The tailscale provider is published only as a github.com release
       # asset, and that front door has returned 504s for hours. A provider
@@ -87,3 +89,9 @@ jobs:
         run: |
           tofu init -backend=false -input=false
           tofu test
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Tailnet state guard scenarios
+        env:
+          DOTFILES_REQUIRE_TAILNET_SCENARIOS: '1'
+        run: uv run --frozen --group dev pytest -q -ra -p no:cacheprovider tests/iac/test_tailnet.py

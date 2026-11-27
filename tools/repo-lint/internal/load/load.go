@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -35,10 +36,60 @@ type Files struct {
 // the pathspec matches to its decoded value: `git ls-files` lists the files,
 // so nothing untracked (a scratch copy, a dependency folder) is read.
 func (f Files) Load(in rules.Input) (any, error) {
+	if in.FilesystemGlob {
+		return f.filesystemGlob(in)
+	}
 	if in.Glob {
 		return f.glob(in)
 	}
 	return f.one(in)
+}
+
+func (f Files) filesystemGlob(in rules.Input) (any, error) {
+	return f.filesystemGlobCase(in, runtime.GOOS != "windows")
+}
+
+func (f Files) filesystemGlobCase(in rules.Input, caseSensitive bool) (any, error) {
+	dir, pattern := filepath.Split(filepath.FromSlash(in.Path))
+	if strings.ContainsAny(dir, "*?[") {
+		return nil, fmt.Errorf("%s: filesystem glob must name one directory", in.Path)
+	}
+	names, err := filepath.Glob(filepath.Join(f.Root, dir, pattern))
+	if err != nil {
+		return nil, fmt.Errorf("glob %s: %w", in.Path, err)
+	}
+	if !caseSensitive {
+		entries, err := os.ReadDir(filepath.Join(f.Root, dir))
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("glob %s: %w", in.Path, err)
+		}
+		names = nil
+		for _, entry := range entries {
+			// pathlib uses case-insensitive matching on Windows. These
+			// globs have a literal ASCII extension, such as *.tf.
+			matched, err := filepath.Match(strings.ToLower(pattern), strings.ToLower(entry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("glob %s: %w", in.Path, err)
+			}
+			if matched {
+				names = append(names, filepath.Join(f.Root, dir, entry.Name()))
+			}
+		}
+	}
+	files := map[string]any{}
+	for _, name := range names {
+		rel, err := filepath.Rel(f.Root, name)
+		if err != nil {
+			return nil, fmt.Errorf("glob %s: %w", in.Path, err)
+		}
+		rel = filepath.ToSlash(rel)
+		value, err := f.one(rules.Input{Path: rel, Format: in.Format})
+		if err != nil {
+			return nil, err
+		}
+		files[rel] = value
+	}
+	return files, nil
 }
 
 func (f Files) glob(in rules.Input) (any, error) {

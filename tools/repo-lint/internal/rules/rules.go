@@ -31,6 +31,9 @@ type Input struct {
 	Path   string
 	Format Format
 	Glob   bool
+	// FilesystemGlob includes untracked files, like pathlib.Path.glob.
+	// Only one directory is searched; ** is not supported.
+	FilesystemGlob bool
 	// Optional text inputs skip missing paths and non-files, like Path.is_file.
 	Optional bool
 }
@@ -136,6 +139,7 @@ func All() []Rule {
 		psProfileFacts(),
 		zshStartupFacts(),
 		tmuxKeyFacts(),
+		tailnetStatePosture(),
 		emulatorHealthContextFacts(),
 		retiredStackOperationalFacts(),
 		rttmToolingFacts(),
