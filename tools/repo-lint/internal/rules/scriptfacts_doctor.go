@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // installSh is the Unix installer; macBrewfile is the Mac's package manifest.
@@ -106,12 +108,43 @@ func onWindowsBranch(checks ...factCheck) factCheck {
 	}
 }
 
-// pySlice is text[start:] with Python's reading of a negative start.
-func pySlice(text string, start int) string {
-	if start < 0 {
-		start = max(len(text)+start, 0)
+// pySliceFrom is the test's text[i+offset:], where i is the character index
+// of the byte offset at (Python's find, -1 when missing): Python counts
+// characters, and reads a negative start from the end.
+func pySliceFrom(text string, at, offset int) string {
+	runes := []rune(text)
+	i := -1
+	if at >= 0 {
+		i = utf8.RuneCountInString(text[:at])
 	}
-	return text[min(start, len(text)):]
+	start := i + offset
+	if start < 0 {
+		start = max(len(runes)+start, 0)
+	}
+	return string(runes[min(start, len(runes)):])
+}
+
+// pyHasWord is re.search(rf"\b{word}\b", text) with Python's Unicode word
+// characters (Go's \b knows only ASCII ones).
+func pyHasWord(text, word string) bool {
+	for from := 0; ; {
+		i := strings.Index(text[from:], word)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(word)
+		before, _ := utf8.DecodeLastRuneInString(text[:start])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		if (start == 0 || !pyWordRune(before)) && (end == len(text) || !pyWordRune(after)) {
+			return true
+		}
+		from = start + 1
+	}
+}
+
+// pyWordRune is a character of Python's \w for str patterns.
+func pyWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r)
 }
 
 // wingetSectionNamesEveryCli: from the first "WinGet" on (the test's
@@ -119,10 +152,10 @@ func pySlice(text string, start int) string {
 // mise-managed AI CLI is named as a word.
 func wingetSectionNamesEveryCli(files map[string]string) []string {
 	text := files[doctorScript]
-	section := pySlice(text, strings.Index(text, "WinGet"))
+	section := pySliceFrom(text, strings.Index(text, "WinGet"), 0)
 	var out []string
 	for _, cli := range []string{"codex", "claude", "copilot", "pi"} {
-		if !regexp.MustCompile(`\b` + cli + `\b`).MatchString(section) {
+		if !pyHasWord(section, cli) {
 			out = append(out, cli+" is mise-managed but not checked for a WinGet copy")
 		}
 	}
@@ -135,14 +168,15 @@ var (
 )
 
 // rogueScanErrorWarns: a failed detector run warns, never reads as clean.
-// The window is the test's text[text.index("npm-rogue") - 400:].
+// The window is the test's text[text.index("npm-rogue") - 400:], in
+// characters.
 func rogueScanErrorWarns(files map[string]string) []string {
 	text := files[doctorScript]
 	at := strings.Index(text, "npm-rogue")
 	if at < 0 {
 		return []string{doctorScript + ` must hold "npm-rogue"`}
 	}
-	if !rogueWarnAfterRc.MatchString(pySlice(text, at-400)) && !rogueRcBranch.MatchString(text) {
+	if !rogueWarnAfterRc.MatchString(pySliceFrom(text, at, -400)) && !rogueRcBranch.MatchString(text) {
 		return []string{"doctor must branch on the detector's non-zero exit and warn"}
 	}
 	return nil

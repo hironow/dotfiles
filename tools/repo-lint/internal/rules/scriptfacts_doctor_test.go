@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const doctorFixture2 = `_brew_docker='docker docker-buildx docker-compose docker-credential-helper docker-desktop orbstack'
 if has podman-compose; then log_ok 'podman-compose'; else log_err 'podman-compose' 'install it'; fi
@@ -85,4 +88,20 @@ func TestBrewfileDockerFree(t *testing.T) {
 		{"the Mac installs Docker Desktop", edit(macBrewfile, "cask \"ghostty\"\n", "cask \"ghostty\"\ncask \"docker-desktop\"\n"), "test_mac_package_manifest_provisions_podman_without_docker_providers"},
 		{"the Mac has no podman", edit(macBrewfile, "brew \"podman\"\n", ""), "test_mac_package_manifest_provisions_podman_without_docker_providers"},
 	})
+}
+
+func TestDoctorFactsCountCharactersAndUnicodeWords(t *testing.T) {
+	// A letter after "codex" is part of the word in Python, so codex is no
+	// longer named.
+	unicodeWord := strings.Replace(doctorFixture2, "for cli in codex claude", "for cli in codexé claude", 1)
+	if got := wingetSectionNamesEveryCli(map[string]string{doctorScript: unicodeWord}); len(got) != 1 {
+		t.Fatalf("codexé must not name codex: %v", got)
+	}
+	// 400 characters before "npm-rogue", not 400 bytes: Japanese text between
+	// the rc check and the label keeps the check inside the window.
+	wide := strings.Repeat("x", 500) + "\nif test \"$rc\" -ne 0; then\n# " + strings.Repeat("日", 150) +
+		"\n  log_warn 'npm-rogue' 'scan failed'\nfi\n"
+	if got := rogueScanErrorWarns(map[string]string{doctorScript: wide}); len(got) != 0 {
+		t.Fatalf("the window counts characters: %v", got)
+	}
 }
