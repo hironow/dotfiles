@@ -36,6 +36,13 @@ GC, WD = "install_runner_gc_win.ps1", "runner_watchdog_win.ps1"
 WIN = [
     ("autostart overlaps", inst.check_gc_install_registers_one_autostart, GC,
      "-MultipleInstances IgnoreNew", "-MultipleInstances Parallel"),
+    (
+        "the keepalive task times out",
+        inst.check_gc_install_registers_one_autostart,
+        GC,
+        "-ExecutionTimeLimit (New-TimeSpan -Seconds 0)",
+        "-ExecutionTimeLimit (New-TimeSpan -Seconds 60)",
+    ),
     ("installer stops the keepalive", inst.check_gc_install_registers_one_autostart, GC,
      "Start-ScheduledTask -TaskName $AutostartTaskName", "Stop-ScheduledTask -TaskName $AutostartTaskName -ErrorAction SilentlyContinue\nStart-ScheduledTask -TaskName $AutostartTaskName"),
     ("a denied unregister goes on to register", inst.check_gc_install_keeps_what_it_cannot_replace, GC,
