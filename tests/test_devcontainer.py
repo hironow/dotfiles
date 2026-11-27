@@ -57,7 +57,9 @@ def health_context_probe() -> Callable[[Path], set[str]]:
             run("create", "--name", container, tag, "/unused")
             created = True
             archive = run("export", container).stdout
-            with tarfile.open(fileobj=io.BytesIO(archive)) as exported:
+            with tarfile.open(
+                fileobj=io.BytesIO(archive), encoding="utf-8"
+            ) as exported:
                 files = {
                     item.name.removeprefix("./") for item in exported if item.isfile()
                 }
