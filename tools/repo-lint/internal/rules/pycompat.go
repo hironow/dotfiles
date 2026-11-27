@@ -249,3 +249,43 @@ func pyNoMatch(path string, patterns ...string) factCheck {
 		return out
 	}
 }
+
+// pyLower is str.lower(): Go's strings.ToLower plus Python's full mappings,
+// the dotted capital I (U+0130 -> "i̇") and the final sigma (a capital
+// sigma after a cased letter and not before one becomes U+03C2).
+func pyLower(s string) string {
+	runes := []rune(s)
+	var b strings.Builder
+	for i, r := range runes {
+		switch {
+		case r == 'İ':
+			b.WriteString("i̇")
+		case r == 'Σ' && pyFinalSigma(runes, i):
+			b.WriteRune('ς')
+		default:
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
+}
+
+// pyFinalSigma is Unicode's Final_Sigma context as Python reads it: a cased
+// letter before i and none after, skipping case-ignorable characters.
+func pyFinalSigma(runes []rune, i int) bool {
+	cased := func(r rune) bool { return unicode.IsUpper(r) || unicode.IsLower(r) || unicode.IsTitle(r) }
+	ignorable := func(r rune) bool {
+		return unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf, unicode.Lm, unicode.Sk) || strings.ContainsRune("'.:^`·‘’․‧", r)
+	}
+	j := i - 1
+	for j >= 0 && ignorable(runes[j]) {
+		j--
+	}
+	if j < 0 || !cased(runes[j]) {
+		return false
+	}
+	k := i + 1
+	for k < len(runes) && ignorable(runes[k]) {
+		k++
+	}
+	return k == len(runes) || !cased(runes[k])
+}

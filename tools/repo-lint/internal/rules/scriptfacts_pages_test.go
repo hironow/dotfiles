@@ -57,3 +57,32 @@ func TestReadPageReadsLikeHTMLParser(t *testing.T) {
 		t.Errorf("scripts = %+v", p.scripts)
 	}
 }
+
+// Readings Python 3.14's html.parser gives for these inputs (checked against
+// the test's parser on 15,000 generated inputs while porting).
+func TestReadPageFollowsPython314(t *testing.T) {
+	// --!> closes a comment, so the script after it is a script.
+	p := readPage(`<!--x--!><script>alert(1)</script>`)
+	if len(p.scripts) != 1 || len(p.scripts[0].attrs) != 0 {
+		t.Errorf("after --!>: scripts = %+v", p.scripts)
+	}
+	// textarea and title hold text, not tags.
+	p = readPage(`<textarea><script src="site/copy.js"></textarea><script>alert(1)</script>`)
+	if len(p.scripts) != 1 || p.scripts[0].attrs["src"] != "" {
+		t.Errorf("after textarea: scripts = %+v", p.scripts)
+	}
+	p = readPage(`<title id=t>&lt;b&gt;</title><xmp id=x><b>raw</b></xmp>`)
+	if p.text["t"] != "<b>" || p.text["x"] != "<b>raw</b>" {
+		t.Errorf("text = %q", p.text)
+	}
+	// A closing script tag needs a following space, slash or '>'.
+	p = readPage(`<script>var x = "</scriptx>"; </SCRIPT ><p id=s>t</p>`)
+	if p.text["s"] != "t" {
+		t.Errorf(`text["s"] = %q`, p.text["s"])
+	}
+	// Python lowercases the dotted capital I to i + U+0307.
+	p = readPage("<p İD=x id=y>z</p>")
+	if p.text["y"] != "z" {
+		t.Errorf("text = %q", p.text)
+	}
+}
