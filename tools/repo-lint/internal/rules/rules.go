@@ -31,6 +31,9 @@ type Input struct {
 	Path   string
 	Format Format
 	Glob   bool
+	// FilesystemGlob includes untracked files, like pathlib.Path.glob.
+	// Only one directory is searched; ** is not supported.
+	FilesystemGlob bool
 }
 
 // Inputs maps each input path to its decoded value.
@@ -130,6 +133,7 @@ func All() []Rule {
 		pagesSiteFacts(),
 		deployWiringFacts(),
 		effectiveSettingsStdlib(),
+		tailnetStatePosture(),
 	}
 }
 

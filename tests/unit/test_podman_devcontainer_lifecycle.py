@@ -239,6 +239,60 @@ def _diagnostic_chain(error):
     return "\n".join(messages)
 
 
+@pytest.mark.parametrize("build_status", [0, 125])
+def test_tailnet_layer_reuses_image_and_keeps_owned_cleanup(
+    runtime, tmp_path, monkeypatch, build_status
+):
+    module, _, state = runtime
+    for relative in ("tofu/tailnet", "config/mise"):
+        target = module.ROOT / relative
+        target.mkdir(parents=True)
+        for source in (ROOT / relative).iterdir():
+            if source.is_file():
+                shutil.copyfile(source, target / source.name)
+    manifest = tmp_path / "layer.json"
+    monkeypatch.setenv("DOTFILES_DEVCONTAINER_MANIFEST", str(manifest))
+    original = module.subprocess.run
+    contexts = []
+
+    def process(cmd, **kwargs):
+        if cmd[:2] != ["podman", "build"]:
+            return original(cmd, **kwargs)
+        context = Path(cmd[-1])
+        contexts.append(context)
+        prepared = json.loads(manifest.read_text(encoding="utf-8"))["runs"][-1]
+        assert prepared["build_state"] == "running"
+        assert not prepared["complete"]
+        state["tag"] = cmd[cmd.index("--tag") + 1]
+        state["run_id"] = prepared["run_id"]
+        state["tag_created"] = True
+        # The generated build context is an output of the layer builder.
+        containerfile = (context / "Containerfile").read_text(encoding="utf-8")
+        assert containerfile.startswith(f"FROM {IMAGE_ID}\n")
+        assert "--pull=never" in cmd
+        return subprocess.CompletedProcess(
+            cmd, build_status, "layer output", "layer error"
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", process)
+    if build_status:
+        with (
+            pytest.raises(RuntimeError) as error,
+            module.tailnet_image_session(IMAGE_ID),
+        ):
+            pytest.fail("failed layer build must not yield")
+        assert "layer error" in _diagnostic_chain(error.value)
+    else:
+        with module.tailnet_image_session(IMAGE_ID) as image:
+            assert image == IMAGE_ID
+    saved = json.loads(manifest.read_text(encoding="utf-8"))["runs"][-1]
+    assert saved["complete"] is (build_status == 0)
+    assert saved["build_state"] == ("interrupted" if build_status else "succeeded")
+    assert contexts[0].exists() is bool(build_status)
+    assert state["tag_created"] is bool(build_status)
+    assert not any(cmd[0] == "devcontainer" for cmd, _ in state["calls"])
+
+
 @pytest.mark.parametrize("returncode", [1, 125, -15, 130, 137, 143])
 @pytest.mark.parametrize("tag_created", [False, True])
 def test_any_nonzero_build_keeps_durable_unknown_context_and_original_diagnostics(
