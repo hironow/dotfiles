@@ -24,11 +24,6 @@ PAGE = ROOT / "index.html"
 SCRIPT = ROOT / "site" / "copy.js"
 VENDOR = ROOT / "site" / "vendor" / "ui-sdk"
 
-INSTALL_BASH = 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"'
-INSTALL_PWSH = (
-    "irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex"
-)
-
 
 class _Page(HTMLParser):
     """Text by element id, every src/href, and every <script> tag."""
@@ -73,13 +68,6 @@ def _version() -> str:
     return folder.name
 
 
-def test_the_install_commands_are_the_ones_people_should_run() -> None:
-    page = _page()
-    assert page.text["cmd-bash"].strip() == INSTALL_BASH
-    assert page.text["cmd-pwsh"].strip() == INSTALL_PWSH
-    assert (ROOT / "install.sh").is_file() and (ROOT / "bootstrap.ps1").is_file()
-
-
 def test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path() -> None:
     version = _version()
     page_refs = [ref for ref in _page().links if "ui-sdk" in ref]
@@ -97,21 +85,6 @@ def test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path() -> None:
         assert (base / ref).resolve().is_file(), ref
     for text in (PAGE.read_text(encoding="utf-8"), SCRIPT.read_text(encoding="utf-8")):
         assert "ui-sdk.dev" not in text
-
-
-def test_the_page_keeps_its_script_in_site_copy_js() -> None:
-    page = _page()
-    assert all(script.get("src") for script in page.scripts), "no inline <script>"
-    assert {"type": "module", "src": "site/copy.js"} in page.scripts
-    script = SCRIPT.read_text(encoding="utf-8")
-    assert "execCommand" not in script and "execCommand" not in PAGE.read_text(
-        encoding="utf-8"
-    )
-    assert (
-        "waitUntil(" in script
-        and "announce(" in script
-        and "prepareAnnouncements(" in script
-    )
 
 
 def test_copy_buttons_are_ui_buttons_that_hide_until_defined() -> None:

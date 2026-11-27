@@ -50,12 +50,6 @@ def test_the_steps_are_the_agent_scripts_and_their_recipes() -> None:
         assert re.search(rf"^{re.escape(recipe)}\b.*:", JUSTFILE, re.MULTILINE), recipe
 
 
-def test_unix_deploy_runs_the_steps_after_mise_installs() -> None:
-    unix = DEPLOY.split('echo "==> Start to deploy dotfiles to home directory."', 1)[1]
-    assert "mise -C / install" in unix
-    assert unix.index("mise -C / install") < unix.index("    run_agent_steps\n")
-
-
 def test_windows_deploy_runs_the_steps_after_mise_installs() -> None:
     assert "MISE_NODE_COREPACK=0 mise -C / install" in WINDOWS
     call = "(export MISE_NODE_COREPACK=0 && run_agent_steps)"

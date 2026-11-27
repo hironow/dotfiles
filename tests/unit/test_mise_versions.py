@@ -352,7 +352,7 @@ def test_the_default_root_follows_the_source_file(tool: Path, tmp_path: Path) ->
 
 
 def test_the_generated_heredoc_parses_with_tomllib(tool: Path, tmp_path: Path) -> None:
-    """tests/unit/test_sandbox_check_tools.py parses this block the same way."""
+    """The image reads this block as TOML; it must parse with tomllib."""
     match = _HEREDOC.search(FEATURE.read_text(encoding="utf-8"))
     assert match, "install.sh must still bake /etc/mise/config.toml through a heredoc"
     baked = tomllib.loads(match.group(1))

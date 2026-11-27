@@ -58,6 +58,8 @@ func devcontainerFeatureFacts() Rule {
 			fact("test_feature_install_does_not_use_home_share_mise", featureCodeKeepsOffHomeShare),
 			fact("test_feature_install_writes_profile_d_with_data_dir", featureProfileExportsDataDir),
 			fact("test_post_create_does_not_force_mise_offline_zero", pyNoMatch(postCreate, `\bMISE_OFFLINE=0\b`)),
+			// tests/unit/test_sandbox_check_tools.py
+			fact("test_quints_evaluator_is_built_from_a_pinned_commit", quintEvaluatorPinned),
 			// tests/unit/test_podman_devcontainer_config.py
 			fact("test_feature_installs_native_podman_without_changing_generated_versions",
 				has(featureInstall, "podman uidmap", "podman --version", "Podman >=5")),
@@ -469,4 +471,35 @@ func hardenEnvTurnsTelemetryOff(files map[string]string) []string {
 		}
 	}
 	return out
+}
+
+var (
+	quintRev     = regexp.MustCompile(`\A[0-9a-f]{40}\z`)
+	quintVersion = pyCompile(`\Av\d+\.\d+\.\d+\z`)
+)
+
+// featureAssignment is the test's assignment(): the first `NAME="..."` at
+// a line start.
+func featureAssignment(text, name string) (string, bool) {
+	m := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `="([^"]*)"`).FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// quintEvaluatorPinned: quint's evaluator is built from a pinned commit of a
+// released version, with its lockfile, into the path quint checks first.
+func quintEvaluatorPinned(files map[string]string) []string {
+	text := files[featureInstall]
+	var out []string
+	if rev, ok := featureAssignment(text, "QUINT_EVALUATOR_REV"); !ok || !quintRev.MatchString(rev) {
+		out = append(out, "QUINT_EVALUATOR_REV must be a full commit hash")
+	}
+	if v, ok := featureAssignment(text, "QUINT_EVALUATOR_VERSION"); !ok || !quintVersion.Search(v) {
+		out = append(out, "QUINT_EVALUATOR_VERSION must be a release tag vN.N.N")
+	}
+	return append(out, has(featureInstall,
+		"cargo build --release --locked",
+		`"${QUINT_HOME}/rust-evaluator-${QUINT_EVALUATOR_VERSION}/quint_evaluator"`)(files)...)
 }

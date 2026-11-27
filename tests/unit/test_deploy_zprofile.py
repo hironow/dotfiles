@@ -94,8 +94,3 @@ def test_a_login_shell_gets_local_bin(tmp_path: Path) -> None:
 def test_no_local_bin_leaves_path_alone(tmp_path: Path) -> None:
     _ensure(tmp_path)
     assert _login_path(tmp_path, "/usr/bin:/bin") == "/usr/bin:/bin"
-
-
-def test_unix_deploy_adds_the_block() -> None:
-    unix = DEPLOY.split('echo "==> Start to deploy dotfiles to home directory."', 1)[1]
-    assert "ensure_zprofile_login_path" in unix

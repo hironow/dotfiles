@@ -129,17 +129,6 @@ def test_composed_env_never_sets_the_policy_variable(tmp_path: Path) -> None:
     )
 
 
-def test_the_wrapper_still_reads_that_variable() -> None:
-    """If the seam is ever renamed or dropped, this file must be revisited.
-
-    Without this, renaming the constant would leave two green tests guarding a
-    variable nothing reads any more.
-    """
-    source = (ROOT / "ROOT_AGENTS_hooks_rtk-hook-claude.py").read_text(encoding="utf-8")
-    assert POLICY_ENV_VAR in source
-    assert 'PERMISSION_DECISION_POLICY == "strip"' in source
-
-
 # --- Mutation proofs: both detectors must actually fire --------------------
 
 

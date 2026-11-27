@@ -2,7 +2,9 @@ package rules
 
 import (
 	"fmt"
+	"html"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -248,4 +250,129 @@ func pyNoMatch(path string, patterns ...string) factCheck {
 		}
 		return out
 	}
+}
+
+// pyLower is str.lower(): Go's strings.ToLower plus Python's full mappings,
+// the dotted capital I (U+0130 -> "i̇") and the final sigma (a capital
+// sigma after a cased letter and not before one becomes U+03C2).
+func pyLower(s string) string {
+	runes := []rune(s)
+	var b strings.Builder
+	for i, r := range runes {
+		switch {
+		case r == 'İ':
+			b.WriteString("i̇")
+		case r == 'Σ' && pyFinalSigma(runes, i):
+			b.WriteRune('ς')
+		default:
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
+}
+
+// pyFinalSigma is Unicode's Final_Sigma context as Python reads it: a cased
+// letter before i and none after, skipping case-ignorable characters.
+func pyFinalSigma(runes []rune, i int) bool {
+	cased := func(r rune) bool { return unicode.IsUpper(r) || unicode.IsLower(r) || unicode.IsTitle(r) }
+	ignorable := func(r rune) bool {
+		return unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf, unicode.Lm, unicode.Sk) || strings.ContainsRune("'.:^`·‘’․‧", r)
+	}
+	j := i - 1
+	for j >= 0 && ignorable(runes[j]) {
+		j--
+	}
+	if j < 0 || !cased(runes[j]) {
+		return false
+	}
+	k := i + 1
+	for k < len(runes) && ignorable(runes[k]) {
+		k++
+	}
+	return k == len(runes) || !cased(runes[k])
+}
+
+// pyInvalidCharrefs is html._invalid_charrefs: numeric references the HTML
+// standard maps to another character (Windows-1252 for 0x80-0x9F).
+var pyInvalidCharrefs = map[int]rune{
+	0x00: 0xfffd,
+	0x0D: 0xd,
+	0x80: 0x20ac,
+	0x81: 0x81,
+	0x82: 0x201a,
+	0x83: 0x192,
+	0x84: 0x201e,
+	0x85: 0x2026,
+	0x86: 0x2020,
+	0x87: 0x2021,
+	0x88: 0x2c6,
+	0x89: 0x2030,
+	0x8A: 0x160,
+	0x8B: 0x2039,
+	0x8C: 0x152,
+	0x8D: 0x8d,
+	0x8E: 0x17d,
+	0x8F: 0x8f,
+	0x90: 0x90,
+	0x91: 0x2018,
+	0x92: 0x2019,
+	0x93: 0x201c,
+	0x94: 0x201d,
+	0x95: 0x2022,
+	0x96: 0x2013,
+	0x97: 0x2014,
+	0x98: 0x2dc,
+	0x99: 0x2122,
+	0x9A: 0x161,
+	0x9B: 0x203a,
+	0x9C: 0x153,
+	0x9D: 0x9d,
+	0x9E: 0x17e,
+	0x9F: 0x178,
+}
+
+// pyInvalidCodepoint is html._invalid_codepoints: a numeric reference to one
+// of these unescapes to nothing.
+func pyInvalidCodepoint(n int) bool {
+	switch {
+	case 0x1 <= n && n <= 0x8, n == 0xB, 0xE <= n && n <= 0x1F, 0x7F <= n && n <= 0x9F, 0xFDD0 <= n && n <= 0xFDEF:
+		return true
+	}
+	return n&0xFFFE == 0xFFFE && n <= 0x10FFFF
+}
+
+var pyCharref = regexp.MustCompile(`&(#[0-9]+;?|#[xX][0-9a-fA-F]+;?|[^\t\n\f <&#;]{1,32};?)`)
+
+// pyUnescape is html.unescape: numeric references as Python maps them
+// (invalid code points removed, surrogates and out-of-range ones as U+FFFD),
+// named ones by the standard's longest-match rule.
+func pyUnescape(s string) string {
+	if !strings.Contains(s, "&") {
+		return s
+	}
+	return pyCharref.ReplaceAllStringFunc(s, func(ref string) string {
+		body := ref[1:]
+		if !strings.HasPrefix(body, "#") {
+			return html.UnescapeString(ref)
+		}
+		digits, base := strings.TrimSuffix(body[1:], ";"), 10
+		if digits[0] == 'x' || digits[0] == 'X' {
+			digits, base = digits[1:], 16
+		}
+		n, err := strconv.ParseInt(digits, base, 64)
+		if err != nil || n > 0x10FFFF {
+			return "\uFFFD"
+		}
+		num := int(n)
+		if r, ok := pyInvalidCharrefs[num]; ok {
+			return string(r)
+		}
+		if 0xD800 <= num && num <= 0xDFFF {
+			return "\uFFFD"
+		}
+		if pyInvalidCodepoint(num) {
+			return ""
+		}
+		return html.UnescapeString("&#x" + strconv.FormatInt(n, 16) + ";") // a plain code point
+	})
 }

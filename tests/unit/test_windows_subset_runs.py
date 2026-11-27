@@ -310,6 +310,27 @@ def test_a_stale_mise_block_is_rewritten_in_place(mingw: Host) -> None:
     assert text.count(after) == 1 and text.count(BEGIN["mise"]) == 1
 
 
+def test_an_old_jev_block_is_rewritten_with_the_new_launchers(mingw: Host) -> None:
+    # The Jev block is rewritten on every deploy, so a rename reaches profiles
+    # that already carry it (ADR-0093 D4: a migration of the user's profile).
+    old = (
+        f"{BEGIN['jev']}\n"
+        "function jev-claude { & mise exec -- python jev_launch.py claude @args }\n"
+        "function jev-pi { & mise exec -- python jev_launch.py pi @args }\n"
+        f"{END}\n"
+    )
+    mingw.seed(
+        str(mingw.profile.relative_to(mingw.home)),
+        OPERATOR_LINE + "\n\n" + old,
+    )
+    _ok(mingw.run("deploy.sh"))
+    text = mingw.profile.read_text(encoding="utf-8")
+    jev = _block(text, BEGIN["jev"])
+    assert "function j-cc" in jev and "function j-pi" in jev, jev
+    assert "jev-claude" not in text and "jev-pi" not in text, text
+    assert text.count(BEGIN["jev"]) == 1 and text.count(OPERATOR_LINE) == 1
+
+
 def test_windows_deploy_installs_the_global_mise_tools(mingw: Host) -> None:
     # ADR 0033 with ADR 0031's corepack guard: node must not EPERM.
     _stub(

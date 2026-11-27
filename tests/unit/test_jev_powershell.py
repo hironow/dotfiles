@@ -15,20 +15,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
 
 
-def test_powershell_launchers_are_in_native_deploy() -> None:
-    windows_branch = DEPLOY.split("    exit 0", 1)[0]
-    assert (
-        'ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"'
-        in windows_branch
-    )
-    # the Pi extensions come with the agent steps (test_deploy_pi_extensions)
-    assert "(export MISE_NODE_COREPACK=0 && run_agent_steps)" in windows_branch
-    assert "function j-cc" in windows_branch
-    assert "function j-pi" in windows_branch
-    assert "function jev-claude" not in windows_branch
-    assert "function jev-pi" not in windows_branch
-
-
 def test_powershell_function_syntax() -> None:
     pwsh = resolve_pwsh(os.environ)
     if not pwsh:
@@ -162,12 +148,6 @@ def test_refreshing_does_not_pile_up_blank_lines() -> None:
         profile = _refresh(profile) + block
     assert profile.count("function j-cc") == 1
     assert "\n\n\n" not in profile
-
-
-def test_the_native_deploy_refreshes_the_block_instead_of_skipping_it() -> None:
-    windows_branch = DEPLOY.split("    exit 0", 1)[0]
-    # ps_profile_drop_block (scripts/ps_profile_lib.sh) runs drop_managed_block.awk.
-    assert "ps_profile_drop_block \"$ps_profile\" 'Jev launchers'" in windows_branch
 
 
 @pytest.mark.parametrize("fail_at", ["just", "uvx", ""])

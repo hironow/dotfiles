@@ -68,10 +68,6 @@ CONFIG_BASIC = 'target_files:\n  - "src/algo.py"\neval_command: "just test"\n'
 # --- drift gate -------------------------------------------------------------
 
 
-def test_canonical_exists() -> None:
-    assert CANONICAL.is_file(), "canonical plugins/_shared/check-scope.sh is missing"
-
-
 @pytest.mark.parametrize("plugin", LOOP_PLUGINS)
 def test_plugin_copy_matches_canonical(plugin: str) -> None:
     copy = _plugin_copy(plugin)

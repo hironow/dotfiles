@@ -1,27 +1,45 @@
-"""Guard: every text file I/O in sync_agents.py pins an explicit encoding.
+"""sync-agents prints emoji; a native Windows console is cp932 by default.
 
-`Path.read_text()` / `Path.write_text()` default to the platform's preferred
-encoding. On Linux/macOS/CI that is UTF-8, so unencoded calls work there and
-the bug is invisible; on native Windows it is cp932, so reading a UTF-8
-instruction file with non-ASCII bytes raises
-`UnicodeDecodeError: 'cp932' codec can't decode ...` and `just sync-agents*`
-dies mid-run. This static (AST) guard catches a missing `encoding=` on ANY
-platform, so the regression cannot slip back through Linux CI.
+main() reconfigures stdout and stderr to UTF-8 before it prints anything, so
+`just sync-agents*` survives whatever the console's code page is. The run
+starts a child Python with cp932 streams (PYTHONIOENCODING) and no bytecode
+writes (-B), runs main() with `--help` (argparse prints the help and exits
+before any sync touches a home), then prints emoji to both streams.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-SYNC = Path(__file__).resolve().parents[2] / "scripts" / "sync_agents.py"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+EMOJI = "🔄 ⬅️ ⚠️"
+
+PROGRAM = f"""
+import sys
+sys.path.insert(0, {str(SCRIPTS)!r})
+import sync_agents
+sys.argv = ["sync_agents.py", "--help"]
+try:
+    sync_agents.main()
+except SystemExit as done:
+    assert done.code == 0, done.code
+print({EMOJI!r})
+print({EMOJI!r}, file=sys.stderr)
+"""
 
 
 def test_main_reconfigures_stdout_to_utf8() -> None:
-    """main() prints emoji; native Windows stdout is cp932 and raises
-    UnicodeEncodeError on them. main() must reconfigure stdout/stderr to
-    UTF-8 so `just sync-agents*` survives regardless of console code page."""
-    src = SYNC.read_text(encoding="utf-8")
-    assert 'reconfigure(encoding="utf-8")' in src, (
-        "main() must reconfigure stdout/stderr to UTF-8 (emoji prints break on "
-        "native Windows cp932 otherwise)"
+    env = {**os.environ, "PYTHONIOENCODING": "cp932"}
+    done = subprocess.run(
+        [sys.executable, "-B", "-c", PROGRAM],
+        capture_output=True,
+        env=env,
+        check=False,
+        timeout=60,
     )
+    assert done.returncode == 0, done.stderr.decode("utf-8", errors="replace")
+    assert done.stdout.decode("utf-8").rstrip().endswith(EMOJI)
+    assert done.stderr.decode("utf-8").rstrip().endswith(EMOJI)
