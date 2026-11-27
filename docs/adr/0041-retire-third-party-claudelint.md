@@ -1,7 +1,7 @@
 # 0041. Retire the third-party claudelint; official-validator-only gate
 
 **Date:** 2026-08-16
-**Status:** Accepted; the workflow half of its guard test moved to the Semgrep rule `workflow-no-third-party-claudelint` (#690) and the repo-lint rule `claude-lint-runs-pinned-official-validate` (#696), and the marketplace check it names (`test_marketplace_manifest.py`) to the repo-lint rule `claude-marketplace-matches-plugin-manifests` (#698), per [ADR-0093](0093-tests-check-code-not-file-text.md)
+**Status:** Accepted; the workflow half of its guard test moved to the Semgrep rule `workflow-no-third-party-claudelint` (#690) and the repo-lint rule `claude-lint-runs-pinned-official-validate` (#696), and the marketplace check it names (`test_marketplace_manifest.py`) to the repo-lint rule `claude-marketplace-matches-plugin-manifests` (#698), per [ADR-0093](0093-tests-check-code-not-file-text.md); the checker half of `tests/unit/test_no_third_party_claudelint.py` (no claude-code-lint or bunx in `scripts/check_effective_settings.py`) moved to the repo-lint rule `effective-settings-stdlib`
 
 ## Context
 

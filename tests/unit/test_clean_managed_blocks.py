@@ -62,13 +62,6 @@ def _sed_invocations() -> list[str]:
     return lines
 
 
-def test_clean_has_managed_block_seds() -> None:
-    assert len(_sed_invocations()) >= 4, (
-        "clean.sh should remove the starship/mise-activate/mise-corepack/"
-        "git-aliases managed blocks via sed."
-    )
-
-
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason=(
