@@ -79,7 +79,8 @@ function global:Unregister-ScheduledTask {
 function global:Register-ScheduledTask {
     [CmdletBinding()]
     param([string]$TaskName, $Action, $Trigger, $Settings, $Principal, [string]$Description)
-    Record ("Register $TaskName MultipleInstances=" + $(if ($Settings) { $Settings.MultipleInstances }))
+    $limit = if ($Settings) { $Settings.ExecutionTimeLimit }
+    Record ("Register $TaskName MultipleInstances=" + $(if ($Settings) { $Settings.MultipleInstances }) + " ExecutionTimeLimit=$limit")
     [pscustomobject]@{ TaskName = $TaskName }
 }
 function global:Start-ScheduledTask {
@@ -222,7 +223,12 @@ def check_gc_install_registers_one_autostart(tmp_path: Path, scripts: Path) -> N
         existing=[],
         stop_at_start=True,
     )
-    assert f"Register {AUTOSTART_TASK} MultipleInstances=IgnoreNew" in calls, calls
+    # IgnoreNew: overlapping firings collapse to one. No time limit (PT0S):
+    # a limit kills the keepalive with the task.
+    assert (
+        f"Register {AUTOSTART_TASK} MultipleInstances=IgnoreNew ExecutionTimeLimit=PT0S"
+        in calls
+    ), calls
     assert calls[-1] == "stopped before the .env step", calls
     _no_stops(calls)
 
@@ -272,7 +278,10 @@ def check_watchdog_install_registers_one_watchdog(
     calls = run_script(
         tmp_path, scripts, "runner_watchdog_win.ps1", "-Install", existing=[RUNNER_TASK]
     )
-    assert f"Register {WATCH_TASK} MultipleInstances=IgnoreNew" in calls, calls
+    assert any(
+        c.startswith(f"Register {WATCH_TASK} MultipleInstances=IgnoreNew ")
+        for c in calls
+    ), calls
     assert calls[-1] == "exit 0", calls
     _no_stops(calls)
 

@@ -107,9 +107,9 @@ def _run_payload(
     script: Path = AUTOSTART,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     stub = tmp_path / "wsl_stub.ps1"
-    stub.write_text(stub_text, encoding="ascii")
+    stub.write_text(stub_text, encoding="utf-8")
     log = tmp_path / "calls.log"
-    log.write_text("", encoding="ascii")
+    log.write_text("", encoding="utf-8")
     overrides = dict(os.environ)
     overrides.update(env)
     overrides["STUB_LOG"] = str(log)
@@ -133,7 +133,7 @@ def _run_payload(
         errors="replace",
         check=False,
     )
-    return proc, log.read_text(encoding="ascii")
+    return proc, log.read_text(encoding="utf-8")
 
 
 @pwshonly
@@ -194,7 +194,7 @@ def test_payload_keeps_its_lines_in_a_log_file(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     log = tmp_path / "wsl-autostart.log"
     assert log.is_file(), "Write-Log must append to %TEMP%\\wsl-autostart.log"
-    text = log.read_text(encoding="ascii")
+    text = log.read_text(encoding="utf-8")
     assert "already running" in text and "nothing to do" in text, text
 
 
