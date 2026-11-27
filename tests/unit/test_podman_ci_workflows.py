@@ -121,7 +121,8 @@ def _bootstrap_checksum_attempt(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, target)
     (repo / "install.sh").write_text(
-        '#!/bin/sh\n[ "$#" = 1 ] && [ "$1" = --podman-only ]\n',
+        '#!/bin/sh\nprintf \'install.sh %s\\n\' "$*" >> "${FIXTURE_INSTALL_LOG:-/dev/null}"\n'
+        '[ "$#" = 1 ] && [ "$1" = --podman-only ]\n',
         encoding="utf-8",
     )
     # The real guard has its own tests (test_allow_podman_stop_pasta.py);
@@ -808,6 +809,8 @@ def test_ci_bootstrap_runs_only_on_an_ephemeral_non_root_hosted_linux_runner(
     tmp_path, env, commands
 ):
     sudo_log = tmp_path / "sudo-log"
+    install_log = tmp_path / "install-log"
+    env = {"FIXTURE_INSTALL_LOG": bash_path(install_log), **env}
     recorded = {
         "sudo": f'printf "%s\\n" "$*" >> {shlex.quote(bash_path(sudo_log))}; exit 97',
         **commands,
@@ -817,6 +820,7 @@ def test_ci_bootstrap_runs_only_on_an_ephemeral_non_root_hosted_linux_runner(
     )
     assert result.returncode == 1, result.stdout + result.stderr
     assert not sudo_log.exists(), sudo_log.read_text(encoding="utf-8")
+    assert not install_log.exists(), install_log.read_text(encoding="utf-8")
     assert "ephemeral non-root GitHub Actions Linux runner" in result.stderr
     assert not (tmp_path / "curl-log").exists(), "it downloaded before refusing"
     assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr
