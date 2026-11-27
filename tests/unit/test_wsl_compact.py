@@ -247,18 +247,6 @@ def test_registry_vhdx_file_name_is_honoured(tmp_path: Path) -> None:
     assert "disk/disk.vhdx" in proc.stdout
 
 
-def test_no_get_acl_in_shell_scripts() -> None:
-    """Get-Acl fails to autoload when pwsh 7's PSModulePath leaks into
-    Windows PowerShell, which is exactly how Git Bash starts powershell.exe."""
-    offenders = [
-        f"{p.name}: {line.strip()}"
-        for p in SCRIPTS.glob("*.sh")
-        for line in p.read_text(encoding="utf-8").splitlines()
-        if "Get-Acl" in line and not line.lstrip().startswith("#")
-    ]
-    assert offenders == [], offenders
-
-
 def _untrusted(tmp_path: Path, stdin: str) -> list[str]:
     probe = tmp_path / "probe.sh"
     probe.write_text(

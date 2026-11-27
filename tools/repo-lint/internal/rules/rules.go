@@ -31,6 +31,8 @@ type Input struct {
 	Path   string
 	Format Format
 	Glob   bool
+	// Optional text inputs skip missing paths and non-files, like Path.is_file.
+	Optional bool
 }
 
 // Inputs maps each input path to its decoded value.
@@ -130,6 +132,9 @@ func All() []Rule {
 		pagesSiteFacts(),
 		deployWiringFacts(),
 		effectiveSettingsStdlib(),
+		emulatorHealthContextFacts(),
+		retiredStackOperationalFacts(),
+		rttmToolingFacts(),
 	}
 }
 

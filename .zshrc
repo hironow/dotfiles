@@ -284,7 +284,7 @@ if _cmd_exists mise; then
     # variable matches by prefix and takes no glob; overwrite it so a nested
     # shell does not grow it. [settings] ignored_config_paths does not help:
     # the config is found before file settings load (mise 2026.11.4).
-    _win_mise=(/mnt/c/Users/*/.config/mise(N/))
+    _win_mise=("${_WIN_HOME_ROOT:-/mnt/c/Users}"/*/.config/mise(N/))
     (( ${#_win_mise} )) && export MISE_IGNORED_CONFIG_PATHS="${(j.:.)_win_mise}"
     unset _win_mise
     eval "$(mise activate zsh)"

@@ -1,0 +1,22 @@
+# ruleid: shell-no-get-acl
+Get-Acl "$path"
+# ruleid: shell-no-get-acl
+echo 'Get-Acl'
+# ruleid: shell-no-get-acl
+echo ok # Get-Acl
+# ruleid: shell-no-get-acl
+ echo Get-Acl
+# ok: shell-no-get-acl
+# Get-Acl is retired
+# ok: shell-no-get-acl
+  # Get-Acl is retired
+# ok: shell-no-get-acl
+ # Get-Acl is retired
+# ok: shell-no-get-acl
+echo get-acl
+# ok: shell-no-get-acl
+# Get-Acl is retired
+# ok: shell-no-get-acl
+　# Get-Acl is retired
+# ruleid: shell-no-get-acl
+# comment echo Get-Acl
