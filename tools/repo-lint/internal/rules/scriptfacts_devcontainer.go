@@ -36,11 +36,11 @@ func devcontainerFeatureFacts() Rule {
 			fact("test_the_scan_finds_every_download", featureScanFindsEveryDownload),
 			fact("test_every_curl_retries_and_still_fails_on_http_errors", featureCurlsRetry),
 			fact("test_git_fetches_retry", featureGitFetchesRetry),
-			fact("test_apt_retries_too", matches(featureInstall, `Acquire::Retries "\d+"`)),
+			fact("test_apt_retries_too", pyMatches(featureInstall, `Acquire::Retries "\d+"`)),
 			// tests/unit/test_devcontainer_mise_tarball.py
 			fact("test_the_feature_installs_mise_without_its_apt_repository",
 				lacks(featureInstall, "mise.jdx.dev/deb", "mise-archive-keyring"),
-				noMatch(featureInstall, `apt-get install[^\n]*\bmise\b`)),
+				aptInstallsNoMise),
 			fact("test_the_feature_verifies_the_tarball_with_the_pinned_key",
 				has(featureInstall,
 					`MISE_BASE="https://github.com/jdx/mise/releases/download/v${MISE_VERSION}"`,
@@ -54,15 +54,44 @@ func devcontainerFeatureFacts() Rule {
 					`fetch_first "${MISE_TMP}/SHASUMS256.asc" "${MISE_BASE}/SHASUMS256.asc" "${MISE_HOST}/SHASUMS256.asc"`+"\n")),
 			fact("test_the_check_needs_no_more_than_the_tools_the_image_has", verifyNeedsOnlyImageTools),
 			// tests/unit/test_mise_data_dir_relocation.py
-			fact("test_feature_install_creates_opt_mise", matches(featureInstall, `install\s+-d[^\n]*/opt/mise`)),
+			fact("test_feature_install_creates_opt_mise", pyMatches(featureInstall, `install\s+-d[^\n]*/opt/mise`)),
 			fact("test_feature_install_does_not_use_home_share_mise", featureCodeKeepsOffHomeShare),
 			fact("test_feature_install_writes_profile_d_with_data_dir", featureProfileExportsDataDir),
-			fact("test_post_create_does_not_force_mise_offline_zero", noMatch(postCreate, `\bMISE_OFFLINE=0\b`)),
+			fact("test_post_create_does_not_force_mise_offline_zero", pyNoMatch(postCreate, `\bMISE_OFFLINE=0\b`)),
 			// tests/unit/test_podman_devcontainer_config.py
 			fact("test_feature_installs_native_podman_without_changing_generated_versions",
 				has(featureInstall, "podman uidmap", "podman --version", "Podman >=5")),
 		},
 	)
+}
+
+// aptInstallsNoMise is not re.search(r"apt-get install[^\n]*\bmise\b"):
+// no apt-get install line names mise as a word.
+func aptInstallsNoMise(files map[string]string) []string {
+	text := files[featureInstall]
+	for from := 0; ; {
+		i := strings.Index(text[from:], "apt-get install")
+		if i < 0 {
+			return nil
+		}
+		start := from + i + len("apt-get install")
+		end := len(text)
+		if j := strings.IndexByte(text[start:], '\n'); j >= 0 {
+			end = start + j
+		}
+		for k := start; ; {
+			m := strings.Index(text[k:end], "mise")
+			if m < 0 {
+				break
+			}
+			at := k + m
+			if pyBoundaryAt(text, at) && pyBoundaryAt(text, at+len("mise")) {
+				return []string{featureInstall + " installs mise with apt-get: " + text[from+i:end]}
+			}
+			k = at + 1
+		}
+		from += i + 1
+	}
 }
 
 // featureCommands is the test's commands(): logical lines (backslash
@@ -291,7 +320,7 @@ func featureCodeKeepsOffHomeShare(files map[string]string) []string {
 
 var (
 	featureProfileHeredoc = regexp.MustCompile(`(?s)cat > /etc/profile\.d/dotfiles-mise\.sh <<'PROFILE'(.*?)PROFILE`)
-	exportDataDir         = regexp.MustCompile(`export\s+MISE_DATA_DIR=/opt/mise`)
+	exportDataDir         = pyCompile(`export\s+MISE_DATA_DIR=/opt/mise`)
 )
 
 // featureProfileExportsDataDir: the profile.d file exports the data dir and
@@ -302,7 +331,7 @@ func featureProfileExportsDataDir(files map[string]string) []string {
 		return []string{"could not locate the profile.d heredoc"}
 	}
 	var out []string
-	if !exportDataDir.MatchString(m[1]) {
+	if !exportDataDir.Search(m[1]) {
 		out = append(out, "/etc/profile.d/dotfiles-mise.sh must export MISE_DATA_DIR=/opt/mise")
 	}
 	if !strings.Contains(m[1], "/opt/mise/shims") {

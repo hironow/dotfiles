@@ -86,3 +86,21 @@ func TestInstallFacts(t *testing.T) {
 		{"the clipboard step is skipped", edit(i, "\nstep_wsl_clipboard\n", "\n"), "test_step_is_in_normal_install_flow"},
 	})
 }
+
+func TestPyCompileReadsLikePython(t *testing.T) {
+	for _, c := range []struct {
+		pattern, text string
+		found         bool
+	}{
+		{`_skip_windows\s+"x"`, "_skip_windows\u00a0\"x\"", true},       // NBSP is \s in Python
+		{`DOTFILES_OS\s*=`, "DOTFILES_OS\u3000=", true},                 // so is the ideographic space
+		{`\bMISE_OFFLINE=0\b`, "# \u00e9MISE_OFFLINE=0", false},         // \u00e9 is a word character
+		{`\bMISE_OFFLINE=0\b`, "# MISE_OFFLINE=0 x", true},              // a space is not
+		{`Acquire::Retries "\d+"`, "Acquire::Retries \"\u0663\"", true}, // Arabic-Indic three is \d
+		{`\*\)[\s\S]*?exit\s+[1-9]`, "*)\n  exit 1", true},
+	} {
+		if got := pyCompile(c.pattern).Search(c.text); got != c.found {
+			t.Errorf("pyCompile(%q).Search(%q) = %v, want %v", c.pattern, c.text, got, c.found)
+		}
+	}
+}

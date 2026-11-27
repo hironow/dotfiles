@@ -29,9 +29,9 @@ var installFactList = []scriptFact{
 	// tests/unit/test_install_zsh_steps.py
 	fact("test_install_sh_runs_the_zsh_step", matches(installSh, `(?m)^step_zsh$`)),
 	// tests/unit/test_install_os_dispatch.py
-	fact("test_install_sh_identifies_dotfiles_os", matches(installSh, `DOTFILES_OS\s*=\s*`)),
+	fact("test_install_sh_identifies_dotfiles_os", pyMatches(installSh, `DOTFILES_OS\s*=\s*`)),
 	fact("test_install_sh_dispatches_mac_linux_windows", installDispatchesEveryOS),
-	fact("test_install_sh_fails_closed_on_unknown_os", matches(installSh, `\*\)[\s\S]*?exit\s+[1-9][0-9]*`)),
+	fact("test_install_sh_fails_closed_on_unknown_os", pyMatches(installSh, `\*\)[\s\S]*?exit\s+[1-9][0-9]*`)),
 	fact("test_install_sh_defines_required_step_function", installDefinesSteps(installRequiredSteps...)),
 	fact("test_step_functions_are_called", installCallsSteps(installRequiredSteps...)),
 	fact("test_install_sh_honours_legacy_skip_env_vars",
@@ -54,11 +54,11 @@ var installFactList = []scriptFact{
 }
 
 var (
-	darwinArm   = regexp.MustCompile(`Darwin\)`)
-	linuxArm    = regexp.MustCompile(`Linux\)`)
+	darwinArm   = pyCompile(`\bDarwin\)`)
+	linuxArm    = pyCompile(`\bLinux\)`)
 	windowsArm  = regexp.MustCompile(`MINGW\*\|MSYS\*\|CYGWIN\*\)|MSYS\*\|MINGW\*\|CYGWIN\*\)`)
-	functionDef = regexp.MustCompile(`(?m)^[a-z_]+\s*\(\s*\)\s*\{[\s\S]*?^\}\s*$`)
-	skipWindows = regexp.MustCompile(`_skip_windows\s+"([^"]*)"\s+"([^"]*)"`)
+	functionDef = pyCompile(`(?m)^[a-z_]+\s*\(\s*\)\s*\{[\s\S]*?^\}\s*$`).re
+	skipWindows = pyCompile(`_skip_windows\s+"([^"]*)"\s+"([^"]*)"`).re
 	corepackArm = regexp.MustCompile(`windows\)([\s\S]*?);;`)
 	corepackWhy = regexp.MustCompile(`_skip_windows "step_corepack" "[^"]+"`)
 )
@@ -68,10 +68,10 @@ var (
 func installDispatchesEveryOS(files map[string]string) []string {
 	text := files[installSh]
 	var out []string
-	if !pyLeadingBoundary(darwinArm, text) {
+	if !darwinArm.Search(text) {
 		out = append(out, "install.sh case must include a Darwin branch")
 	}
-	if !pyLeadingBoundary(linuxArm, text) {
+	if !linuxArm.Search(text) {
 		out = append(out, "install.sh case must include a Linux branch")
 	}
 	if !windowsArm.MatchString(text) {
@@ -85,7 +85,7 @@ func installDefinesSteps(steps ...string) factCheck {
 	return func(files map[string]string) []string {
 		var out []string
 		for _, step := range steps {
-			if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(step) + `\s*\(\s*\)\s*\{`).MatchString(files[installSh]) {
+			if !pyCompile(`(?m)^` + regexp.QuoteMeta(step) + `\s*\(\s*\)\s*\{`).Search(files[installSh]) {
 				out = append(out, "install.sh must define a "+step+" function")
 			}
 		}
@@ -111,7 +111,7 @@ func installCallsSteps(steps ...string) factCheck {
 // onInstallStep runs checks over a step function's body (the tests'
 // `^step\s*\(\s*\)\s*\{([\s\S]*?)^\}`, MULTILINE).
 func onInstallStep(step string, checks ...factCheck) factCheck {
-	body := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(step) + `\s*\(\s*\)\s*\{([\s\S]*?)^\}`)
+	body := pyCompile(`(?m)^` + regexp.QuoteMeta(step) + `\s*\(\s*\)\s*\{([\s\S]*?)^\}`).re
 	return func(files map[string]string) []string {
 		m := body.FindStringSubmatch(files[installSh])
 		if m == nil {

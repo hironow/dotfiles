@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -106,23 +107,6 @@ func pyBoundaryAt(text string, p int) bool {
 	return before != after
 }
 
-// pyLeadingBoundary is re.search(r"\b" + pattern, text): a match of re (the
-// pattern without its leading \b) that starts at a Python word boundary.
-func pyLeadingBoundary(re *regexp.Regexp, text string) bool {
-	for from := 0; from <= len(text); {
-		loc := re.FindStringIndex(text[from:])
-		if loc == nil {
-			return false
-		}
-		if pyBoundaryAt(text, from+loc[0]) {
-			return true
-		}
-		_, size := utf8.DecodeRuneInString(text[from+loc[0]:])
-		from += loc[0] + max(size, 1)
-	}
-	return false
-}
-
 // pyStrip is str.strip().
 func pyStrip(s string) string {
 	return strings.TrimFunc(s, pyIsSpace)
@@ -140,4 +124,128 @@ func pyDigitsThenBoundary(text string, i int) bool {
 		j += size
 	}
 	return j > i && pyBoundaryAt(text, j)
+}
+
+// Python's str classes, for the patterns of the ported tests: Go's \s, \d,
+// \w and \b know only ASCII.
+const (
+	pySpaceClass = `\t\n\v\f\r\x{1c}-\x{1f} \x{85}\p{Zs}\x{2028}\x{2029}`
+	pyWordClass  = `\p{L}\p{N}_`
+)
+
+// pyPattern is a Python re pattern (str semantics) compiled for Go: \s, \S,
+// \d, \D, \w and \W become their Unicode classes, and a \b at the start or
+// the end is checked against Python's word characters. A \b elsewhere, or a
+// class shorthand inside brackets other than [\s\S], is not supported: write
+// the check in code.
+type pyPattern struct {
+	re          *regexp.Regexp
+	lead, trail bool
+}
+
+func pyCompile(pattern string) pyPattern {
+	p := pyPattern{}
+	if rest, ok := strings.CutPrefix(pattern, `\b`); ok {
+		p.lead, pattern = true, rest
+	}
+	if rest, ok := strings.CutSuffix(pattern, `\b`); ok && !strings.HasSuffix(rest, `\`) {
+		p.trail, pattern = true, rest
+	}
+	var b strings.Builder
+	inClass := false
+	for i := 0; i < len(pattern); i++ {
+		c := pattern[i]
+		if !inClass && strings.HasPrefix(pattern[i:], `[\s\S]`) {
+			b.WriteString(`[\s\S]`) // any character, in Go as in Python
+			i += len(`[\s\S]`) - 1
+			continue
+		}
+		if c == '\\' && i+1 < len(pattern) {
+			next := pattern[i+1]
+			i++
+			if inClass && strings.ContainsRune("sSdDwWb", rune(next)) {
+				panic("pyCompile: a class shorthand inside brackets: " + pattern)
+			}
+			switch next {
+			case 's':
+				b.WriteString("[" + pySpaceClass + "]")
+			case 'S':
+				b.WriteString("[^" + pySpaceClass + "]")
+			case 'd':
+				b.WriteString(`\p{Nd}`)
+			case 'D':
+				b.WriteString(`\P{Nd}`)
+			case 'w':
+				b.WriteString("[" + pyWordClass + "]")
+			case 'W':
+				b.WriteString("[^" + pyWordClass + "]")
+			case 'b':
+				panic(`pyCompile: \b inside the pattern: ` + pattern)
+			default:
+				b.WriteByte('\\')
+				b.WriteByte(next)
+			}
+			continue
+		}
+		switch c {
+		case '[':
+			inClass = true
+		case ']':
+			inClass = false
+		}
+		b.WriteByte(c)
+	}
+	p.re = regexp.MustCompile(b.String())
+	return p
+}
+
+// Search is re.search: a match whose \b ends sit at Python word boundaries.
+func (p pyPattern) Search(text string) bool {
+	for from := 0; from <= len(text); {
+		loc := p.re.FindStringIndex(text[from:])
+		if loc == nil {
+			return false
+		}
+		start, end := from+loc[0], from+loc[1]
+		if (!p.lead || pyBoundaryAt(text, start)) && (!p.trail || pyBoundaryAt(text, end)) {
+			return true
+		}
+		_, size := utf8.DecodeRuneInString(text[start:])
+		from = start + max(size, 1)
+	}
+	return false
+}
+
+// pyMatches: re.search of each pattern over the file finds a match.
+func pyMatches(path string, patterns ...string) factCheck {
+	compiled := make([]pyPattern, 0, len(patterns))
+	for _, p := range patterns {
+		compiled = append(compiled, pyCompile(p))
+	}
+	return func(files map[string]string) []string {
+		var out []string
+		for i, p := range compiled {
+			if !p.Search(files[path]) {
+				out = append(out, fmt.Sprintf("%s must match %s", path, patterns[i]))
+			}
+		}
+		return out
+	}
+}
+
+// pyNoMatch: re.search of each pattern over the file finds nothing.
+func pyNoMatch(path string, patterns ...string) factCheck {
+	compiled := make([]pyPattern, 0, len(patterns))
+	for _, p := range patterns {
+		compiled = append(compiled, pyCompile(p))
+	}
+	return func(files map[string]string) []string {
+		var out []string
+		for i, p := range compiled {
+			if p.Search(files[path]) {
+				out = append(out, fmt.Sprintf("%s must not match %s", path, patterns[i]))
+			}
+		}
+		return out
+	}
 }
