@@ -1,4 +1,4 @@
-"""Run the sandbox GCS fake with fixed-length and streamed state uploads."""
+"""Run the IaC GCS fake with fixed-length and streamed state uploads."""
 
 import importlib.util
 import io
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.mark.parametrize("chunked", [False, True], ids=["content-length", "chunked"])
 def test_tailnet_gcs_accepts_multipart_state_uploads(chunked, tmp_path):
     spec = importlib.util.spec_from_file_location(
-        "tailnet_sandbox_under_test", ROOT / "tests/test_just_sandbox.py"
+        "tailnet_iac_under_test", ROOT / "tests/iac/test_tailnet.py"
     )
     assert spec and spec.loader
     sandbox = importlib.util.module_from_spec(spec)

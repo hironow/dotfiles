@@ -1,4 +1,4 @@
-"""Run the sandbox encryption checks with local OpenTofu state."""
+"""Run the IaC encryption checks with local OpenTofu state."""
 
 import importlib.util
 import json
@@ -17,7 +17,7 @@ CONFIDENTIAL = "synthetic-confidential-state-output"
 @pytest.fixture
 def encryption_checks(tmp_path):
     spec = importlib.util.spec_from_file_location(
-        "tailnet_sandbox_under_test", ROOT / "tests/test_just_sandbox.py"
+        "tailnet_iac_under_test", ROOT / "tests/iac/test_tailnet.py"
     )
     assert spec and spec.loader
     sandbox = importlib.util.module_from_spec(spec)

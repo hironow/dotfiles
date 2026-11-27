@@ -1653,6 +1653,7 @@ test-iac:
         mise x -- tofu test
       )
     done
+    DOTFILES_REQUIRE_TAILNET_SCENARIOS=1 {{ UV_RUN }} --group dev pytest -q -ra -p no:cacheprovider tests/iac/test_tailnet.py
 
 # ------------------------------
 # Add sets
