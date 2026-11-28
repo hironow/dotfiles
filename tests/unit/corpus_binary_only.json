@@ -1,0 +1,7 @@
+{
+  "fixed-guard-failure": [
+    "a guard that panicked let the call go on, as the old Python guard's own exceptions did (exit 1, which Claude and Codex let through)",
+    "tools/agent-hooks/internal/launch/panic_test.go",
+    "TestFixedGuardFailureBlocks"
+  ]
+}

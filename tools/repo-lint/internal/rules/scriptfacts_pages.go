@@ -11,6 +11,7 @@ import (
 const (
 	pagesIndex      = "index.html"
 	pagesScript     = "site/copy.js"
+	pagesVendor     = "site/vendor/ui-sdk"
 	pagesBash       = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"`
 	pagesPowershell = "irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex"
 )
@@ -18,7 +19,7 @@ const (
 // pagesSiteFacts: the page keeps its script in site/copy.js and hands out
 // the install commands word for word.
 func pagesSiteFacts() Rule {
-	return factRule(
+	r := factRule(
 		"pages-site-facts",
 		"the Pages site runs no inline script, hands out the install commands word for word, and hides copy buttons until defined",
 		[]string{pagesIndex, pagesScript, installSh, bootstrapPs1},
@@ -34,6 +35,63 @@ func pagesSiteFacts() Rule {
 				pageButtonsUseTextNames),
 		},
 	)
+	check := r.Check
+	r.Inputs = append(r.Inputs, Input{Path: pagesVendor, Format: Directories})
+	r.Check = func(in Inputs) []Finding {
+		out := check(in)
+		const name = "test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path"
+		dirs, _ := in[pagesVendor].([]string)
+		if len(dirs) != 1 {
+			return append(out, Finding{Path: pagesVendor, Rule: r.ID, Message: name + ": expected exactly one immediate directory"})
+		}
+		vendor := factRule(r.ID, r.Why, []string{pagesIndex, pagesScript}, []scriptFact{
+			fact(name, pageVendoredSDK(dirs[0]), lacks(pagesIndex, "ui-sdk.dev"), lacks(pagesScript, "ui-sdk.dev")),
+		})
+		return append(out, vendor.Check(in)...)
+	}
+	return r
+}
+
+var pageImports = pyCompile(`from\s+"([^"]+)"`)
+
+func pageVendoredSDK(version string) factCheck {
+	return func(files map[string]string) []string {
+		for _, path := range []string{pagesIndex, pagesScript} {
+			if !utf8.ValidString(files[path]) {
+				return []string{path + " must decode as strict UTF-8"}
+			}
+		}
+		var refs []string
+		for _, ref := range readPage(files[pagesIndex]).links {
+			if strings.Contains(ref, "ui-sdk") {
+				refs = append(refs, ref)
+			}
+		}
+		var out []string
+		for _, asset := range []string{"web.js", "web.css"} {
+			want := "site/vendor/ui-sdk/" + version + "/" + asset
+			found := false
+			for _, ref := range refs {
+				found = found || ref == want
+			}
+			if !found {
+				out = append(out, "the page must reference "+want)
+			}
+		}
+		imports := pageImports.re.FindAllStringSubmatch(files[pagesScript], -1)
+		if len(imports) == 0 {
+			out = append(out, "site/copy.js imports announce from the vendored core")
+		}
+		for _, match := range imports {
+			refs = append(refs, match[1])
+		}
+		for _, ref := range refs {
+			if strings.HasPrefix(ref, "/") || strings.Contains(ref, "://") || !strings.Contains(ref, "vendor/ui-sdk/"+version+"/") {
+				out = append(out, "must use a relative vendored SDK reference: "+ref)
+			}
+		}
+		return out
+	}
 }
 
 var pageNavOpening = regexp.MustCompile(`<nav[^>]*>`)
@@ -87,6 +145,7 @@ type pageScript struct {
 type page struct {
 	text    map[string]string
 	scripts []pageScript
+	links   []string
 }
 
 type openElement struct{ tag, id string }
@@ -243,6 +302,9 @@ func (r *pageReader) open1(tag string, attrs []pageAttr) {
 	s := pageScript{attrs: map[string]string{}, bare: map[string]bool{}}
 	for _, a := range attrs {
 		s.attrs[a.name], s.bare[a.name] = a.value, a.bare
+		if (a.name == "src" || a.name == "href") && a.value != "" {
+			r.pg.links = append(r.pg.links, a.value)
+		}
 	}
 	if tag == "script" {
 		r.pg.scripts = append(r.pg.scripts, s)
@@ -399,6 +461,10 @@ func pageUnescapeAttr(v string) string {
 		}
 		if strings.HasSuffix(ref, "=") {
 			return ref
+		}
+		// fjlig is the only HTML5 entity that expands to ASCII letters.
+		if ref == "&fjlig;" {
+			return "fj"
 		}
 		u := pyUnescape(ref)
 		if u == ref || strings.IndexFunc(u, func(r rune) bool {

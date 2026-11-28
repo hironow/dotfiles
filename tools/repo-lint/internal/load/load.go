@@ -66,8 +66,10 @@ func (f Files) filesystemGlobCase(in rules.Input, caseSensitive bool) (any, erro
 		names = nil
 		for _, entry := range entries {
 			// pathlib uses case-insensitive matching on Windows. These
-			// globs have a literal ASCII extension, such as *.tf.
-			matched, err := filepath.Match(strings.ToLower(pattern), strings.ToLower(entry.Name()))
+			// globs have a literal ASCII extension. Upper then lower also
+			// folds the long s in *.ps1, as Python's re.IGNORECASE does.
+			folded := strings.ToLower(strings.ToUpper(entry.Name()))
+			matched, err := filepath.Match(strings.ToLower(pattern), folded)
 			if err != nil {
 				return nil, fmt.Errorf("glob %s: %w", in.Path, err)
 			}
@@ -123,6 +125,8 @@ func (f Files) glob(in rules.Input) (any, error) {
 func (f Files) one(in rules.Input) (any, error) {
 	path := filepath.Join(f.Root, filepath.FromSlash(in.Path))
 	switch in.Format {
+	case rules.Directories:
+		return directoryNames(path)
 	case rules.Text:
 		if in.Optional {
 			info, err := os.Stat(path)
@@ -171,6 +175,22 @@ func (f Files) one(in rules.Input) (any, error) {
 	default:
 		return nil, fmt.Errorf("%s: unknown format %q", in.Path, in.Format)
 	}
+}
+
+func directoryNames(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", path, err)
+	}
+	names := []string{}
+	for _, entry := range entries {
+		// Path.is_dir follows symlinks and treats a failed stat as false.
+		info, err := os.Stat(filepath.Join(path, entry.Name()))
+		if err == nil && info.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	return names, nil
 }
 
 func decode(path string, data []byte) (any, error) {

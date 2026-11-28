@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -23,6 +24,34 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestFilesListsImmediateDirectoriesAndFollowsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "vendor/any-name/child/asset.js", "export {};\n")
+	write(t, root, "vendor/not-a-version", "file\n")
+	files := Files{Root: root}
+	in := rules.Input{Path: "vendor", Format: rules.Directories}
+	got, err := files.Load(in)
+	if err != nil || !reflect.DeepEqual(got, []string{"any-name"}) {
+		t.Fatalf("directories = %#v, %v", got, err)
+	}
+	if _, err := files.Load(rules.Input{Path: "missing", Format: rules.Directories}); err == nil {
+		t.Fatal("missing directory must fail")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("directory symlinks need Windows developer mode or elevation")
+	}
+	if err := os.Symlink("any-name", filepath.Join(root, "vendor", "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("missing", filepath.Join(root, "vendor", "broken")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = files.Load(in)
+	if err != nil || !reflect.DeepEqual(got, []string{"any-name", "linked"}) {
+		t.Fatalf("directories with symlinks = %#v, %v", got, err)
+	}
 }
 
 func write(t *testing.T, root, name, body string) {
@@ -178,5 +207,17 @@ func TestFilesystemGlobUsesPlatformCase(t *testing.T) {
 				t.Fatalf("glob = %#v, %v; want %#v", got, err, want)
 			}
 		})
+	}
+}
+
+func TestFilesystemGlobWindowsIncludesLongS(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "scripts/gc.pſ1", "# é\n")
+	write(t, root, "scripts/other.PS1", "# ASCII\n")
+	write(t, root, "scripts/ignored.ps2", "# é\n")
+	got, err := (Files{Root: root}).filesystemGlobCase(rules.Input{Path: "scripts/*.ps1", Format: rules.Text}, false)
+	want := map[string]any{"scripts/gc.pſ1": "# é\n", "scripts/other.PS1": "# ASCII\n"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Windows glob = %#v, %v; want %#v", got, err, want)
 	}
 }
