@@ -148,6 +148,7 @@ jobs:
           uvx pytest -q -ra
           tests/unit/test_agent_hook_doctor.py::test_real_hookrelease_rebuilds_a_real_temporary_release
           tests/unit/test_agent_hooks_test_installed.py
+          tests/unit/test_corpus_differences.py::test_every_binary_only_fix_runs_its_go_test
 
       # Keep --max in sync with the `instruction-budget` recipe in the
       # justfile (the recipe is not callable here because the justfile
