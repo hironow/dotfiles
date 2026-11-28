@@ -11,6 +11,7 @@ const pageFixture = `<!doctype html>
   <meta charset="utf-8">
   <style>ui-button:not(:defined) { display: none; }</style>
   <!-- <script>alert(1)</script> is a comment, not a script -->
+  <link rel="stylesheet" href="site/vendor/ui-sdk/0.1.0/web.css">
   <script type="module" src="site/vendor/ui-sdk/0.1.0/web.js"></script>
   <script type="module" src="site/copy.js"></script>
 </head>
@@ -31,7 +32,83 @@ announce("copied");
 `
 
 func pagesBase() Inputs {
-	return Inputs{pagesIndex: pageFixture, pagesScript: copyJsFixture, installSh: "#!/bin/sh\n", bootstrapPs1: "# bootstrap\n"}
+	return Inputs{pagesIndex: pageFixture, pagesScript: copyJsFixture, installSh: "#!/bin/sh\n", bootstrapPs1: "# bootstrap\n", pagesVendor: []string{"0.1.0"}}
+}
+
+func TestPagesVendoredSDKFacts(t *testing.T) {
+	const name = "test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path"
+	runCases(t, pagesSiteFacts(), pagesBase, []ruleCase{
+		{"no web.js", edit(pagesIndex, "0.1.0/web.js", "other/web.js"), name},
+		{"no web.css", edit(pagesIndex, "0.1.0/web.css", "other/web.css"), name},
+		{"absolute path", edit(pagesScript, `from "./vendor`, `from "/vendor`), name},
+		{"origin URL", edit(pagesScript, `from "./vendor`, `from "https://cdn.invalid/vendor`), name},
+		{"wrong version", edit(pagesScript, "0.1.0/core.js", "other/core.js"), name},
+		{"no matching imports", edit(pagesScript, `from "`, `from '`), name},
+		{"dev host in comment", edit(pagesScript, "prepareAnnouncements();", "// ui-sdk.dev\nprepareAnnouncements();"), name},
+		{"dev host in page comment", edit(pagesIndex, "</head>", "<!-- ui-sdk.dev -->\n</head>"), name},
+		{"duplicate attribute", edit(pagesIndex, `href="#cmd-bash"`, `href="https://cdn.invalid/ui-sdk/x" href="#cmd-bash"`), name},
+		{"comment import", edit(pagesScript, "prepareAnnouncements();", "// from \"/ui-sdk/core.js\"\nprepareAnnouncements();"), name},
+		{"no version directory", func(in Inputs) { in[pagesVendor] = []string{} }, name},
+		{"two version directories", func(in Inputs) { in[pagesVendor] = []string{"0.1.0", "other"} }, name},
+		{"invalid UTF-8", edit(pagesScript, "prepareAnnouncements();", "// \xff\nprepareAnnouncements();"), name},
+	})
+}
+
+func TestPagesVendorSearchKeepsPythonSemantics(t *testing.T) {
+	in := pagesBase()
+	in[pagesScript] = strings.ReplaceAll(copyJsFixture, `from "`, "from\u0085\u001c\u2028\"")
+	in[pagesScript] = strings.ReplaceAll(in[pagesScript].(string), "core.js", "anything.js")
+	in[pagesIndex] = strings.ReplaceAll(pageFixture, "</head>", `<a href="https://cdn.invalid/UI-SDK/x" src="" href>case-sensitive</a></head>`)
+	if got := findingsOf(t, pagesSiteFacts(), in); len(got) != 0 {
+		t.Errorf("Unicode spaces, arbitrary import basename and case-sensitive filtering: %v", got)
+	}
+	in = pagesBase()
+	in[pagesVendor] = []string{"arbitrary-folder"}
+	in[pagesIndex] = strings.ReplaceAll(pageFixture, "0.1.0", "arbitrary-folder")
+	in[pagesScript] = strings.ReplaceAll(copyJsFixture, "0.1.0", "arbitrary-folder")
+	if got := findingsOf(t, pagesSiteFacts(), in); len(got) != 0 {
+		t.Errorf("a folder name need not be a version number: %v", got)
+	}
+}
+
+func TestReadPageKeepsEveryNonemptySrcAndHref(t *testing.T) {
+	p := readPage(`<link href="a&amp;b" href="c"><script src="" src src="d"></script><!-- <img src="no"> -->`)
+	if strings.Join(p.links, ",") != "a&b,c,d" {
+		t.Errorf("links = %v", p.links)
+	}
+}
+
+func TestPagesVendorDecodesNamedEntitiesContainingLetters(t *testing.T) {
+	in := pagesBase()
+	in[pagesVendor] = []string{"fj"}
+	in[pagesIndex] = strings.ReplaceAll(pageFixture, "0.1.0", "&fjlig;")
+	in[pagesScript] = strings.ReplaceAll(copyJsFixture, "0.1.0", "fj")
+	if got := findingsOf(t, pagesSiteFacts(), in); len(got) != 0 {
+		t.Fatalf("HTML entity is the selected vendor folder: %v", got)
+	}
+	in[pagesVendor] = []string{"other"}
+	if got := findingsOf(t, pagesSiteFacts(), in); len(got) == 0 {
+		t.Fatal("an entity must not hide a different vendor folder")
+	}
+}
+
+func TestPageAttributeEntitiesKeepWholeNameSemantics(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"&fjlig;", "fj"},
+		{"&fjlig", "&fjlig"},
+		{"&amp", "&"},
+		{"&amp;", "&"},
+		{"&amp=", "&amp="},
+		{"&ampx;", "&ampx;"},
+		{"&fjlig;=", "fj="},
+		{"&#102;&#106;", "fj"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			if got := pageUnescapeAttr(tc.input); got != tc.want {
+				t.Fatalf("attribute = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestPagesSiteFacts(t *testing.T) {

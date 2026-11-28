@@ -22,6 +22,8 @@ const (
 	YAML Format = "yaml"
 	// JSONC is JSON with comments and trailing commas (devcontainer.json).
 	JSONC Format = "jsonc"
+	// Directories lists immediate directory names, following directory symlinks.
+	Directories Format = "directories"
 )
 
 // Input is one file a rule reads, relative to the repository root. With Glob
@@ -133,6 +135,8 @@ func All() []Rule {
 		cursorFacts(),
 		hardenEnvFacts(),
 		pagesSiteFacts(),
+		powershellASCIIOnly(),
+		corpusDifferenceFacts(),
 		gitmodulesSkipAll(),
 		deployWiringFacts(),
 		effectiveSettingsStdlib(),

@@ -22,7 +22,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "index.html"
 SCRIPT = ROOT / "site" / "copy.js"
-VENDOR = ROOT / "site" / "vendor" / "ui-sdk"
 
 
 class _Page(HTMLParser):
@@ -63,28 +62,15 @@ def _page() -> _Page:
     return page
 
 
-def _version() -> str:
-    (folder,) = [p for p in VENDOR.iterdir() if p.is_dir()]
-    return folder.name
-
-
-def test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path() -> None:
-    version = _version()
+def test_ui_sdk_references_exist() -> None:
+    # D3: every ui-sdk reference names a file that exists. How the references
+    # are written is the pages-site-facts rule of tools/repo-lint.
     page_refs = [ref for ref in _page().links if "ui-sdk" in ref]
     script_refs = re.findall(r'from\s+"([^"]+)"', SCRIPT.read_text(encoding="utf-8"))
-    assert {
-        "site/vendor/ui-sdk/" + version + "/web.js",
-        "site/vendor/ui-sdk/" + version + "/web.css",
-    } <= set(page_refs)
-    assert script_refs, "site/copy.js imports announce from the vendored core"
     for ref, base in [(r, ROOT) for r in page_refs] + [
         (r, SCRIPT.parent) for r in script_refs
     ]:
-        assert not ref.startswith("/") and "://" not in ref, ref
-        assert f"vendor/ui-sdk/{version}/" in ref, ref
         assert (base / ref).resolve().is_file(), ref
-    for text in (PAGE.read_text(encoding="utf-8"), SCRIPT.read_text(encoding="utf-8")):
-        assert "ui-sdk.dev" not in text
 
 
 @pytest.mark.skipif(

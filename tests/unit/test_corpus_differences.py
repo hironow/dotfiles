@@ -68,14 +68,12 @@ REGISTRY: dict[str, tuple[str, str]] = {
 # The binary's fixes that no old script can show: each ID, its bug, and the Go
 # test that holds it (its file and function).
 BINARY_ONLY: dict[str, tuple[str, str, str]] = {
-    "fixed-guard-failure": (
-        (
-            "a guard that panicked let the call go on, as the old Python guard's own "
-            "exceptions did (exit 1, which Claude and Codex let through)"
-        ),
-        "tools/agent-hooks/internal/launch/panic_test.go",
-        "TestFixedGuardFailureBlocks",
-    ),
+    name: (bug, path, function)
+    for name, (bug, path, function) in json.loads(
+        (Path(__file__).with_name("corpus_binary_only.json")).read_text(
+            encoding="utf-8"
+        )
+    ).items()
 }
 REGISTRY |= {name: ("fixed", bug) for name, (bug, _, _) in BINARY_ONLY.items()}
 
@@ -134,17 +132,6 @@ def test_every_named_fix_is_earned_somewhere() -> None:
     }
     for name in old_script_fixes.FIXES:
         assert f"fixed-{name}" in used, f"no corpus input needs fixed-{name}"
-
-
-def test_no_corpus_claims_a_binary_only_fix() -> None:
-    used = {
-        part
-        for differences in _differences().values()
-        for difference in differences
-        for part in difference.split("+")
-    }
-    for name in BINARY_ONLY:
-        assert name not in used, f"{name} is binary-only, but a corpus holds it"
 
 
 def _offline_go_env(home: Path) -> dict[str, str]:

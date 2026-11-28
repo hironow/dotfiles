@@ -77,29 +77,6 @@ GC_START = ("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Fil
 MARKER = ".runner-gc-last-used"
 
 
-def test_windows_scripts_are_ascii_only() -> None:
-    """powershell.exe (5.1) reads a BOM-less UTF-8 script as ANSI.
-
-    Any non-ASCII byte then arrives mojibake in the Scheduled Task log, which
-    is the only record an unattended run leaves behind.
-
-    Globbed, not listed: a hardcoded tuple silently exempts every .ps1 added
-    after it, and this test is the only gate .ps1 files have (`just check`
-    lints shell and Python, never PowerShell).
-    """
-    for script in sorted(SCRIPTS.glob("*.ps1")):
-        raw = script.read_bytes()
-        assert not raw.startswith(b"\xef\xbb\xbf"), (
-            f"{script.name} must not carry a UTF-8 BOM."
-        )
-        bad = [
-            (n, line)
-            for n, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1)
-            if any(ord(ch) > 127 for ch in line)
-        ]
-        assert not bad, f"{script.name} must stay ASCII-only: {bad}"
-
-
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason=(
