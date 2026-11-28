@@ -87,19 +87,6 @@ def test_ui_sdk_loads_only_from_the_vendored_version_by_relative_path() -> None:
         assert "ui-sdk.dev" not in text
 
 
-def test_copy_buttons_are_ui_buttons_that_hide_until_defined() -> None:
-    html = PAGE.read_text(encoding="utf-8")
-    for command in ("cmd-bash", "cmd-pwsh"):
-        assert re.search(
-            rf'<ui-button data-copy="{command}"[^>]*>\s*<button class="copy" type="button">',
-            html,
-        ), command
-    assert re.search(r"ui-button:not\(:defined\)\s*\{\s*display:\s*none;?\s*\}", html)
-    assert "aria-label" not in re.sub(r"<nav[^>]*>", "", html), (
-        "name buttons by their text"
-    )
-
-
 @pytest.mark.skipif(
     shutil.which("git") is None, reason="needs git to list tracked files"
 )

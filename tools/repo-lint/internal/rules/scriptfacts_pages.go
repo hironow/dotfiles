@@ -20,14 +20,29 @@ const (
 func pagesSiteFacts() Rule {
 	return factRule(
 		"pages-site-facts",
-		"the Pages site runs no inline script and hands out the install commands word for word",
+		"the Pages site runs no inline script, hands out the install commands word for word, and hides copy buttons until defined",
 		[]string{pagesIndex, pagesScript, installSh, bootstrapPs1},
 		[]scriptFact{
 			// tests/unit/test_pages_site.py
 			fact("test_the_page_keeps_its_script_in_site_copy_js", pageScriptsLiveInCopyJs),
 			fact("test_the_install_commands_are_the_ones_people_should_run", pageInstallCommands),
+			fact("test_copy_buttons_are_ui_buttons_that_hide_until_defined",
+				pyMatches(pagesIndex,
+					`<ui-button data-copy="cmd-bash"[^>]*>\s*<button class="copy" type="button">`,
+					`<ui-button data-copy="cmd-pwsh"[^>]*>\s*<button class="copy" type="button">`,
+					`ui-button:not\(:defined\)\s*\{\s*display:\s*none;?\s*\}`),
+				pageButtonsUseTextNames),
 		},
 	)
+}
+
+var pageNavOpening = regexp.MustCompile(`<nav[^>]*>`)
+
+func pageButtonsUseTextNames(files map[string]string) []string {
+	// The old test removed only matching opening nav tags before searching.
+	return lacks(pagesIndex, "aria-label")(map[string]string{
+		pagesIndex: pageNavOpening.ReplaceAllString(files[pagesIndex], ""),
+	})
 }
 
 func pageScriptsLiveInCopyJs(files map[string]string) []string {

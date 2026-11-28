@@ -9,13 +9,17 @@ const pageFixture = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <style>ui-button:not(:defined) { display: none; }</style>
   <!-- <script>alert(1)</script> is a comment, not a script -->
   <script type="module" src="site/vendor/ui-sdk/0.1.0/web.js"></script>
   <script type="module" src="site/copy.js"></script>
 </head>
 <body>
+  <nav aria-label="Main"><a href="#cmd-bash">Install</a></nav>
   <p><span class="cmd" id="cmd-bash">bash -c &quot;$(curl -fsSL <span class="str">https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh</span>)&quot;</span></p>
+  <ui-button data-copy="cmd-bash"><button class="copy" type="button">Copy</button></ui-button>
   <p><span class="cmd" id="cmd-pwsh">irm <span class="str">https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1</span> | iex</span></p>
+  <ui-button data-copy="cmd-pwsh"><button class="copy" type="button">Copy</button></ui-button>
 </body>
 </html>
 `
@@ -40,7 +44,26 @@ func TestPagesSiteFacts(t *testing.T) {
 		{"the bash command changes", edit(pagesIndex, "curl -fsSL ", "curl -sSL "), "test_the_install_commands_are_the_ones_people_should_run"},
 		{"the pwsh command points elsewhere", edit(pagesIndex, "hironow/dotfiles/main/bootstrap.ps1", "someone/dotfiles/main/bootstrap.ps1"), "test_the_install_commands_are_the_ones_people_should_run"},
 		{"no pwsh command", edit(pagesIndex, `id="cmd-pwsh"`, `id="cmd-ps"`), "test_the_install_commands_are_the_ones_people_should_run"},
+		{"no bash copy button", edit(pagesIndex, `data-copy="cmd-bash"`, `data-copy="other"`), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"no pwsh copy button", edit(pagesIndex, `data-copy="cmd-pwsh"`, `data-copy="other"`), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"visible before definition", edit(pagesIndex, "display: none", "display: block"), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"button label attribute", edit(pagesIndex, `type="button">`, `type="button" aria-label="Copy">`), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"nav closing tag label", edit(pagesIndex, "</nav>", "</nav aria-label=x>"), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"uppercase nav label", edit(pagesIndex, "<nav ", "<NAV "), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"attribute order changes", edit(pagesIndex, `class="copy" type="button"`, `type="button" class="copy"`), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
+		{"single quoted copy target", edit(pagesIndex, `data-copy="cmd-bash"`, `data-copy='cmd-bash'`), "test_copy_buttons_are_ui_buttons_that_hide_until_defined"},
 	})
+}
+
+func TestPageCopyButtonsKeepRawSearchSemantics(t *testing.T) {
+	in := pagesBase()
+	text := strings.ReplaceAll(pageFixture, "><button", ">\u00a0\u0085<button")
+	text = strings.ReplaceAll(text, " { display: none; }", "\u2003{\u001cdisplay:\u2028none\u00a0}")
+	text = strings.ReplaceAll(text, "</body>", "<nav-extra aria-label=\"Other\"></nav-extra></body>")
+	in[pagesIndex] = text
+	if got := findingsOf(t, pagesSiteFacts(), in); len(got) != 0 {
+		t.Errorf("Unicode spaces and nav opening tags must pass: %v", got)
+	}
 }
 
 func TestReadPageReadsLikeHTMLParser(t *testing.T) {
